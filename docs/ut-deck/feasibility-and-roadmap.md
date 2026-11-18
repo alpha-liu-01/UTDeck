@@ -356,6 +356,13 @@ Goal: a modern Vulkan driver drawing on Lomiri's screen, chosen per app.
 
 Exit: route A or B chosen, with numbers. If B fails on Lomiri, A is the base and zink is out.
 
+#### Status (2026-11-18): 1.1 done, 1.2-1.4 not started
+
+Split into four substages: [stage1-roadmap.md](stage1-roadmap.md). 1.1
+([stage1.1-turnip-wlegl.md](stage1.1-turnip-wlegl.md)): our own Turnip build (Mesa 26.2.5 with the
+Droidian `android_wlegl` patch, `tools/mesa-build/`) presents on Lomiri with no CPU copies, under
+1 ms of CPU per frame, whole in portrait and landscape. Route B works on screen.
+
 ### Stage 2. First light: one Windows game on screen
 
 Goal: Wine for ARM64 with FEX draws a Direct3D game on Lomiri with the GPU.

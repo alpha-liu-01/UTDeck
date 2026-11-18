@@ -659,6 +659,14 @@ Problems met while building UTDeck on the Redmi Note 12 5G (stone). Details in `
 - **`vkcube` ignores `--width`/`--height` on Lomiri (stage 0).** The phone shell sizes every window,
   so a "1280x720" run cost the same as a full-screen one. Lesson: record the window's real size,
   not the requested one.
+- **Mesa's build tried to write into a read-only source tree (stage 1.1).** meson unpacked a
+  fallback copy of `libarchive` (wanted only by freedreno's debug tools) into `subprojects/`,
+  which the container mounts read-only, and stopped with "Unhandled python OSError".
+  `--wrap-mode=nodownload` did not help; `--wrap-mode=nofallback` did. Lesson: build Mesa with
+  `nofallback` and list every dependency in the container explicitly.
+- **Two builds of the same Mesa commit are not bit-for-bit identical (stage 1.1).** 1,177 bytes of
+  generated code differed, all strings equal. Lesson: test the binary the script produces from a
+  clean clone, and record its SHA-256, rather than a local build made another way.
 - **`vkcube` on libhybris' Vulkan shows nothing on Lomiri (stage 0).** libhybris reports the
   surface as 1x1 (`currentExtent`), `vkcube` trusts it, and asks for 1x1 buffers; Lomiri shows an
   empty "Unknown" app. Known from dolphin-ut's stage 0. Lesson: test libhybris' Vulkan presentation
