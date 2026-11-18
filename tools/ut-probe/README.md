@@ -17,6 +17,7 @@ because Ubuntu Touch has no compiler and few tools. Push them to a test folder o
 | `vkcompute/pp-batch.sh`, `pp-isam.sh`, `sm-time.sh` | phone | Stage 1.4: Geekbench's Particle Physics and Stereo Matching shaders replayed on several drivers (needs the shaders recorded by the layer in `dlog-all/`) |
 | `ab-compute.sh`, `ab-present.sh`, `longrun.sh` | phone | Stage 1.4: route A (Android Turnip through libhybris) against route B (our Turnip): compute, presentation, and a long stability run (`longrun.sh A|B [minutes]`) |
 | `win/wtest.c` | phone, through Wine (build on the PC with `win/build.sh`, llvm-mingw) | Stage 2.1: a Windows console test built for ARM64, ARM64EC, x86-64 and x86: what Windows reports, the x86 features the emulator offers, address space and threads, and three small benchmarks (integer, float, memory copy) |
+| `wine-m1.sh` | phone, screen on | Stage 2.2: Wine's Notepad and `winecfg` on Lomiri, with Wayland messages logged |
 | `pacing.sh`, `pacing2.sh`, `pacing3.sh` | phone, screen on | Stage 1.4 frame pacing: `gltest` runs with `fps-panel.py` (panel refresh, compositor commits, GPU load); with `WAYLAND_DEBUG` time stamps (callback timing); the `--flush` and frame-limiter fixes |
 | `dxvk-check.py` | PC | Compares a `vulkaninfo -j` dump with the features DXVK requires, read from DXVK's source |
 

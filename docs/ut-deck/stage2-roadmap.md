@@ -36,6 +36,10 @@ aarch64, or `winex11` through Xwayland with Mesa's software presentation, to kee
   results. x86-64 through FEX keeps 79 % of native speed in 7-Zip's single-thread benchmark; FEX
   offers AVX2. Wine must run with our driver environment, or it loads libhybris and fails. Next:
   2.2, our own Wine build with the `wp_viewporter` patch.
+- **2.2 (2026-11-18): done.** Notes: [stage2.2-winewayland.md](stage2.2-winewayland.md).
+  Our `winewayland.so` (Hangover's exact source, two patches: `wp_viewporter` optional, the first
+  finger as the mouse) draws Wine's Notepad and `winecfg` on Lomiri, usable by touch (M1). Windows
+  keep their own size; landscape not yet seen. Next: 2.3, Vulkan inside Wine.
 
 Rules for this stage, from the project rules:
 - Nothing system-wide on the phone: Wine, FEX and the drivers live in a test folder, chosen with

@@ -791,3 +791,12 @@ Problems met while building UTDeck on the Redmi Note 12 5G (stone). Details in `
   inherits the output pipe and stays a few seconds after the program ends, so a tool that waits
   for the pipe to close reported 7 s for a 0.7 s run. Lesson: time Wine programs with output to a
   file, or wait for the process, not the pipe.
+- **Wine's Wayland driver has no touch input (stage 2.2).** `winewayland` (Wine 11.16) binds the
+  pointer and keyboard but never `wl_touch`, so on a phone no tap reaches a Windows program. Our
+  patch 0002 makes the first finger act as the mouse. Lesson: check every input path a phone uses,
+  not only the display, before calling a desktop component "working".
+- **Wine's configure finds no libraries in a cross build without a cross `pkg-config` (stage
+  2.2).** It looks for `aarch64-linux-gnu-pkg-config`, silently disables Wayland when it is
+  missing, and the only trace is "--cflags: command not found" in `config.log`. Solved with
+  `PKG_CONFIG=pkg-config` and `PKG_CONFIG_LIBDIR` pointed at the arm64 libraries. Lesson: after a
+  cross configure, check that the features you need were found before building.

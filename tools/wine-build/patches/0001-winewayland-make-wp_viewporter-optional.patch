@@ -1,0 +1,202 @@
+From: UTDeck
+Subject: [PATCH] winewayland: make wp_viewporter optional
+
+Lomiri (Mir 1.x, Ubuntu Touch) has no wp_viewporter, and winewayland refuses to start without
+it since commit 0307268e (Wine 9.17). This makes it optional again:
+
+- a missing wp_viewporter is a warning, not an error;
+- viewports are only created when the compositor offers them (window, client subsurface, cursor);
+- without a viewport, the visible part of a window surface buffer (rounded up to 128 pixels by
+  win32u) is copied into a buffer of the window's exact size before it is attached;
+- without a viewport, no destination size is set: windows are not scaled, and a client
+  (Vulkan or OpenGL) subsurface shows at its buffer size;
+- the cursor keeps its buffer scale only.
+
+Temporary: Mir 2 has wp_viewporter, so this patch goes once Lomiri on Mir 2 reaches Halium phones.
+---
+diff --git a/dlls/winewayland.drv/wayland.c b/dlls/winewayland.drv/wayland.c
+index 52ba39c..f8694e1 100644
+--- a/dlls/winewayland.drv/wayland.c
++++ b/dlls/winewayland.drv/wayland.c
+@@ -345,8 +345,9 @@ BOOL wayland_process_init(void)
+     }
+     if (!process_wayland.wp_viewporter)
+     {
+-        ERR("Wayland compositor doesn't support wp_viewporter\n");
+-        return FALSE;
++        /* Optional: without it, windows are drawn at their exact size, without scaling
++         * (for example Lomiri on Mir 1.x, which has no wp_viewporter). */
++        WARN("Wayland compositor doesn't support wp_viewporter, windows will not be scaled\n");
+     }
+ 
+     /* Check for optional globals. */
+diff --git a/dlls/winewayland.drv/wayland_pointer.c b/dlls/winewayland.drv/wayland_pointer.c
+index 0c190a9..86b6148 100644
+--- a/dlls/winewayland.drv/wayland_pointer.c
++++ b/dlls/winewayland.drv/wayland_pointer.c
+@@ -652,7 +652,7 @@ static void wayland_pointer_update_cursor_surface(double scale)
+         }
+     }
+ 
+-    if (!cursor->wp_viewport)
++    if (!cursor->wp_viewport && process_wayland.wp_viewporter)
+     {
+         cursor->wp_viewport =
+             wp_viewporter_get_viewport(process_wayland.wp_viewporter,
+@@ -675,9 +675,10 @@ static void wayland_pointer_update_cursor_surface(double scale)
+      * scale. Note that setting the viewport destination overrides
+      * the buffer scale, so it's fine to set both. */
+     wl_surface_set_buffer_scale(cursor->wl_surface, round(scale));
+-    wp_viewport_set_destination(cursor->wp_viewport,
+-                                round(cursor->shm_buffer->width / scale),
+-                                round(cursor->shm_buffer->height / scale));
++    if (cursor->wp_viewport)
++        wp_viewport_set_destination(cursor->wp_viewport,
++                                    round(cursor->shm_buffer->width / scale),
++                                    round(cursor->shm_buffer->height / scale));
+     wl_surface_commit(cursor->wl_surface);
+ 
+     return;
+diff --git a/dlls/winewayland.drv/wayland_surface.c b/dlls/winewayland.drv/wayland_surface.c
+index e02028a..f33bc2c 100644
+--- a/dlls/winewayland.drv/wayland_surface.c
++++ b/dlls/winewayland.drv/wayland_surface.c
+@@ -204,13 +204,16 @@ struct wayland_surface *wayland_surface_create(HWND hwnd)
+     }
+     wl_surface_set_user_data(surface->wl_surface, hwnd);
+ 
+-    surface->wp_viewport =
+-        wp_viewporter_get_viewport(process_wayland.wp_viewporter,
+-                                   surface->wl_surface);
+-    if (!surface->wp_viewport)
++    if (process_wayland.wp_viewporter)
+     {
+-        ERR("Failed to create wp_viewport Wayland surface\n");
+-        goto err;
++        surface->wp_viewport =
++            wp_viewporter_get_viewport(process_wayland.wp_viewporter,
++                                       surface->wl_surface);
++        if (!surface->wp_viewport)
++        {
++            ERR("Failed to create wp_viewport Wayland surface\n");
++            goto err;
++        }
+     }
+     if (process_wayland.wp_alpha_modifier_v1)
+     {
+@@ -483,6 +486,16 @@ void wayland_surface_clear_role(struct wayland_surface *surface)
+     wl_display_flush(process_wayland.wl_display);
+ }
+ 
++static void cropped_buffer_release(void *data, struct wl_buffer *buffer)
++{
++    wayland_shm_buffer_unref(data);
++}
++
++static const struct wl_buffer_listener cropped_buffer_listener =
++{
++    cropped_buffer_release
++};
++
+ /**********************************************************************
+  *          wayland_surface_attach_shm
+  *
+@@ -501,6 +514,39 @@ void wayland_surface_attach_shm(struct wayland_surface *surface,
+     TRACE("surface=%p shm_buffer=%p (%dx%d)\n",
+           surface, shm_buffer, shm_buffer->width, shm_buffer->height);
+ 
++    if (!surface->wp_viewport)
++    {
++        struct wayland_shm_buffer *cropped;
++
++        win_width = surface->window.rect.right - surface->window.rect.left;
++        win_height = surface->window.rect.bottom - surface->window.rect.top;
++        win_width = max(1, min(win_width, shm_buffer->width));
++        win_height = max(1, min(win_height, shm_buffer->height));
++
++        /* Without wp_viewporter we cannot crop a buffer that is larger than the window
++         * (window surfaces are rounded up to 128 pixels), so copy the visible part into a
++         * buffer of the window's exact size. It is released and freed by the compositor. */
++        if ((win_width != shm_buffer->width || win_height != shm_buffer->height) &&
++            (cropped = wayland_shm_buffer_create(win_width, win_height, shm_buffer->format)))
++        {
++            const char *src = shm_buffer->map_data;
++            char *dst = cropped->map_data;
++            int y, src_stride = shm_buffer->width * WINEWAYLAND_BYTES_PER_PIXEL;
++            int dst_stride = win_width * WINEWAYLAND_BYTES_PER_PIXEL;
++
++            for (y = 0; y < win_height; y++)
++                memcpy(dst + y * dst_stride, src + y * src_stride, dst_stride);
++            wl_buffer_add_listener(cropped->wl_buffer, &cropped_buffer_listener, cropped);
++
++            wl_surface_attach(surface->wl_surface, cropped->wl_buffer, 0, 0);
++            wl_surface_damage_buffer(surface->wl_surface, 0, 0, win_width, win_height);
++
++            surface->content_width = win_width;
++            surface->content_height = win_height;
++            return;
++        }
++    }
++
+     shm_buffer->busy = TRUE;
+     wayland_shm_buffer_ref(shm_buffer);
+ 
+@@ -535,9 +581,10 @@ void wayland_surface_attach_shm(struct wayland_surface *surface,
+     win_width = max(1, min(win_width, shm_buffer->width));
+     win_height = max(1, min(win_height, shm_buffer->height));
+ 
+-    wp_viewport_set_source(surface->wp_viewport, 0, 0,
+-                           wl_fixed_from_int(win_width),
+-                           wl_fixed_from_int(win_height));
++    if (surface->wp_viewport)
++        wp_viewport_set_source(surface->wp_viewport, 0, 0,
++                               wl_fixed_from_int(win_width),
++                               wl_fixed_from_int(win_height));
+ 
+     surface->content_width = win_width;
+     surface->content_height = win_height;
+@@ -674,6 +721,8 @@ static void wayland_surface_reconfigure_size(struct wayland_surface *surface,
+ {
+     TRACE("hwnd=%p size=%dx%d\n", surface->hwnd, width, height);
+ 
++    if (!surface->wp_viewport) return; /* no wp_viewporter: the buffer gives the size */
++
+     if (width != 0 && height != 0)
+         wp_viewport_set_destination(surface->wp_viewport, width, height);
+     else
+@@ -702,7 +751,11 @@ static void wayland_surface_reconfigure_client(struct wayland_surface *surface,
+         wl_subsurface_place_above(client->wl_subsurface, surface->wl_surface);
+     }
+ 
+-    if (rect.left != rect.right && rect.top != rect.bottom)
++    /* Without wp_viewporter, the client surface shows at its buffer's size (a swapchain sized
++     * to the client area). */
++    if (!client->wp_viewport)
++        ;
++    else if (rect.left != rect.right && rect.top != rect.bottom)
+         wp_viewport_set_destination(client->wp_viewport, rect.right - rect.left, rect.bottom - rect.top);
+     else /* We can't have a 0x0 destination, use 1x1 instead. */
+         wp_viewport_set_destination(client->wp_viewport, 1, 1);
+@@ -1264,13 +1317,16 @@ struct client_surface *WAYLAND_CreateClientSurface(HWND hwnd, int pixel_format)
+     wl_surface_set_input_region(client->wl_surface, empty_region);
+     wl_region_destroy(empty_region);
+ 
+-    client->wp_viewport =
+-        wp_viewporter_get_viewport(process_wayland.wp_viewporter,
+-                                    client->wl_surface);
+-    if (!client->wp_viewport)
++    if (process_wayland.wp_viewporter)
+     {
+-        ERR("Failed to create client wp_viewport\n");
+-        goto err;
++        client->wp_viewport =
++            wp_viewporter_get_viewport(process_wayland.wp_viewporter,
++                                        client->wl_surface);
++        if (!client->wp_viewport)
++        {
++            ERR("Failed to create client wp_viewport\n");
++            goto err;
++        }
+     }
+ 
+     return &client->client;
