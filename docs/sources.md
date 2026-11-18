@@ -80,6 +80,22 @@ To add a source, add a row; to stop following one, delete its row.
 | [decky-frontend-lib](https://github.com/SteamDeckHomebrew/decky-frontend-lib) | `releases` | `@decky/ui`, the library Decky gives plugins at run time (the `DFL` global) and our plugin is typed against; its fixes follow Steam's own interface changes. |
 | [GalaxyBudsClient](https://github.com/timschneeb/GalaxyBudsClient) | `releases` | Implements the Galaxy Buds' own control protocol, including the low-latency Gaming mode we want to switch on (TODO 27). |
 
+## UTDeck: Ubuntu Touch, Halium and Wine on ARM64
+
+Added 2026-11-17 for UTDeck (`docs/ut-deck/feasibility-and-roadmap.md`).
+
+| Source | Watch | Why we follow it |
+|---|---|---|
+| [Winebox (Box64AndWine)](https://github.com/fredldotme/Box64AndWine) | `commits` | The only earlier Wine click for Ubuntu Touch (v0.3, 2023); a revival would overlap with UTDeck. |
+| [Hangover](https://github.com/AndreRH/hangover) | `releases` | Wine for ARM64 Linux with FEX/Box64 DLLs, with Ubuntu 24.04 arm64 packages; the base for UTDeck's first tests. |
+| [Droid-Deck/Drivers](https://github.com/Droid-Deck/Drivers) | `releases` | Weekly Turnip builds from Mesa main, including a Linux glibc KGSL build with its own Wayland/X11 WSI patches. |
+| [panxiao81/debian-mesa](https://github.com/panxiao81/debian-mesa) | `releases` | Droidian Mesa whose Turnip presents through libhybris' `android_wlegl`: the route to native Turnip on Lomiri. |
+| [varmd/wine-wayland](https://github.com/varmd/wine-wayland) | `releases` | An independent Vulkan-only Wine Wayland driver that needs no `wp_viewporter`; UTDeck's fallback for Lomiri. |
+| [Wine: Wayland driver](https://gitlab.winehq.org/wine/wine) | `commits: dlls/winewayland.drv` | The driver UTDeck patches to run on Lomiri; every change can touch our `wp_viewporter` patch. |
+| [libhybris](https://github.com/libhybris/libhybris) | `commits` | Loads the Android GPU drivers; its missing hooks (`pthread_barrier_*`) already broke Turnip once. |
+| [UBports: Mir 2 Android platform](https://gitlab.com/ubports/development/core/hybris-support/mir2-android-platform) | `commits` | The Halium (HWC2) platform for Mir 2 (merge request !1 open on 2026-11-17). Lomiri on Mir 2 brings `wp_viewporter` and makes our Wine patch unnecessary. |
+| [UBports: Mir 2 packaging](https://gitlab.com/ubports/development/core/packaging/mir2) | `heads` | UBports' Mir 2 builds and patches (2.28 for 26.04), including subsurface fixes that matter for Wine's game window. |
+
 Not followed automatically: single articles, issue threads and mailing list patches (for example
 the upstream USB gadget fix, merged for Linux 7.0-rc4). They are listed where they are used, in
 the other documents.
