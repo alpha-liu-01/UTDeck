@@ -329,6 +329,18 @@ Goal: know the ground before building anything.
 
 Exit: a yes/no table, as in Dolphin's stage 0, and the baseline numbers.
 
+#### Status (2026-11-18): done
+
+Notes: [stage0-probe.md](stage0-probe.md). Native Turnip loads and creates a device on stone's
+Halium kernel, Lomiri hands out the linear gralloc buffers the `android_wlegl` WSI patch needs, and
+DXVK 2.7.1's requirements are all met, so stage 1 goes to route B. Found on the way: a 39-bit
+address space (Wine 11.15 or later), no fsync, NTSYNC or `userfaultfd` (Proton's esync), and no
+`/dev/uinput` for apps (touch must reach Wine directly). Step 5 used Geekbench 6.7.1 against
+published Android results instead of a second phone: the CPU performs like Android (866 / 1973).
+Also found: both Turnips (Mesa 27.0 Linux, Mesa 25.3 R11 Android) fail Geekbench's Vulkan compute
+test on the A619 where the vendor driver passes, and Lomiri's shared-memory path shows a torn picture
+when the row stride is padded. Both are stage 1 items.
+
 ### Stage 1. Vulkan 1.3 on Lomiri (no Wine yet)
 
 Goal: a modern Vulkan driver drawing on Lomiri's screen, chosen per app.

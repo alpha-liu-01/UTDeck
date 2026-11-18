@@ -647,3 +647,45 @@ this page is the short version, so the same mistake is not made twice.
   only before a planned deploy.
 - **Restarting a user service during a kernel lock hang makes it worse.** `systemctl` waits on the
   stuck manager; use `sudo sync && sudo reboot -f`, or the button reset.
+
+## UTDeck (Ubuntu Touch on Halium)
+
+Problems met while building UTDeck on the Redmi Note 12 5G (stone). Details in `docs/ut-deck/`.
+
+- **Lomiri's screen-off state changes Vulkan presentation (open, stage 0).** With the screen off,
+  `vkcube` in FIFO settled at exactly 30 fps and MAILBOX stalled for the whole 120 s run; the
+  vendor driver through libhybris also stalled. Lesson: measure frame rates with the screen on and
+  unlocked; with the screen off only CPU cost per frame is meaningful.
+- **`vkcube` ignores `--width`/`--height` on Lomiri (stage 0).** The phone shell sizes every window,
+  so a "1280x720" run cost the same as a full-screen one. Lesson: record the window's real size,
+  not the requested one.
+- **`vkcube` on libhybris' Vulkan shows nothing on Lomiri (stage 0).** libhybris reports the
+  surface as 1x1 (`currentExtent`), `vkcube` trusts it, and asks for 1x1 buffers; Lomiri shows an
+  empty "Unknown" app. Known from dolphin-ut's stage 0. Lesson: test libhybris' Vulkan presentation
+  with a program that uses the window's own size, not `currentExtent`.
+- **A manual test silently reused the previous test's settings (stage 0).** M3 was meant to run the
+  vendor driver, but M2's `export` of `LD_LIBRARY_PATH` and `VK_DRIVER_FILES` was still active in
+  the same shell, so it ran Turnip again; only the "Selected GPU" line gave it away. Lesson: every
+  manual test starts with `unset` of the variables earlier tests set (or asks for a new shell), and
+  says which output line proves the right driver ran.
+- **Turnip's software presentation shows a torn picture in portrait (open, stage 0).** Mesa rounds
+  each row up to 64 bytes (stride 4352 bytes for 1080 pixels) and passes the stride over `wl_shm`;
+  Lomiri (Mir 1.8) most likely ignores it. Landscape (2400 wide, stride 9600 = 2400 x 4, no padding)
+  looked normal. Lesson: when only one
+  orientation breaks, compare the width with the row stride first.
+- **Turnip lost the GPU under Geekbench's Vulkan compute test (open, stage 0).** On the Adreno 619
+  both DD-Turnip v0.7.0 (Mesa 27.0, Linux) and Turnip v25.3.0 R11 (Android, through libhybris) gave
+  a wrong result in one workload, then KGSL logged "gpu timeout" and dropped the context
+  (`VK_ERROR_DEVICE_LOST`); the vendor driver passed. KGSL kills command buffers that run over 2 s
+  (`dispatch/drawobj_timeout`). A driver that runs games fine (R11 in Dolphin) can still fail at
+  compute. Lesson: before blaming a build or a loading route, test a second build by the other
+  route; and run a compute test on every Turnip, not only games.
+- **Long benchmark runs die when `adbd` restarts (stage 0).** Turning the screen on made systemd
+  restart `adbd`, which ended the adb session and the program in it. Lesson: start long runs with
+  `setsid nohup ... &` and poll a status file.
+- **The phone has no `bc` and no GNU `time` (stage 0).** Timing a command in an `adb shell` failed
+  silently. Solved with `tools/ut-probe/run-timed.py` (wall time, CPU time, fps).
+- **Wine on 39-bit address space kernels (avoided, stage 0).** stone's kernel has
+  `CONFIG_ARM64_VA_BITS=39`; Wine's preloader linked at a 47-bit address dies before starting
+  (Wine bug 59898, fixed in 11.15). Lesson: read `CONFIG_ARM64_VA_BITS` on every new device, and
+  use Wine 11.15 or later, or a `-static-pie` build.
