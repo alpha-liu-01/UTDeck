@@ -1,0 +1,14 @@
+#version 450
+// UTDeck stage 1.2: does every invocation of a work-group run? Each invocation writes its own
+// global linear index + 1 into its own slot. Local size comes from specialization constants 0
+// (x) and 1 (y), so one SPIR-V module tests any shape, including 2048 invocations per group.
+layout(local_size_x_id = 0, local_size_y_id = 1, local_size_z = 1) in;
+
+layout(std430, binding = 0) writeonly buffer R { uint r[]; };
+
+void main()
+{
+    uvec3 size = gl_NumWorkGroups * gl_WorkGroupSize;
+    uint idx = gl_GlobalInvocationID.y * size.x + gl_GlobalInvocationID.x;
+    r[idx] = idx + 1u;
+}

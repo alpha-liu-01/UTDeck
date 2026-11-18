@@ -40,8 +40,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
  && /opt/meson/bin/pip install --no-cache-dir 'meson==1.6.1'
 ENV PATH=/opt/meson/bin:$PATH
 
-# Target libraries (arm64): only what a Turnip-only build links, all present on the phone.
+# Target libraries (arm64): what a Turnip-only build links (all present on the phone), and
+# libvulkan-dev for the Vulkan headers and loader stub of our test programs (tools/ut-probe/vkcompute),
+# libglvnd-dev for the zink build (stage 1.3): Mesa's EGL as a glvnd vendor library.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       libwayland-dev:arm64 libdrm-dev:arm64 libexpat1-dev:arm64 zlib1g-dev:arm64 \
       libzstd-dev:arm64 libelf-dev:arm64 \
+      libvulkan-dev:arm64 \
+      libglvnd-dev:arm64 libwayland-egl-backend-dev:arm64 \
  && rm -rf /var/lib/apt/lists/*

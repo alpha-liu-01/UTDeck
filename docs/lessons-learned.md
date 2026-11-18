@@ -688,9 +688,54 @@ Problems met while building UTDeck on the Redmi Note 12 5G (stone). Details in `
   (`dispatch/drawobj_timeout`). A driver that runs games fine (R11 in Dolphin) can still fail at
   compute. Lesson: before blaming a build or a loading route, test a second build by the other
   route; and run a compute test on every Turnip, not only games.
-- **Long benchmark runs die when `adbd` restarts (stage 0).** Turning the screen on made systemd
-  restart `adbd`, which ended the adb session and the program in it. Lesson: start long runs with
-  `setsid nohup ... &` and poll a status file.
+- **Mesa's EGL could not reach zink on a GPU without a DRM render node (stage 1.3).** KGSL has no
+  render node; EGL's only path without one is its "software" branch, which can load zink, but the
+  fallback cleared the zink request before taking it; and `LIBGL_ALWAYS_SOFTWARE=1` makes zink look
+  for a CPU Vulkan device. Fixed by keeping an explicit `MESA_LOADER_DRIVER_OVERRIDE=zink` (our patch
+  0003). Lesson: on Halium phones, read Mesa's EGL fallback chain before assuming a missing driver.
+- **Geekbench's "wrong results" on Turnip were Geekbench's own invalid work-group size (stage
+  1.2).** Its tuner used 2048x1x1, over `maxComputeWorkGroupSize[0]` (1024), apparently checking
+  only `maxComputeWorkGroupInvocations` (2048 on Turnip, 1024 on the vendor driver, so the vendor
+  driver never saw it). Found by recording the real dispatches with a Vulkan layer of our own and
+  replaying all of them on both drivers. Lesson: when every shader passes alone, record and replay
+  the program's own dispatches; and check an application against the specification before calling
+  a difference a driver bug.
+- **Turnip packs several command buffers into one KGSL submission, and KGSL's 2 s limit is per
+  submission (stage 1.2).** Geekbench's blur tuner passes five command buffers per `vkQueueSubmit`;
+  the vendor driver submits each separately (each retires and restarts the timer), Turnip sent one
+  submission of five and hit "gpu timeout". One submission per command buffer let the whole
+  benchmark finish. Lesson: trace both drivers' ioctls (`kgsl-trace`) before guessing; the
+  difference was in packaging, not speed.
+- **A long Turnip job froze the phone's UI because everything shared one GPU queue (stage 1.2).**
+  KGSL gives contexts without a priority the medium one and preempts only between its four
+  priority queues; Turnip on KGSL asks for no priority (and ignores Vulkan's), so a 0.8 s dispatch
+  made a compositor-like job wait 755 ms. With Turnip's context at priority 12 the wait fell to
+  2.3 ms. Lesson: run games below the compositor's GPU priority, and measure UI-side latency, not
+  only the game's speed.
+- **A test of a shader with no bounds checks gave "driver differences" that were our own fault
+  (stage 1.2).** Geekbench's unchecked matrix multiply read past its buffers at our non-multiple
+  sizes, and the two drivers left different data there. Lesson: before calling a difference a
+  driver bug, check the shader's bounds checks against the sizes used.
+- **"Slower driver" was the wrong guess for a GPU timeout (stage 1.2).** Turnip ran Geekbench's blur
+  15 % faster than the vendor driver, yet only Turnip hit KGSL's 2 s limit. Lesson: measure the
+  single dispatch first; a timeout per submission can come from how work is batched, not from the
+  shader's speed.
+- **Qualcomm's V@530 Vulkan driver gets `OpSMod` wrong with mixed signs (stage 1.2).** It returns
+  C's remainder (sign of the dividend) instead of SPIR-V's modulo (sign of the divisor): 6.7
+  million wrong results in our `intops` test, where Turnip had none. Lesson: a test that "fails on
+  Turnip, passes on the vendor driver" does not make the vendor driver the reference; check both
+  against a CPU reference that follows the specification.
+- **`adbd` crashes and the USB gadget does not come back (open, stage 1.2; stone-ut).** Twice,
+  at the start of an adb session right after an `adb push`, `adbd` died with SIGSEGV; systemd
+  restarted it, but it logged `timed out while waiting for FUNCTIONFS_BIND` and the phone stayed off
+  USB until the cable was replugged. It looked like a hardware disconnect from the PC. Lesson: when
+  adb vanishes, read the phone's journal for `adbd.service` before suspecting the cable.
+- **Long benchmark runs die when `adbd` restarts (stage 0, corrected in stage 1.2).** Turning the
+  screen on, or replugging the USB cable, makes systemd restart `adbd`, and systemd stops every
+  process in `adbd.service`'s cgroup. `setsid nohup ... &` does **not** escape that: it leaves the
+  session, not the cgroup (a run started that way died at a replug in stage 1.2). Lesson: start
+  long runs as a user unit, `systemd-run --user --unit=NAME --collect CMD` (with
+  `XDG_RUNTIME_DIR=/run/user/32011` and the session bus address), and poll a status file.
 - **The phone has no `bc` and no GNU `time` (stage 0).** Timing a command in an `adb shell` failed
   silently. Solved with `tools/ut-probe/run-timed.py` (wall time, CPU time, fps).
 - **Wine on 39-bit address space kernels (avoided, stage 0).** stone's kernel has

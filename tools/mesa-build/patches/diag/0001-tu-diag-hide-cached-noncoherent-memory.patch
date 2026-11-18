@@ -1,0 +1,15 @@
+diff --git a/src/freedreno/vulkan/tu_device.cc b/src/freedreno/vulkan/tu_device.cc
+index e8ef940..b29cb32 100644
+--- a/src/freedreno/vulkan/tu_device.cc
++++ b/src/freedreno/vulkan/tu_device.cc
+@@ -1761,6 +1761,10 @@ tu_physical_device_init(struct tu_physical_device *device,
+    device->level1_dcache_size = util_cache_granularity();
+    device->has_cached_non_coherent_memory =
+       device->level1_dcache_size > 0 && !DETECT_ARCH_ARM;
++   /* UTDeck diagnostic (stage 1.2): hide the cached non-coherent memory type, so every
++    * host-visible allocation is coherent and no CPU cache maintenance is needed. */
++   if (os_get_option("UTDECK_TU_NO_CACHED_NONCOHERENT"))
++      device->has_cached_non_coherent_memory = false;
+    device->preferred_uncached_as_cached_index = -1;
+ 
+    device->memory.type_count = 1;

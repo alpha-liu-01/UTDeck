@@ -16,7 +16,7 @@ so it is split.
 | **1.1 A Turnip of our own that presents on Lomiri** | A reproducible build of Mesa Turnip (glibc, KGSL) with the `android_wlegl` WSI patch, from this repository; `vkcube` on screen without CPU copies | `vkcube` on Lomiri through `android_wlegl` buffers (checked with `WAYLAND_DEBUG`), portrait and landscape, with CPU per frame and fps measured against stage 0's software path |
 | 1.2 Turnip's compute failure | Find the shader and dispatch size behind stage 0's wrong result and GPU timeout; try `TU_DEBUG` options and Mesa main | A small reproducer of our own; a fix, a workaround, or an upstream report |
 | 1.3 OpenGL through zink | zink (OpenGL on Vulkan) on our Turnip, presenting on Lomiri | An OpenGL 4.x context and a window on screen, or the reason it cannot work |
-| 1.4 Decision and packaging | Route A against route B on the same tests (DXVK's feature check, frame pacing including 1.1's FIFO at 68.9 fps, MAILBOX, long run); the driver chosen per app | A written decision; the driver folder layout UTDeck will ship |
+| 1.4 Decision and packaging | Route A against route B on the same tests (DXVK's feature check, frame pacing including 1.1's FIFO at 68.9 fps and 1.3's zink at about half the vendor GLES frame rate (the presentation copy and CPU wait), Turnip's cost per submission, Particle Physics at 59 % of the vendor driver, Stereo Matching's factor of 7.6 to verify, MAILBOX, long run); the driver chosen per app | A written decision; the driver folder layout UTDeck will ship |
 
 Order: 1.1 first, because everything later (1.3, and stage 2's Wine) presents through it. 1.2 can
 run in parallel once 1.1 has a build of our own to change.
@@ -29,7 +29,20 @@ run in parallel once 1.1 has a build of our own to change.
   buffers with no CPU copies: 0.93 ms of CPU per frame instead of 24.9 ms, and MAILBOX works.
   On screen (M1): whole in portrait and landscape, smooth. Carried to 1.4: FIFO runs at 68.9 fps
   on the 120 Hz panel, so Lomiri's timing, not the panel, paces it.
-- 1.2-1.4: not started.
+- **1.2 (2026-11-18): done.** Notes: [stage1.2-turnip-compute.md](stage1.2-turnip-compute.md).
+  The frozen UI: one shared KGSL queue; fixed by patch 0001 (Turnip passes Vulkan's queue priority
+  to KGSL; a LOW game no longer blocks the compositor). The GPU timeout: several command buffers in
+  one KGSL submission; fixed by patch 0002 (one submission per command buffer). The wrong results:
+  Geekbench's tuner uses 2048x1x1 work-groups, over `maxComputeWorkGroupSize[0]`, which Turnip's
+  2048-invocation limit lets it try; not a Turnip bug (`tu_restrict_subgroup_size_64=true` makes
+  every workload validate). Both patches are in the default build.
+- **1.3 (2026-11-18): done.** Notes: [stage1.3-zink.md](stage1.3-zink.md).
+  zink on our Turnip gives desktop OpenGL 4.6 core and GLES 3.2, correct headless, and a window on
+  Lomiri through `android_wlegl` (no CPU copies). Needed our patch 0003 (EGL kept dropping the
+  zink request on a GPU without a DRM render node). On screen (M1): picture right; zink 42 fps
+  against the vendor GLES driver's 82 fps on a full-screen test, about 1 ms more CPU per frame
+  (carried to 1.4).
+- 1.4: not started.
 
 Rules for this stage, from the project rules:
 - Nothing system-wide on the phone: the driver lives in a test folder and is chosen with

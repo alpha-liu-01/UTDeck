@@ -1,0 +1,19 @@
+diff --git a/src/egl/main/eglapi.c b/src/egl/main/eglapi.c
+index a6c6f95..8c38af9 100644
+--- a/src/egl/main/eglapi.c
++++ b/src/egl/main/eglapi.c
+@@ -704,7 +704,13 @@ eglInitialize(EGLDisplay dpy, EGLint *major, EGLint *minor)
+                success = _eglDriver.Initialize(disp);
+             }
+             if (!success) {
+-               disp->Options.Zink = EGL_FALSE;
++               /* Keep an explicit request for zink (MESA_LOADER_DRIVER_OVERRIDE=zink): its
++                * software-style path, which presents through Vulkan WSI (kopper), is also the way
++                * to reach a GPU that has no DRM render node, such as Qualcomm's KGSL. Zink then
++                * takes the first Vulkan device unless LIBGL_ALWAYS_SOFTWARE asks for a CPU one.
++                */
++               const char *override = os_get_option("MESA_LOADER_DRIVER_OVERRIDE");
++               disp->Options.Zink = override && !strcmp(override, "zink");
+                disp->Options.ForceSoftware = EGL_TRUE;
+                if (!_eglDriver.Initialize(disp))
+                   RETURN_EGL_ERROR(disp, EGL_NOT_INITIALIZED, EGL_FALSE);

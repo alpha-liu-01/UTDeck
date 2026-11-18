@@ -1,0 +1,20 @@
+diff --git a/src/freedreno/vulkan/tu_knl_kgsl.cc b/src/freedreno/vulkan/tu_knl_kgsl.cc
+index 8b51fa2..a584250 100644
+--- a/src/freedreno/vulkan/tu_knl_kgsl.cc
++++ b/src/freedreno/vulkan/tu_knl_kgsl.cc
+@@ -280,7 +280,14 @@ kgsl_bo_init(struct tu_device *dev,
+       .size = size,
+    };
+ 
+-   if (mem_property & VK_MEMORY_PROPERTY_HOST_CACHED_BIT) {
++   /* UTDeck diagnostic (stage 1.2): keep advertising the host-cached memory types, but allocate
++    * them uncached (write-combine), so the CPU can never read stale data whatever the cache
++    * maintenance does. Slower for CPU reads; only for testing. */
++   static int utdeck_cached_as_uncached = -1;
++   if (utdeck_cached_as_uncached < 0)
++      utdeck_cached_as_uncached = os_get_option("UTDECK_TU_CACHED_AS_UNCACHED") != NULL;
++
++   if ((mem_property & VK_MEMORY_PROPERTY_HOST_CACHED_BIT) && !utdeck_cached_as_uncached) {
+       if (mem_property & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) {
+          req.flags |= KGSL_MEMFLAGS_IOCOHERENT;
+       }

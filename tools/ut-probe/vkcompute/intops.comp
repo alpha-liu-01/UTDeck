@@ -1,0 +1,41 @@
+#version 450
+// UTDeck stage 1.2: signed integer division, modulo and multiply, the operations Geekbench's Face
+// Detection shaders use for index arithmetic (our own shader, written from scratch).
+// Each invocation writes K results; the host checks them against SPIR-V's rules:
+//   OpSDiv rounds toward zero, OpSMod takes the sign of the divisor, OpIMul wraps at 32 bits.
+layout(local_size_x_id = 0) in;
+
+layout(push_constant) uniform PC {
+    int a;  // uniform dividend
+    int b;  // uniform divisor (never 0)
+    int c;  // uniform divisor for the invocation index (never 0)
+    int n;  // element count
+} pc;
+
+layout(std430, binding = 0) readonly buffer X { int x[]; };
+layout(std430, binding = 1) readonly buffer Y { int y[]; };   // never 0
+layout(std430, binding = 2) writeonly buffer R { int r[]; };
+
+const int K = 12;
+
+void main()
+{
+    int i = int(gl_GlobalInvocationID.x);
+    if (i >= pc.n)
+        return;
+    int xv = x[i];
+    int yv = y[i];
+    int o = i * K;
+    r[o + 0] = xv / yv;                       // per-invocation division
+    r[o + 1] = xv % yv;                       // per-invocation modulo (OpSMod)
+    r[o + 2] = xv / pc.b;                     // uniform divisor
+    r[o + 3] = xv % pc.b;
+    r[o + 4] = pc.a / pc.b;                   // fully uniform: a candidate for ir3's preamble
+    r[o + 5] = pc.a % pc.b;
+    r[o + 6] = i % pc.c;                      // index split, as in a 2D kernel walk
+    r[o + 7] = i / pc.c;
+    r[o + 8] = xv * yv;                       // 32-bit multiply
+    r[o + 9] = pc.a * pc.c;                   // uniform 32-bit multiply (16-bit pieces in ir3)
+    r[o + 10] = (pc.a / pc.b - pc.c / pc.b) / pc.c + 1;   // chained uniform divisions
+    r[o + 11] = (i % ((pc.a / pc.b - pc.c / pc.b) / pc.c + 1)) * pc.c;  // ... used as a divisor
+}

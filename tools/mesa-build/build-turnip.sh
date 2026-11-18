@@ -2,7 +2,14 @@
 # Build Mesa Turnip (Vulkan, glibc, KGSL) for Ubuntu Touch, with the android_wlegl WSI patch.
 #
 #   tools/mesa-build/build-turnip.sh            # fetch the pinned source, build, package
-#   SRC=/path/to/mesa tools/mesa-build/build-turnip.sh   # build another Mesa tree
+#   SRC=/path/to/mesa tools/mesa-build/build-turnip.sh   # build another Mesa tree (as it is)
+#   NAME=diag PATCHES="tools/mesa-build/patches/diag/*.patch" tools/mesa-build/build-turnip.sh
+#                                                # pinned source + extra patches, into build/turnip-diag
+#
+# NAME (default: wlegl) names the output folder build/turnip-<name> (build/turnip for the default)
+# and the phone folder /home/phablet/utdeck-probe/turnip-<name>. PATCHES are applied with
+# `git apply` on a clean checkout of the pinned commit; they need the default source (no SRC).
+# Default PATCHES: tools/mesa-build/patches/*.patch (our fixes, not the diagnostic ones).
 #
 # Source (default): panxiao81/debian-mesa, branch droidian, commit adb4b85e82: Mesa 26.2.5 with
 # "vulkan/wsi/wayland: present through android_wlegl gralloc buffers" on top. Output in
@@ -13,11 +20,18 @@
 set -eu
 
 REPO_DIR=$(cd "$(dirname "$0")/../.." && pwd)
-OUT="$REPO_DIR/build/turnip"
+NAME=${NAME:-wlegl}
+if [ "$NAME" = wlegl ]; then OUT="$REPO_DIR/build/turnip"; else OUT="$REPO_DIR/build/turnip-$NAME"; fi
 IMAGE=utdeck-mesa-cross
 MESA_URL=https://github.com/panxiao81/debian-mesa.git
 MESA_COMMIT=adb4b85e82
-PHONE_DIR=/home/phablet/utdeck-probe/turnip-wlegl
+PHONE_DIR=/home/phablet/utdeck-probe/turnip-$NAME
+# Our patches (tools/mesa-build/patches/*.patch) are applied by default; diagnostic builds set
+# PATCHES themselves (PATCHES="" builds the pinned source as it is).
+if [ -z "${PATCHES+x}" ] && [ -z "${SRC:-}" ]; then
+    PATCHES=$(ls "$REPO_DIR"/tools/mesa-build/patches/*.patch 2>/dev/null || true)
+fi
+PATCHES=${PATCHES:-}
 
 mkdir -p "$OUT"
 if [ -z "${SRC:-}" ]; then
@@ -26,7 +40,15 @@ if [ -z "${SRC:-}" ]; then
         git clone --branch droidian --depth 50 "$MESA_URL" "$SRC"
     fi
     git -C "$SRC" fetch --depth 50 origin droidian
-    git -C "$SRC" checkout --detach "$MESA_COMMIT"
+    # A clean tree at the pinned commit every time, so earlier patches never leak into a build.
+    git -C "$SRC" checkout --quiet --force --detach "$MESA_COMMIT"
+    git -C "$SRC" clean -fdq
+    for p in $PATCHES; do
+        git -C "$SRC" apply --verbose "$(cd "$(dirname "$p")" && pwd)/$(basename "$p")"
+    done
+elif [ -n "$PATCHES" ]; then
+    echo "PATCHES needs the default source (unset SRC)" >&2
+    exit 1
 fi
 
 docker image inspect "$IMAGE" >/dev/null 2>&1 || docker build -t "$IMAGE" "$REPO_DIR/tools/mesa-build"
@@ -52,6 +74,7 @@ docker run --rm -u "$(id -u):$(id -g)" \
     echo "source: $(git -C "$SRC" remote get-url origin 2>/dev/null || echo "$SRC")"
     echo "commit: $(git -C "$SRC" rev-parse HEAD) ($(git -C "$SRC" log -1 --format=%s))"
     echo "mesa version: $(cat "$SRC/VERSION")"
+    echo "extra patches: $(if [ -n "$PATCHES" ]; then for p in $PATCHES; do printf "%s " "$(basename "$p")"; done; else echo none; fi)"
     echo "built: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
     echo "sha256: $(sha256sum "$OUT/libvulkan_freedreno.so" | cut -d' ' -f1)"
 } > "$OUT/BUILD-INFO"

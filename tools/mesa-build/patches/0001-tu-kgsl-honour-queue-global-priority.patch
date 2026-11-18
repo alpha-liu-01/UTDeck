@@ -1,0 +1,30 @@
+diff --git a/src/freedreno/vulkan/tu_knl_kgsl.cc b/src/freedreno/vulkan/tu_knl_kgsl.cc
+index 8b51fa2..e18903a 100644
+--- a/src/freedreno/vulkan/tu_knl_kgsl.cc
++++ b/src/freedreno/vulkan/tu_knl_kgsl.cc
+@@ -56,6 +56,15 @@ kgsl_submitqueue_new(struct tu_device *dev, struct tu_queue *queue)
+               KGSL_CONTEXT_PREAMBLE,
+    };
+ 
++   /* KGSL keeps one ringbuffer per four context priorities (0-3, 4-7, 8-11, 12-15) and preempts
++    * only between ringbuffers. queue->priority is 0 (REALTIME) to 3 (LOW); map it onto one level
++    * per ringbuffer. MEDIUM becomes 8, which is what the kernel picks for a context created
++    * without a priority, so queues that ask for nothing behave as before.
++    */
++   if (queue->priority < dev->physical_device->submitqueue_priority_count) {
++      req.flags |= (queue->priority * 4) << KGSL_CONTEXT_PRIORITY_SHIFT;
++   }
++
+    int ret = safe_ioctl(dev->physical_device->local_fd, IOCTL_KGSL_DRAWCTXT_CREATE, &req);
+    if (ret)
+       return ret;
+@@ -1868,7 +1877,8 @@ tu_knl_kgsl_load(struct tu_instance *instance, int fd)
+ 
+    device->has_raytracing = tu_kgsl_get_raytracing(fd);
+ 
+-   device->submitqueue_priority_count = 1;
++   /* One priority per KGSL ringbuffer (see kgsl_submitqueue_new). */
++   device->submitqueue_priority_count = 4;
+    
+    device->timeline_type = vk_sync_timeline_get_type(&vk_kgsl_sync_type);
+ 

@@ -1,0 +1,21 @@
+diff --git a/src/freedreno/vulkan/tu_knl_kgsl.cc b/src/freedreno/vulkan/tu_knl_kgsl.cc
+index 8b51fa2..2d9628b 100644
+--- a/src/freedreno/vulkan/tu_knl_kgsl.cc
++++ b/src/freedreno/vulkan/tu_knl_kgsl.cc
+@@ -56,6 +56,16 @@ kgsl_submitqueue_new(struct tu_device *dev, struct tu_queue *queue)
+               KGSL_CONTEXT_PREAMBLE,
+    };
+ 
++   /* UTDeck diagnostic (stage 1.2 step 3): request a KGSL context priority (0 highest .. 15
++    * lowest; the kernel picks 8 when none is given). KGSL keeps one ringbuffer per four levels and
++    * preempts only between ringbuffers, so a lower priority than the compositor's lets the
++    * compositor's work run before a long submission of ours. */
++   const char *utdeck_prio = os_get_option("UTDECK_TU_KGSL_PRIORITY");
++   if (utdeck_prio) {
++      unsigned p = (unsigned) atoi(utdeck_prio) & 0xF;
++      req.flags |= p << KGSL_CONTEXT_PRIORITY_SHIFT;
++   }
++
+    int ret = safe_ioctl(dev->physical_device->local_fd, IOCTL_KGSL_DRAWCTXT_CREATE, &req);
+    if (ret)
+       return ret;

@@ -1,0 +1,112 @@
+diff --git a/src/freedreno/vulkan/tu_knl_kgsl.cc b/src/freedreno/vulkan/tu_knl_kgsl.cc
+index 8b51fa2..4fea46d 100644
+--- a/src/freedreno/vulkan/tu_knl_kgsl.cc
++++ b/src/freedreno/vulkan/tu_knl_kgsl.cc
+@@ -1271,6 +1271,9 @@ const struct vk_sync_type vk_kgsl_sync_type = {
+ 
+ struct tu_kgsl_queue_submit {
+    struct util_dynarray commands;
++   /* UTDeck diagnostic: index one past the last command of each submit_add_entries call
++    * (one command buffer's stream, or one small extra stream). */
++   struct util_dynarray group_ends;
+    struct util_dynarray ranges;
+    struct util_dynarray bind_cmds;
+    struct tu_sparse_vma *cur_vma;
+@@ -1292,6 +1295,7 @@ kgsl_submit_finish(struct tu_device *device,
+       (struct tu_kgsl_queue_submit *)_submit;
+ 
+    util_dynarray_fini(&submit->commands);
++   util_dynarray_fini(&submit->group_ends);
+    util_dynarray_fini(&submit->ranges);
+    util_dynarray_fini(&submit->bind_cmds);
+    vk_free(&device->vk.alloc, submit);
+@@ -1316,6 +1320,9 @@ kgsl_submit_add_entries(struct tu_device *device, void *_submit,
+          .id = entries[i].bo->gem_handle,
+       };
+    }
++
++   uint32_t end = util_dynarray_num_elements(&submit->commands, struct kgsl_command_object);
++   util_dynarray_append_typed(&submit->group_ends, uint32_t, end);
+ }
+ 
+ static void
+@@ -1547,29 +1554,59 @@ kgsl_queue_submit(struct tu_queue *queue, void *_submit,
+    uint64_t gpu_offset = 0;
+ 
+    if (submit->bind_cmds.size == 0) {
+-      struct kgsl_gpu_command req = {
+-         .flags = KGSL_CMDBATCH_SUBMIT_IB_LIST,
+-         .cmdlist = (uintptr_t) submit->commands.data,
+-         .cmdsize = sizeof(struct kgsl_command_object),
+-         .numcmds = util_dynarray_num_elements(&submit->commands,
+-                                               struct kgsl_command_object),
+-         .synclist = (uintptr_t) &sync,
+-         .syncsize = sizeof(sync),
+-         .numsyncs = has_sync != 0 ? 1 : 0,
+-         .context_id = queue->msm_queue_id,
+-      };
++      /* UTDeck diagnostic (stage 1.2 step 3): with UTDECK_TU_KGSL_SPLIT_SUBMIT set, send each
++       * command buffer (each submit_add_entries call) as its own KGSL submission, as the vendor
++       * driver does. KGSL's hang timer (dispatch/drawobj_timeout, 2 s) restarts whenever a
++       * submission retires, so several long command buffers in one vkQueueSubmit no longer add up
++       * into one submission over the limit. Same context: the order is kept. The wait goes on the
++       * first submission; the profiling object and the timestamp the fences follow, on the last.
++       */
++      static int utdeck_split = -1;
++      if (utdeck_split < 0)
++         utdeck_split = os_get_option("UTDECK_TU_KGSL_SPLIT_SUBMIT") != NULL;
++
++      const struct kgsl_command_object *all =
++         (const struct kgsl_command_object *) submit->commands.data;
++      const uint32_t total = util_dynarray_num_elements(&submit->commands,
++                                                        struct kgsl_command_object);
++      const uint32_t ngroups =
++         utdeck_split ? util_dynarray_num_elements(&submit->group_ends, uint32_t) : 1;
++      uint32_t start = 0;
++      ret = 0;
++
++      for (uint32_t g = 0; g < MAX2(ngroups, 1u) && start < total; g++) {
++         uint32_t end = (g + 1 >= ngroups) ? total :
++            *util_dynarray_element(&submit->group_ends, uint32_t, g);
++         if (end <= start)
++            continue;
++         const bool first = start == 0, last = end == total;
+ 
+-      if (obj_idx) {
+-         req.flags |= KGSL_CMDBATCH_PROFILING;
+-         req.objlist = (uintptr_t) objs;
+-         req.objsize = sizeof(struct kgsl_command_object);
+-         req.numobjs = obj_idx;
+-      }
++         struct kgsl_gpu_command req = {
++            .flags = KGSL_CMDBATCH_SUBMIT_IB_LIST,
++            .cmdlist = (uintptr_t) (all + start),
++            .cmdsize = sizeof(struct kgsl_command_object),
++            .numcmds = end - start,
++            .synclist = (uintptr_t) &sync,
++            .syncsize = sizeof(sync),
++            .numsyncs = (first && has_sync) ? 1 : 0,
++            .context_id = queue->msm_queue_id,
++         };
+ 
+-      ret = safe_ioctl(queue->device->physical_device->local_fd,
+-                       IOCTL_KGSL_GPU_COMMAND, &req);
++         if (last && obj_idx) {
++            req.flags |= KGSL_CMDBATCH_PROFILING;
++            req.objlist = (uintptr_t) objs;
++            req.objsize = sizeof(struct kgsl_command_object);
++            req.numobjs = obj_idx;
++         }
+ 
+-      timestamp = req.timestamp;
++         ret = safe_ioctl(queue->device->physical_device->local_fd,
++                          IOCTL_KGSL_GPU_COMMAND, &req);
++         if (ret)
++            break;
++
++         timestamp = req.timestamp;
++         start = end;
++      }
+    } else {
+       /* kgsl doesn't support multiple bind commands at once */
+       uint32_t i = 0;
