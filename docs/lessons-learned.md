@@ -800,3 +800,18 @@ Problems met while building UTDeck on the Redmi Note 12 5G (stone). Details in `
   missing, and the only trace is "--cflags: command not found" in `config.log`. Solved with
   `PKG_CONFIG=pkg-config` and `PKG_CONFIG_LIBDIR` pointed at the arm64 libraries. Lesson: after a
   cross configure, check that the features you need were found before building.
+- **Under Wine, a Windows program's output into a pipe is fully buffered (stage 2.3).** A test
+  program killed by a timeout showed nothing, as if it had stopped before its first line. Lesson:
+  test programs call `setvbuf(stdout, NULL, _IONBF, 0)` first.
+- **FIFO presentation can deadlock a Wine game on Lomiri (stage 2.3).** Mesa's Wayland WSI, in FIFO
+  without `wp_fifo_v1`, waits in `vkQueuePresentKHR` for the frame callback; Lomiri holds that
+  callback until the window acknowledges a new size, which Wine handles on the same (blocked)
+  thread. It depends on timing (one windowed run passed, the next hung). MAILBOX never waits and
+  never hung: UTDeck forces it (`MESA_VK_WSI_PRESENT_MODE=mailbox`). Lesson: a run that passes once
+  proves little when the failure depends on the order of two events; repeat it.
+- **Lomiri never tells Wine that the screen rotated (stage 2.3).** Mir 1.8's `wl_output` stays
+  1080x2400 with no transform; the only sign of a rotation is the size Lomiri asks for in a
+  window's `configure` (2400x1080). Wine sizes its monitor from `wl_output`, so a fullscreen game
+  stayed portrait in a landscape window (picture on the left 45 %). The Dolphin port met the same
+  (its stage 6.6). Lesson: on Lomiri, take orientation from the window's configured size, never
+  from the output.

@@ -101,6 +101,7 @@ static DWORD WINAPI thread_fn(void *p) { (void)p; InterlockedIncrement(&started)
 
 int main(int argc, char **argv)
 {
+    setvbuf(stdout, NULL, _IONBF, 0); /* through Wine into a pipe, stdout is fully buffered */
     int rounds = (argc > 1 && !strcmp(argv[1], "--quick")) ? 1 : 3;
     printf("wtest: built for %s (pointer size %d bytes)\n", BUILT, (int)sizeof(void *));
 

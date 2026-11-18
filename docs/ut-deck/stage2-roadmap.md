@@ -39,7 +39,13 @@ aarch64, or `winex11` through Xwayland with Mesa's software presentation, to kee
 - **2.2 (2026-11-18): done.** Notes: [stage2.2-winewayland.md](stage2.2-winewayland.md).
   Our `winewayland.so` (Hangover's exact source, two patches: `wp_viewporter` optional, the first
   finger as the mouse) draws Wine's Notepad and `winecfg` on Lomiri, usable by touch (M1). Windows
-  keep their own size; landscape not yet seen. Next: 2.3, Vulkan inside Wine.
+  keep their own size. Next: 2.3, Vulkan inside Wine.
+- **2.3 (2026-11-18): in progress.** Notes: [stage2.3-vulkan-in-wine.md](stage2.3-vulkan-in-wine.md).
+  A Windows Vulkan program (x86-64 through FEX) presents through `winevulkan` on our Turnip, on a
+  subsurface with zero-copy buffers, 0.81 ms of CPU per frame; MAILBOX works windowed and
+  fullscreen, opened and closed repeatedly, no stale frames on screen (M2); FIFO deadlocks (MAILBOX
+  is forced). Open: Lomiri never reports rotation, so a landscape game gets a portrait picture;
+  next, patch 0003 to follow Lomiri's `configure` sizes.
 
 Rules for this stage, from the project rules:
 - Nothing system-wide on the phone: Wine, FEX and the drivers live in a test folder, chosen with

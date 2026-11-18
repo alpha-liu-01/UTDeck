@@ -18,7 +18,7 @@ Terms used here:
 | 1 | Our build of `winewayland.so` from Hangover's exact Wine source, as a drop-in replacement | **Done** |
 | 2 | Patch 0001: `wp_viewporter` optional | **Done**; the driver starts and draws on Lomiri (log) |
 | 3 | Patch 0002: touch, the first finger as the mouse (Wine had no touch input at all) | **Done**; touch bound (log) |
-| 4 | On screen: Notepad and `winecfg`, portrait and landscape, taps (manual run M1) | **Done**: drawn and usable by touch; landscape not seen in the log |
+| 4 | On screen: Notepad and `winecfg`, portrait and landscape, taps (manual run M1) | **Done**: drawn and usable by touch, portrait and landscape (landscape by eye) |
 
 ## Step 1: building only the Wayland driver
 
@@ -139,10 +139,10 @@ What this means:
   the program chose (the protocol allows that), so a dialog does not fill the screen. Wine draws
   its own title bar and borders, as Lomiri does not offer server-side decorations. Fine for
   launchers and dialogs; games go fullscreen, which 2.3 checks.
-- Landscape: no `configure` with a landscape size appears in either log, and the output's mode
-  stayed 1080x2400. Either the phone was not rotated, or Lomiri did not rotate these windows
-  (rotation lock, or Lomiri keeps them in portrait). Left for 2.3, where a fullscreen Vulkan
-  window must follow rotation anyway.
+- Landscape: the maintainer ran M1 twice and rotated the phone in the first run, where it looked
+  right; the second run (no rotation) overwrote the logs, so there is no log of the rotation.
+  `wine-m1.sh` now keeps one log per run. 2.3 checks rotation again with a fullscreen Vulkan
+  window, which must follow it.
 
 **Stage 2.2 is done**: a Windows GDI program runs on Lomiri, drawn correctly and usable by touch,
 with our two patches to Wine's Wayland driver.
@@ -157,5 +157,5 @@ with our two patches to Wine's Wayland driver.
   Lomiri (screen off). Found that Wine has no touch input; patch 0002 written and installed.
   Manual run M1 written.
 - 2026-11-18: M1 run by the maintainer: Notepad (with its About and Font dialogs) and `winecfg`
-  drawn and used by touch (38 taps), closed from their title bars; no errors. Landscape not seen in
-  the logs. Stage 2.2 done.
+  drawn and used by touch (38 taps), closed from their title bars; no errors. Landscape tried in a
+  first run (looked right; its logs were overwritten by the second run). Stage 2.2 done.
