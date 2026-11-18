@@ -88,6 +88,7 @@ Added 2026-11-17 for UTDeck (`docs/ut-deck/feasibility-and-roadmap.md`).
 |---|---|---|
 | [Winebox (Box64AndWine)](https://github.com/fredldotme/Box64AndWine) | `commits` | The only earlier Wine click for Ubuntu Touch (v0.3, 2023); a revival would overlap with UTDeck. |
 | [Hangover](https://github.com/AndreRH/hangover) | `releases` | Wine for ARM64 Linux with FEX/Box64 DLLs, with Ubuntu 24.04 arm64 packages; the base for UTDeck's first tests. |
+| [llvm-mingw](https://github.com/mstorsjo/llvm-mingw) | `releases` | Clang toolchain for Windows ARM64, ARM64EC, x86-64 and x86; builds UTDeck's Windows test programs (pinned in `tools/ut-probe/win/build.sh`). |
 | [Droid-Deck/Drivers](https://github.com/Droid-Deck/Drivers) | `releases` | Weekly Turnip builds from Mesa main, including a Linux glibc KGSL build with its own Wayland/X11 WSI patches. |
 | [panxiao81/debian-mesa](https://github.com/panxiao81/debian-mesa) | `releases` | Droidian Mesa whose Turnip presents through libhybris' `android_wlegl`: the route to native Turnip on Lomiri. |
 | [varmd/wine-wayland](https://github.com/varmd/wine-wayland) | `releases` | An independent Vulkan-only Wine Wayland driver that needs no `wp_viewporter`; UTDeck's fallback for Lomiri. |

@@ -389,6 +389,13 @@ Goal: Wine for ARM64 with FEX draws a Direct3D game on Lomiri with the GPU.
 Exit: one D3D11 game playable on screen, with frame rate, CPU, GPU and RAM recorded against the
 stage 0 baseline.
 
+#### Status (2026-11-18): 2.1 done
+
+Split into four substages: [stage2-roadmap.md](stage2-roadmap.md). 2.1
+([stage2.1-wine-console.md](stage2.1-wine-console.md)): Hangover 11.16 runs Windows console
+programs on stone (ARM64 native, x86-64 through FEX at 79 % of native speed in one thread, 32-bit
+x86 through Box64 or FEX), with no change to the system.
+
 ### Stage 3. A runtime we build and own
 
 Goal: a reproducible runtime, tuned for Halium phones.

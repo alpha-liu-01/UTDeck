@@ -778,3 +778,16 @@ Problems met while building UTDeck on the Redmi Note 12 5G (stone). Details in `
   binding, but Turnip implements it on KGSL with virtual buffers (`KGSL_MEMFLAGS_VBO`), which
   stone's kernel lacks; our 26.2.5 build probes the kernel and leaves it out. Lesson: compare a
   feature against the kernel source before trusting `vulkaninfo`, especially for VKD3D-Proton.
+- **Wine on Ubuntu Touch loads libhybris unless told otherwise (stage 2.1).** The first `wineboot`
+  failed with "Failed to load hybris linker ... cannot allocate memory in static TLS block": the
+  system's `libvulkan.so.1` and `libEGL.so.1` lead into libhybris, and Wine opens them while
+  starting. Solved by giving Wine our driver environment (Khronos loader and our Turnip, our Mesa
+  as the EGL vendor). Lesson: on Halium, every process that may touch the GPU needs the driver
+  environment set, even a "console only" one.
+- **A Wine prefix can be 2.3 GB (stage 2.1).** Wine copies its Windows DLLs into each prefix, and
+  Hangover's DLLs keep their debug information (three times the stripped size). Lesson: strip our
+  runtime's DLLs and share prefixes or DLLs between games before shipping.
+- **Timing a Wine program through a pipe measures `wineserver` too (stage 2.1).** `wineserver`
+  inherits the output pipe and stays a few seconds after the program ends, so a tool that waits
+  for the pipe to close reported 7 s for a 0.7 s run. Lesson: time Wine programs with output to a
+  file, or wait for the process, not the pipe.
