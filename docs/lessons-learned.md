@@ -688,6 +688,11 @@ Problems met while building UTDeck on the Redmi Note 12 5G (stone). Details in `
   (`dispatch/drawobj_timeout`). A driver that runs games fine (R11 in Dolphin) can still fail at
   compute. Lesson: before blaming a build or a loading route, test a second build by the other
   route; and run a compute test on every Turnip, not only games.
+- **"Best of 3" hid the GPU's power-up and produced a false 5-8 ms submission cost (stage 1.2,
+  corrected in 1.4).** The first dispatch after the GPU has been idle takes milliseconds on both
+  drivers, by a varying amount; three dispatches were not enough to get past it. Lesson: for
+  latency, run 15 or more and read the steady state, and split the time (submit, wait, GPU time
+  from timestamp queries) before drawing a conclusion.
 - **Mesa's EGL could not reach zink on a GPU without a DRM render node (stage 1.3).** KGSL has no
   render node; EGL's only path without one is its "software" branch, which can load zink, but the
   fallback cleared the zink request before taking it; and `LIBGL_ALWAYS_SOFTWARE=1` makes zink look
@@ -742,3 +747,34 @@ Problems met while building UTDeck on the Redmi Note 12 5G (stone). Details in `
   `CONFIG_ARM64_VA_BITS=39`; Wine's preloader linked at a 47-bit address dies before starting
   (Wine bug 59898, fixed in 11.15). Lesson: read `CONFIG_ARM64_VA_BITS` on every new device, and
   use Wine 11.15 or later, or a `-static-pie` build.
+- **Paced frames at half the panel rate while the GPU idles (worked around, stage 1.4).** On Lomiri at
+  120 Hz, zink on our Turnip ran 44 fps with swap interval 1 and 208 fps with interval 0; the
+  vendor GLES driver 84 and 275; the GPU under 40 % busy in every run. The loss is the wait between
+  frames, not rendering: Lomiri lacks `wp_fifo_v1`, so Mesa's Wayland WSI waits for the
+  compositor's frame callback before each present, and that answer comes late. Lesson: before
+  hunting for GPU speed, compare paced and unpaced runs; if unpaced is fast, the problem is pacing.
+  `MESA_VK_WSI_PRESENT_MODE=mailbox` plus a frame limiter is the fallback. Time-stamping the
+  Wayland messages (`WAYLAND_DEBUG=client`) then split it in two: Lomiri sends "done" 12-15 ms after
+  each commit for every client, and zink's EGL waits for "done" before it sends the frame to the
+  GPU, so drawing and waiting add up instead of overlapping. Lesson: `WAYLAND_DEBUG` timestamps
+  show who waits for whom, without any special tool. Solved by not waiting at all: swap interval 0
+  (MAILBOX, no tearing under Lomiri) plus a frame limiter gives a steady 60 fps (59.6-59.9 on the
+  panel) where waiting for vsync gave 44; flushing earlier only reached 53.5.
+- **A benchmark gap is not always a driver bug, in either direction (stage 1.4).** Geekbench's
+  Particle Physics ran 41 % slower on Turnip and Stereo Matching 7.6 times faster. Recording the
+  real dispatches with our layer and replaying them on both drivers settled both: the same GPU
+  clock and submissions, Turnip's compiled particle shader is 1.6 times slower (a compiler issue for
+  upstream), and the stereo shader gives identical output 8 times faster on Turnip (a vendor slow
+  path). Lesson: replay the exact dispatch on both drivers with the same inputs and compare time
+  and output before calling it a bug or a win. The vendor driver cannot take a Vulkan layer on
+  Ubuntu Touch (libhybris' `libvulkan.so.1` is not the Khronos loader), so replay is the way to
+  measure it.
+- **Route A's Vulkan presentation hangs when the swapchain is recreated (stage 1.4).** With the
+  Android Turnip (R11) through libhybris, `vkcube` presented two frames, then stopped for good after
+  Lomiri's second `configure` (the window becoming active), when it recreates its swapchain. Same
+  hang dolphin-ut met (Dolphin rebuilds the whole surface instead). Wine recreates swapchains on
+  every resize, so this weighed heavily against route A.
+- **A driver can advertise a feature the kernel cannot back (stage 1.4).** R11 reports sparse
+  binding, but Turnip implements it on KGSL with virtual buffers (`KGSL_MEMFLAGS_VBO`), which
+  stone's kernel lacks; our 26.2.5 build probes the kernel and leaves it out. Lesson: compare a
+  feature against the kernel source before trusting `vulkaninfo`, especially for VKD3D-Proton.

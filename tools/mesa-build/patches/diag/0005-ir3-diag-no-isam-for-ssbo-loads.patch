@@ -1,0 +1,23 @@
+From: UTDeck
+Subject: [PATCH] ir3: diag: UTDECK_IR3_NO_ISAM_SSBO keeps SSBO loads off isam
+
+UTDeck stage 1.4 step 3 diagnostic. On a6xx, read-only SSBO loads are split into scalar isam
+fetches through the texture cache. With UTDECK_IR3_NO_ISAM_SSBO=1 they stay vectorized on the
+ldib path, to compare the two on Geekbench's Particle Physics shader. Off by default.
+---
+diff --git a/src/freedreno/ir3/ir3_compiler.c b/src/freedreno/ir3/ir3_compiler.c
+index aed282c..a0964bb 100644
+--- a/src/freedreno/ir3/ir3_compiler.c
++++ b/src/freedreno/ir3/ir3_compiler.c
+@@ -345,6 +345,11 @@ ir3_compiler_create(struct fd_device *dev, const struct fd_dev_id *dev_id,
+    compiler->has_pvtmem = compiler->gen >= 5;
+ 
+    compiler->has_isam_ssbo = compiler->gen >= 6;
++   /* UTDeck diagnostic: UTDECK_IR3_NO_ISAM_SSBO=1 keeps read-only SSBO loads on the ldib path
++    * (vectorized) instead of scalar isam through the texture cache, to compare the two.
++    */
++   if (getenv("UTDECK_IR3_NO_ISAM_SSBO") && atoi(getenv("UTDECK_IR3_NO_ISAM_SSBO")))
++      compiler->has_isam_ssbo = false;
+ 
+    if (compiler->gen >= 6) {
+       compiler->reg_size_vec4 = dev_info->props.reg_size_vec4;

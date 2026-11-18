@@ -12,6 +12,14 @@
  *   D <seq> cb=<cmdbuf> pipe=<id> shader=<hash> spec=<id=val,...> groups=<x>,<y>,<z> push=<hex>
  *     sets=<set>:<binding>:<type>:<buffersize>:<offset>:<range>;...
  * and P lines when a compute pipeline is created, S lines when a command buffer is submitted.
+ * Timing lines (stage 1.4; t = milliseconds since the log opened, dur = time spent in the call):
+ *   M t=<ms> shader=<hash>                      a shader module is created (workload boundaries)
+ *   K cb=<cmdbuf> draws=<n> idisp=<n> ts=<n> barriers=<n> copies=<n>   what else a submitted
+ *                                               command buffer holds (only when not all zero)
+ *   Q t=<ms> dur=<ms> cbs=<n> fence=<0|1> polls=<n> r=<VkResult>   vkQueueSubmit; polls = calls to
+ *                                               vkGetFenceStatus/vkGetEventStatus since the last Q
+ *   W t=<ms> dur=<ms> what=<fences|queueidle|deviceidle|semaphores> n=<count> r=<VkResult>
+ *   G t=<ms> dur=<ms> n=<queries> flags=<hex> r=<VkResult>       vkGetQueryPoolResults
  * Only binding array element 0 is recorded. Records, it does not change anything.
  */
 #include <inttypes.h>
@@ -20,6 +28,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <time.h>
 #include <vulkan/vulkan.h>
 #include <vulkan/vk_layer.h>
 
@@ -66,6 +75,7 @@ typedef struct {
     uint32_t push_size;
     dset pushdesc[MAXSETS];
     int has_pushdesc[MAXSETS];
+    uint32_t draws, idisp, ts, barriers, copies; /* reset at vkBeginCommandBuffer */
 } cbstate;
 
 static pthread_mutex_t mu = PTHREAD_MUTEX_INITIALIZER;
@@ -90,8 +100,31 @@ typedef struct {
     PFN_vkCmdPushDescriptorSetKHR CmdPushDescriptorSetKHR;
     PFN_vkCmdDispatch CmdDispatch;
     PFN_vkQueueSubmit QueueSubmit;
+    PFN_vkBeginCommandBuffer BeginCommandBuffer;
+    PFN_vkCmdDraw CmdDraw;
+    PFN_vkCmdDrawIndexed CmdDrawIndexed;
+    PFN_vkCmdDispatchIndirect CmdDispatchIndirect;
+    PFN_vkCmdWriteTimestamp CmdWriteTimestamp;
+    PFN_vkCmdPipelineBarrier CmdPipelineBarrier;
+    PFN_vkCmdCopyBuffer CmdCopyBuffer;
+    PFN_vkWaitForFences WaitForFences;
+    PFN_vkGetFenceStatus GetFenceStatus;
+    PFN_vkGetEventStatus GetEventStatus;
+    PFN_vkQueueWaitIdle QueueWaitIdle;
+    PFN_vkDeviceWaitIdle DeviceWaitIdle;
+    PFN_vkWaitSemaphores WaitSemaphores;
+    PFN_vkGetQueryPoolResults GetQueryPoolResults;
 } devfns;
 static devfns *g_dev; /* one device is enough for our use */
+
+static double t0;
+static uint64_t polls;
+static double now_ms(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return ts.tv_sec * 1e3 + ts.tv_nsec / 1e6;
+}
 
 static uint64_t fnv(const void *p, size_t n)
 {
@@ -110,6 +143,7 @@ static void open_log(void)
     snprintf(path, sizeof(path), "%s/log.txt", outdir);
     logf = fopen(path, "w");
     if (logf) setvbuf(logf, NULL, _IOLBF, 0);
+    t0 = now_ms();
 }
 
 static int is_buffer_type(VkDescriptorType t)
@@ -128,6 +162,7 @@ static VKAPI_ATTR VkResult VKAPI_CALL l_CreateShaderModule(VkDevice dev, const V
         pthread_mutex_lock(&mu);
         open_log();
         tput(&t_module, (uint64_t)*m, (void *)(uintptr_t)h);
+        if (logf) fprintf(logf, "M t=%.3f shader=%016" PRIx64 "\n", now_ms() - t0, h);
         char path[700];
         snprintf(path, sizeof(path), "%s/shader-%016" PRIx64 ".spv", outdir, h);
         struct stat st;
@@ -325,13 +360,86 @@ static VKAPI_ATTR void VKAPI_CALL l_CmdDispatch(VkCommandBuffer cb, uint32_t x, 
 
 static VKAPI_ATTR VkResult VKAPI_CALL l_QueueSubmit(VkQueue q, uint32_t n, const VkSubmitInfo *si, VkFence f)
 {
+    uint32_t cbs = 0;
     pthread_mutex_lock(&mu);
     if (logf)
         for (uint32_t i = 0; i < n; i++)
-            for (uint32_t c = 0; c < si[i].commandBufferCount; c++)
-                fprintf(logf, "S batch=%u cb=%" PRIxPTR "\n", i, (uintptr_t)si[i].pCommandBuffers[c]);
+            for (uint32_t c = 0; c < si[i].commandBufferCount; c++) {
+                VkCommandBuffer cb = si[i].pCommandBuffers[c];
+                cbstate *s = get_cb(cb);
+                fprintf(logf, "S batch=%u cb=%" PRIxPTR "\n", i, (uintptr_t)cb);
+                if (s->draws | s->idisp | s->ts | s->barriers | s->copies)
+                    fprintf(logf, "K cb=%" PRIxPTR " draws=%u idisp=%u ts=%u barriers=%u copies=%u\n", (uintptr_t)cb,
+                            s->draws, s->idisp, s->ts, s->barriers, s->copies);
+                cbs++;
+            }
     pthread_mutex_unlock(&mu);
-    return g_dev->QueueSubmit(q, n, si, f);
+    double a = now_ms();
+    VkResult r = g_dev->QueueSubmit(q, n, si, f);
+    double b = now_ms();
+    pthread_mutex_lock(&mu);
+    if (logf) fprintf(logf, "Q t=%.3f dur=%.3f cbs=%u fence=%d polls=%" PRIu64 " r=%d\n", a - t0, b - a, cbs, f != VK_NULL_HANDLE, polls, (int)r);
+    polls = 0;
+    pthread_mutex_unlock(&mu);
+    return r;
+}
+
+/* Count-only command hooks (reset at vkBeginCommandBuffer). */
+static VKAPI_ATTR VkResult VKAPI_CALL l_BeginCommandBuffer(VkCommandBuffer cb, const VkCommandBufferBeginInfo *bi)
+{
+    pthread_mutex_lock(&mu);
+    cbstate *s = get_cb(cb);
+    s->draws = s->idisp = s->ts = s->barriers = s->copies = 0;
+    pthread_mutex_unlock(&mu);
+    return g_dev->BeginCommandBuffer(cb, bi);
+}
+#define COUNT(field) do { pthread_mutex_lock(&mu); get_cb(cb)->field++; pthread_mutex_unlock(&mu); } while (0)
+static VKAPI_ATTR void VKAPI_CALL l_CmdDraw(VkCommandBuffer cb, uint32_t a, uint32_t b, uint32_t c, uint32_t d)
+{ COUNT(draws); g_dev->CmdDraw(cb, a, b, c, d); }
+static VKAPI_ATTR void VKAPI_CALL l_CmdDrawIndexed(VkCommandBuffer cb, uint32_t a, uint32_t b, uint32_t c, int32_t d, uint32_t e)
+{ COUNT(draws); g_dev->CmdDrawIndexed(cb, a, b, c, d, e); }
+static VKAPI_ATTR void VKAPI_CALL l_CmdDispatchIndirect(VkCommandBuffer cb, VkBuffer buf, VkDeviceSize off)
+{ COUNT(idisp); g_dev->CmdDispatchIndirect(cb, buf, off); }
+static VKAPI_ATTR void VKAPI_CALL l_CmdWriteTimestamp(VkCommandBuffer cb, VkPipelineStageFlagBits st, VkQueryPool qp, uint32_t q)
+{ COUNT(ts); g_dev->CmdWriteTimestamp(cb, st, qp, q); }
+static VKAPI_ATTR void VKAPI_CALL l_CmdPipelineBarrier(VkCommandBuffer cb, VkPipelineStageFlags s, VkPipelineStageFlags d,
+                                                       VkDependencyFlags f, uint32_t nm, const VkMemoryBarrier *m,
+                                                       uint32_t nb, const VkBufferMemoryBarrier *b,
+                                                       uint32_t ni, const VkImageMemoryBarrier *i)
+{ COUNT(barriers); g_dev->CmdPipelineBarrier(cb, s, d, f, nm, m, nb, b, ni, i); }
+static VKAPI_ATTR void VKAPI_CALL l_CmdCopyBuffer(VkCommandBuffer cb, VkBuffer s, VkBuffer d, uint32_t n, const VkBufferCopy *r)
+{ COUNT(copies); g_dev->CmdCopyBuffer(cb, s, d, n, r); }
+#undef COUNT
+
+/* Timed waits. */
+static void log_wait(const char *what, uint32_t n, double a, double b, VkResult r)
+{
+    pthread_mutex_lock(&mu);
+    if (logf) fprintf(logf, "W t=%.3f dur=%.3f what=%s n=%u r=%d\n", a - t0, b - a, what, n, (int)r);
+    pthread_mutex_unlock(&mu);
+}
+static VKAPI_ATTR VkResult VKAPI_CALL l_WaitForFences(VkDevice dev, uint32_t n, const VkFence *f, VkBool32 all, uint64_t tmo)
+{ double a = now_ms(); VkResult r = g_dev->WaitForFences(dev, n, f, all, tmo); log_wait("fences", n, a, now_ms(), r); return r; }
+static VKAPI_ATTR VkResult VKAPI_CALL l_QueueWaitIdle(VkQueue q)
+{ double a = now_ms(); VkResult r = g_dev->QueueWaitIdle(q); log_wait("queueidle", 1, a, now_ms(), r); return r; }
+static VKAPI_ATTR VkResult VKAPI_CALL l_DeviceWaitIdle(VkDevice dev)
+{ double a = now_ms(); VkResult r = g_dev->DeviceWaitIdle(dev); log_wait("deviceidle", 1, a, now_ms(), r); return r; }
+static VKAPI_ATTR VkResult VKAPI_CALL l_WaitSemaphores(VkDevice dev, const VkSemaphoreWaitInfo *wi, uint64_t tmo)
+{ double a = now_ms(); VkResult r = g_dev->WaitSemaphores(dev, wi, tmo); log_wait("semaphores", wi->semaphoreCount, a, now_ms(), r); return r; }
+static VKAPI_ATTR VkResult VKAPI_CALL l_GetFenceStatus(VkDevice dev, VkFence f)
+{ pthread_mutex_lock(&mu); polls++; pthread_mutex_unlock(&mu); return g_dev->GetFenceStatus(dev, f); }
+static VKAPI_ATTR VkResult VKAPI_CALL l_GetEventStatus(VkDevice dev, VkEvent e)
+{ pthread_mutex_lock(&mu); polls++; pthread_mutex_unlock(&mu); return g_dev->GetEventStatus(dev, e); }
+static VKAPI_ATTR VkResult VKAPI_CALL l_GetQueryPoolResults(VkDevice dev, VkQueryPool qp, uint32_t first, uint32_t n, size_t sz,
+                                                            void *data, VkDeviceSize stride, VkQueryResultFlags fl)
+{
+    double a = now_ms();
+    VkResult r = g_dev->GetQueryPoolResults(dev, qp, first, n, sz, data, stride, fl);
+    double b = now_ms();
+    pthread_mutex_lock(&mu);
+    if (logf) fprintf(logf, "G t=%.3f dur=%.3f n=%u flags=%x r=%d\n", a - t0, b - a, n, (unsigned)fl, (int)r);
+    pthread_mutex_unlock(&mu);
+    return r;
 }
 
 /* ---------- layer plumbing ---------- */
@@ -369,6 +477,10 @@ static VKAPI_ATTR VkResult VKAPI_CALL l_CreateDevice(VkPhysicalDevice pd, const 
     L(CreateShaderModule); L(CreateComputePipelines); L(CreateBuffer); L(UpdateDescriptorSets);
     L(CreateDescriptorUpdateTemplate); L(UpdateDescriptorSetWithTemplate); L(CmdBindPipeline);
     L(CmdBindDescriptorSets); L(CmdPushConstants); L(CmdDispatch); L(QueueSubmit);
+    L(BeginCommandBuffer); L(CmdDraw); L(CmdDrawIndexed); L(CmdDispatchIndirect); L(CmdWriteTimestamp);
+    L(CmdPipelineBarrier); L(CmdCopyBuffer); L(WaitForFences); L(GetFenceStatus); L(GetEventStatus);
+    L(QueueWaitIdle); L(DeviceWaitIdle); L(WaitSemaphores); L(GetQueryPoolResults);
+    if (!d->WaitSemaphores) d->WaitSemaphores = (PFN_vkWaitSemaphores)gdpa(*dev, "vkWaitSemaphoresKHR");
     d->CmdPushDescriptorSetKHR = (PFN_vkCmdPushDescriptorSetKHR)gdpa(*dev, "vkCmdPushDescriptorSetKHR");
     if (!d->CreateDescriptorUpdateTemplate)
         d->CreateDescriptorUpdateTemplate = (PFN_vkCreateDescriptorUpdateTemplate)gdpa(*dev, "vkCreateDescriptorUpdateTemplateKHR");
@@ -390,6 +502,10 @@ static PFN_vkVoidFunction hook(const char *n)
     H(CreateShaderModule); H(CreateComputePipelines); H(CreateBuffer); H(UpdateDescriptorSets);
     H(CreateDescriptorUpdateTemplate); H(UpdateDescriptorSetWithTemplate); H(CmdBindPipeline);
     H(CmdBindDescriptorSets); H(CmdPushConstants); H(CmdPushDescriptorSetKHR); H(CmdDispatch); H(QueueSubmit);
+    H(BeginCommandBuffer); H(CmdDraw); H(CmdDrawIndexed); H(CmdDispatchIndirect); H(CmdWriteTimestamp);
+    H(CmdPipelineBarrier); H(CmdCopyBuffer); H(WaitForFences); H(GetFenceStatus); H(GetEventStatus);
+    H(QueueWaitIdle); H(DeviceWaitIdle); H(WaitSemaphores); H(GetQueryPoolResults);
+    if (!strcmp(n, "vkWaitSemaphoresKHR")) return (PFN_vkVoidFunction)l_WaitSemaphores;
 #undef H
     if (!strcmp(n, "vkCreateDescriptorUpdateTemplateKHR")) return (PFN_vkVoidFunction)l_CreateDescriptorUpdateTemplate;
     if (!strcmp(n, "vkUpdateDescriptorSetWithTemplateKHR")) return (PFN_vkVoidFunction)l_UpdateDescriptorSetWithTemplate;

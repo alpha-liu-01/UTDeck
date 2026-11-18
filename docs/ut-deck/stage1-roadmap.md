@@ -16,7 +16,7 @@ so it is split.
 | **1.1 A Turnip of our own that presents on Lomiri** | A reproducible build of Mesa Turnip (glibc, KGSL) with the `android_wlegl` WSI patch, from this repository; `vkcube` on screen without CPU copies | `vkcube` on Lomiri through `android_wlegl` buffers (checked with `WAYLAND_DEBUG`), portrait and landscape, with CPU per frame and fps measured against stage 0's software path |
 | 1.2 Turnip's compute failure | Find the shader and dispatch size behind stage 0's wrong result and GPU timeout; try `TU_DEBUG` options and Mesa main | A small reproducer of our own; a fix, a workaround, or an upstream report |
 | 1.3 OpenGL through zink | zink (OpenGL on Vulkan) on our Turnip, presenting on Lomiri | An OpenGL 4.x context and a window on screen, or the reason it cannot work |
-| 1.4 Decision and packaging | Route A against route B on the same tests (DXVK's feature check, frame pacing including 1.1's FIFO at 68.9 fps and 1.3's zink at about half the vendor GLES frame rate (the presentation copy and CPU wait), Turnip's cost per submission, Particle Physics at 59 % of the vendor driver, Stereo Matching's factor of 7.6 to verify, MAILBOX, long run); the driver chosen per app | A written decision; the driver folder layout UTDeck will ship |
+| 1.4 Decision and packaging | Route A against route B on the same tests (DXVK's feature check, frame pacing including 1.1's FIFO at 68.9 fps and 1.3's zink at about half the vendor GLES frame rate (the presentation copy and CPU wait), Particle Physics at 59 % of the vendor driver, Stereo Matching's factor of 7.6 to verify, MAILBOX, long run); the driver chosen per app | A written decision; the driver folder layout UTDeck will ship |
 
 Order: 1.1 first, because everything later (1.3, and stage 2's Wine) presents through it. 1.2 can
 run in parallel once 1.1 has a build of our own to change.
@@ -42,7 +42,14 @@ run in parallel once 1.1 has a build of our own to change.
   zink request on a GPU without a DRM render node). On screen (M1): picture right; zink 42 fps
   against the vendor GLES driver's 82 fps on a full-screen test, about 1 ms more CPU per frame
   (carried to 1.4).
-- 1.4: not started.
+- **1.4 (2026-11-18): done.** Notes: [stage1.4-decision.md](stage1.4-decision.md). Turnip's
+  "5-8 ms per submission" from 1.2 was an artifact of short runs. Lomiri answers frame callbacks
+  1.5-1.8 vsyncs late for every driver, so games run without vsync waiting plus a frame limiter (a
+  steady 60 fps). Particle Physics is a real loss in Turnip's shader compiler (an upstream report),
+  Stereo Matching a real win. Route A (R11 through libhybris) hangs at swapchain re-creation and
+  lacks 0001/0002; **decision: route B**, with zink for OpenGL; driver folder layout written.
+
+**Stage 1 is done (2026-11-18).** Exit met: route B chosen, with numbers.
 
 Rules for this stage, from the project rules:
 - Nothing system-wide on the phone: the driver lives in a test folder and is chosen with

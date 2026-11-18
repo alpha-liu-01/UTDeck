@@ -356,12 +356,15 @@ Goal: a modern Vulkan driver drawing on Lomiri's screen, chosen per app.
 
 Exit: route A or B chosen, with numbers. If B fails on Lomiri, A is the base and zink is out.
 
-#### Status (2026-11-18): 1.1 done, 1.2-1.4 not started
+#### Status (2026-11-18): done, route B chosen
 
-Split into four substages: [stage1-roadmap.md](stage1-roadmap.md). 1.1
-([stage1.1-turnip-wlegl.md](stage1.1-turnip-wlegl.md)): our own Turnip build (Mesa 26.2.5 with the
-Droidian `android_wlegl` patch, `tools/mesa-build/`) presents on Lomiri with no CPU copies, under
-1 ms of CPU per frame, whole in portrait and landscape. Route B works on screen.
+Split into four substages: [stage1-roadmap.md](stage1-roadmap.md). Our own Turnip build (Mesa
+26.2.5 with the Droidian `android_wlegl` patch, `tools/mesa-build/`) presents on Lomiri with no CPU
+copies (1.1); our patches 0001 (games below the compositor's GPU priority) and 0002 (one KGSL
+submission per command buffer) fix the frozen UI and the GPU timeout (1.2); zink gives OpenGL 4.6
+and GLES 3.2 (1.3). Decision ([stage1.4-decision.md](stage1.4-decision.md)): **route B**; route A
+hangs at swapchain re-creation and cannot carry 0001/0002. Games run without vsync waiting, with a
+frame limiter, because Lomiri answers frame callbacks late.
 
 ### Stage 2. First light: one Windows game on screen
 

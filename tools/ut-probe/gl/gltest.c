@@ -5,6 +5,10 @@
  *                             pixel by pixel, a compute shader (GL 4.3+) checked
  *   gltest wayland [FRAMES]   a fullscreen xdg window on the compositor, FRAMES frames (default 600)
  *   gltest ... --gles         OpenGL ES 3 instead of desktop OpenGL
+ *   gltest ... --interval N   swap interval for the window (default 1; 0 = do not wait for vsync)
+ *   gltest ... --flush        glFlush before each swap (starts the GPU work before EGL waits)
+ *   gltest ... --limit FPS    sleep to a fixed frame rate before each swap (a game's frame limiter)
+ *   The window mode prints the distribution of the time between frames at the end.
  *
  * Uses the system's glvnd libEGL.so.1 / libOpenGL.so.0 / libGLESv2.so.2; which EGL vendor answers
  * is chosen by the environment (__EGL_VENDOR_LIBRARY_FILENAMES). Exit 0 = all checks passed.
@@ -29,11 +33,15 @@
 #endif
 
 static int gles;
+static int swap_interval = 1;
+static int flush_first;     /* --flush: glFlush before eglSwapBuffers */
+static double limit_fps;     /* --limit FPS: app-side frame limiter */
 
 /* GL entry points are fetched through EGL, so the same code drives desktop GL and GLES. */
 #define GLF(ret, name, args) static ret (*p_##name) args
 GLF(const GLubyte *, glGetString, (GLenum));
 GLF(void, glGetIntegerv, (GLenum, GLint *));
+GLF(void, glFlush, (void));
 GLF(GLenum, glGetError, (void));
 GLF(void, glGenFramebuffers, (GLsizei, GLuint *));
 GLF(void, glBindFramebuffer, (GLenum, GLuint));
@@ -82,7 +90,7 @@ static int load_gl(void)
     L(glLinkProgram) L(glGetProgramiv) L(glGetProgramInfoLog) L(glUseProgram) L(glGenVertexArrays) L(glBindVertexArray)
     L(glViewport) L(glClearColor) L(glClear) L(glDrawArrays) L(glReadPixels) L(glFinish) L(glGetUniformLocation)
     L(glUniform1f) L(glGenBuffers) L(glBindBuffer) L(glBufferData) L(glBindBufferBase) L(glDispatchCompute)
-    L(glMemoryBarrier) L(glMapBufferRange) L(glUnmapBuffer)
+    L(glMemoryBarrier) L(glMapBufferRange) L(glUnmapBuffer) L(glFlush)
 #undef L
     return ok;
 }
@@ -271,7 +279,13 @@ static int window(int frames)
     if (!load_gl()) return 2;
     print_strings(dpy);
     printf("window: %dx%d\n", w, h);
-    eglSwapInterval(dpy, 1);
+    eglSwapInterval(dpy, swap_interval);
+    printf("swap interval: %d%s", swap_interval, flush_first ? ", glFlush before each swap" : "");
+    if (limit_fps > 0) printf(", limiter %.1f fps", limit_fps);
+    printf("\n");
+    struct timespec next;
+    clock_gettime(CLOCK_MONOTONIC, &next);
+    double *ft = calloc(frames + 1, sizeof(double));
     GLuint prog = program(shader(GL_VERTEX_SHADER, VS), shader(GL_FRAGMENT_SHADER, FS));
     GLuint vao;
     p_glGenVertexArrays(1, &vao); p_glBindVertexArray(vao);
@@ -283,8 +297,31 @@ static int window(int frames)
         p_glUseProgram(prog);
         p_glUniform1f(tu, (f % 120) / 119.0f);
         p_glDrawArrays(GL_TRIANGLES, 0, 3);
+        if (flush_first) p_glFlush();
+        if (limit_fps > 0) { /* sleep to an absolute deadline, like a game's frame limiter */
+            long step = (long)(1e9 / limit_fps);
+            next.tv_nsec += step;
+            while (next.tv_nsec >= 1000000000L) { next.tv_nsec -= 1000000000L; next.tv_sec++; }
+            clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &next, NULL);
+        }
         if (!eglSwapBuffers(dpy, es)) { fprintf(stderr, "eglSwapBuffers failed at frame %d: 0x%x\n", f, eglGetError()); return 1; }
+        struct timespec ts;
+        clock_gettime(CLOCK_MONOTONIC, &ts);
+        ft[f] = ts.tv_sec * 1e3 + ts.tv_nsec / 1e6;
     }
+    /* Time between consecutive swaps, skipping the first 30 frames (start-up). */
+    int nf = 0, band[6] = { 0 };
+    double sum = 0, mx = 0, *d = calloc(frames, sizeof(double));
+    for (int f = 31; f < frames; f++) {
+        double x = ft[f] - ft[f - 1];
+        d[nf++] = x; sum += x; if (x > mx) mx = x;
+        band[x < 6.0 ? 0 : x < 10.5 ? 1 : x < 14.0 ? 2 : x < 20.0 ? 3 : x < 30.0 ? 4 : 5]++;
+    }
+    for (int i = 1; i < nf; i++) for (int j = i; j > 0 && d[j - 1] > d[j]; j--) { double t = d[j]; d[j] = d[j - 1]; d[j - 1] = t; }
+    if (nf)
+        printf("frame time over %d frames: mean %.2f ms (%.1f fps), median %.2f, p95 %.2f, max %.2f ms\n"
+               "  bands: <6 ms %d | 6-10.5 (120 Hz) %d | 10.5-14 %d | 14-20 (60 Hz) %d | 20-30 %d | >30 ms %d\n",
+               nf, sum / nf, 1000.0 * nf / sum, d[nf / 2], d[nf * 95 / 100], mx, band[0], band[1], band[2], band[3], band[4], band[5]);
     printf("%d frames presented, GL errors: 0x%x\n", frames, p_glGetError());
     eglMakeCurrent(dpy, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
     eglDestroySurface(dpy, es);
@@ -298,10 +335,13 @@ int main(int argc, char **argv)
     int frames = 600;
     for (int i = 2; i < argc; i++) {
         if (!strcmp(argv[i], "--gles")) gles = 1;
+        else if (!strcmp(argv[i], "--interval") && i + 1 < argc) swap_interval = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--flush")) flush_first = 1;
+        else if (!strcmp(argv[i], "--limit") && i + 1 < argc) limit_fps = atof(argv[++i]);
         else frames = atoi(argv[i]);
     }
     if (!strcmp(mode, "headless")) return headless();
     if (!strcmp(mode, "wayland")) return window(frames);
-    fprintf(stderr, "usage: gltest headless|wayland [FRAMES] [--gles]\n");
+    fprintf(stderr, "usage: gltest headless|wayland [FRAMES] [--gles] [--interval N] [--flush] [--limit FPS]\n");
     return 2;
 }

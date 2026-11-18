@@ -234,6 +234,11 @@ the frozen UI.
 
 ### A side finding: Turnip's cost per submission
 
+**Correction (2026-11-18, stage 1.4 step 1):** the figures below are best-of-3 from short runs that
+never got past the GPU's power-up after idle. Measured properly (`spvrun --profile`, 15 dispatches),
+a steady-state submit-and-wait costs Turnip 0.2-0.4 ms and the vendor driver 0.15-0.5 ms: no real
+difference. See [stage1.4-decision.md](stage1.4-decision.md), step 1. Kept here as first written:
+
 In the runner's timings (one dispatch per submission, waited for), tiny dispatches take **5-8 ms
 on Turnip** and **1.7-3.5 ms on the vendor driver** (softmax over 1,000 elements: 6.2 against
 3.5 ms; pad: 8.1 against 1.8 ms). So Turnip seems to pay several milliseconds per submit-and-wait
