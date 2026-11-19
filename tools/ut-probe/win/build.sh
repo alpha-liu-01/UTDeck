@@ -4,7 +4,7 @@
 #                                    build/win/vktest-{arm64,x86_64}.exe, build/win/d3d11test.exe (x86-64),
 #                                    build/win/d3d9test-{i686,x86_64}.exe, build/win/gptest.exe (x86-64),
 #                                    build/win/d3d12test.exe, build/win/sndtest.exe (x86-64),
-#                                    build/win/setmode.exe (ARM64)
+#                                    build/win/setmode.exe (ARM64), build/win/vidtest.exe (i686)
 # llvm-mingw (mstorsjo/llvm-mingw 20261104, ucrt, Ubuntu 22.04 x86-64 host) and the Khronos Vulkan
 # headers (1.4.335) are downloaded into build/toolchains/ the first time.
 set -eu
@@ -43,6 +43,8 @@ done
 "$TC/bin/x86_64-w64-mingw32-clang" -O2 -Wall -o "$OUT/d3d12test.exe" "$REPO_DIR/tools/ut-probe/win/d3d12test.c" \
     -ld3d12 -ldxgi -ld3dcompiler
 "$TC/bin/x86_64-w64-mingw32-clang" -O2 -Wall -o "$OUT/sndtest.exe" "$REPO_DIR/tools/ut-probe/win/sndtest.c" -lwinmm
+"$TC/bin/i686-w64-mingw32-clang" -O2 -Wall -o "$OUT/vidtest.exe" "$REPO_DIR/tools/ut-probe/win/vidtest.c" \
+    -lstrmiids -lole32
 # setmode.exe: native ARM64; installed with UTDeck's Steam compatibility tool (steam-push.sh)
 "$TC/bin/aarch64-w64-mingw32-clang" -O2 -Wall -o "$OUT/setmode.exe" "$REPO_DIR/tools/ut-probe/win/setmode.c"
 ls -la "$OUT"

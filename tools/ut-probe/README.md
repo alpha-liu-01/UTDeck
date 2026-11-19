@@ -35,6 +35,7 @@ because Ubuntu Touch has no compiler and few tools. Push them to a test folder o
 | `rt-gfx.sh` | phone (user unit), screen may be off | Stage 3.1: Vulkan, D3D9, D3D11 (with mode changes), D3D12, sound and the gamepad list, for one runtime |
 | `win/d3d12test.c` | phone, through Wine | Stage 3.1: Direct3D 12 through VKD3D-Proton: device features, a pipeline, a draw per frame |
 | `win/sndtest.c` | phone, through Wine | Stage 3.1: the wave output devices and a quiet 440 Hz tone through `winepulse` |
+| `win/vidtest.c` | phone, through Wine (`game-run.sh`) | Stage 3.S: play a video file through DirectShow (32-bit x86), with the default renderer or VMR-9; prints how it ended |
 | `cputime.py` | phone | Wall and CPU time of a command with its output in a file (leaves out `wineserver`, which keeps pipes open) |
 | `wine-m1.sh` | phone, screen on | Stage 2.2: Wine's Notepad and `winecfg` on Lomiri, with Wayland messages logged |
 | `pacing.sh`, `pacing2.sh`, `pacing3.sh` | phone, screen on | Stage 1.4 frame pacing: `gltest` runs with `fps-panel.py` (panel refresh, compositor commits, GPU load); with `WAYLAND_DEBUG` time stamps (callback timing); the `--flush` and frame-limiter fixes |

@@ -19,9 +19,14 @@
 #   steam  Proton's lsteamclient (Steam's API for Windows games, passed on to the Linux Steam client)
 #          and its steam.exe helper, built in Wine's own build tree as Proton does: ARM64X and i386
 #          DLLs, an aarch64 Unix library (needs the wine part's build tree in build/runtime-obj)
+#   media  GStreamer plugins for games' videos and sounds, which Wine plays through the phone's
+#          GStreamer 1.24 (winegstreamer): gst-libav (FFmpeg's decoders: WMV, WMA, H.264, VP9, ...)
+#          with a small FFmpeg linked in, and asfdemux from gst-plugins-ugly (the reader for .wmv
+#          and .wma files). The phone has neither. Proton ships its own for the same reason.
 #
 # Layout: bin/ (wine, wineserver and the user-facing launchers), lib/wine/{aarch64-unix,
-# aarch64-windows,i386-windows}, share/wine, lib/dxvk/<arch>, lib/vkd3d-proton/<arch>. Wine finds
+# aarch64-windows,i386-windows}, share/wine, lib/dxvk/<arch>, lib/vkd3d-proton/<arch>,
+# lib/gstreamer-1.0 (found through GST_PLUGIN_PATH, set by wine-env.sh). Wine finds
 # its files relative to bin/wine, so the folder can live anywhere. Not included: headers, import
 # libraries and Wine's development tools (winegcc, widl, ...), which only build programs.
 set -eu
@@ -35,7 +40,7 @@ RT="$OUT/utdeck-runtime"
 TC_VER=20261104
 TC="$REPO_DIR/build/toolchains/llvm-mingw-$TC_VER-ucrt-ubuntu-22.04-x86_64"
 IMAGE=utdeck-wine-cross
-PARTS=${PARTS:-wine fex box64 dxvk vkd3d mono steam}
+PARTS=${PARTS:-wine fex box64 dxvk vkd3d mono steam media}
 if [ -z "${PATCHES+x}" ]; then PATCHES=$(ls "$REPO_DIR"/tools/wine-build/patches/*.patch 2>/dev/null || true); fi
 
 WINE_URL=https://github.com/AndreRH/wine.git
@@ -56,6 +61,22 @@ MONO_SHA256=b0c47d374efaf22cbff76cb10488ac2d1627b067e085aef7acec573884120e0f   #
 MONO_MSI="$REPO_DIR/build/toolchains/wine-mono-$MONO_VERSION-arm64.msi"
 PROTON_URL=https://github.com/ValveSoftware/Proton.git
 PROTON_COMMIT=bc896217ffcd67f892f952b010f898fe7bd0f0a1  # proton-11.0-2e: lsteamclient and steam_helper only
+# media: release tarballs. FFmpeg 7.1 (its maintained long-term branch; its signature checked with
+# FFmpeg's release key FCF986EA15E6E293A5644F10B4322F04D67658D8 when pinned), GStreamer 1.24.x (the
+# phone's series: plugins built against its 1.24.2 headers load in any 1.24; sha256 as published).
+FFMPEG_VERSION=7.1.5
+FFMPEG_SHA256=de668509caf9e35e3cd162473441fdb29538c6d96ed080292b3cf9e6fc5d558f
+GST_VERSION=1.24.13
+GST_LIBAV_SHA256=150e2b70588fa32a1294f42665756f2175417ce4b5988e2c2081b683719aa6c1
+GST_UGLY_SHA256=dc08bb11dce0a43453466fb9034e4fe06709fb5af68475bcf6d288693b661a5d
+# The decoders games use for videos and sounds: Windows Media (WMV 7-9, VC-1, WMA, XMA), MPEG-1/2/4,
+# H.264, HEVC, VP8/VP9, Theora, old AVI codecs (Cinepak, Indeo, MS Video 1, ...), AAC, MP3, Vorbis,
+# Opus, FLAC, AC-3, ADPCM, ATRAC. LGPL only (no --enable-gpl), no external libraries, no network.
+FFMPEG_DECODERS="h264 hevc vp8 vp9 mpeg1video mpeg2video mpeg4 h263 h263p msmpeg4v1 msmpeg4v2 msmpeg4v3
+    wmv1 wmv2 wmv3 wmv3image vc1 vc1image theora vp3 vp6 vp6a vp6f flv mjpeg cinepak indeo2 indeo3 indeo4
+    indeo5 msvideo1 msrle huffyuv ffvhuff utvideo aac aac_latm mp1 mp1float mp2 mp2float mp3 mp3float
+    vorbis opus flac alac wmav1 wmav2 wmapro wmavoice wmalossless xma1 xma2 ac3 eac3 adpcm_ms
+    adpcm_ima_wav adpcm_ima_qt adpcm_xa gsm_ms atrac3 atrac3p atrac9"
 
 has() { case " $PARTS " in *" $1 "*) return 0;; esac; return 1; }
 
@@ -113,6 +134,18 @@ if has steam; then
         git -C "$SRC/proton" fetch -q --depth 1 --filter=blob:none origin "$PROTON_COMMIT"
         git -C "$SRC/proton" checkout -q --force --detach "$PROTON_COMMIT"
     fi
+fi
+if has media; then
+    # fetch_tar URL SHA256: download into build/src/dl once, check, unpack fresh into build/src.
+    fetch_tar() {
+        f="$SRC/dl/${1##*/}"; mkdir -p "$SRC/dl"
+        [ -f "$f" ] || curl -fsSL -o "$f" "$1"
+        echo "$2  $f" | sha256sum -c --quiet
+        d="$SRC/$(basename "$f" .tar.xz)"; rm -rf "$d"; tar -C "$SRC" -xJf "$f"
+    }
+    fetch_tar https://ffmpeg.org/releases/ffmpeg-$FFMPEG_VERSION.tar.xz $FFMPEG_SHA256
+    fetch_tar https://gstreamer.freedesktop.org/src/gst-libav/gst-libav-$GST_VERSION.tar.xz $GST_LIBAV_SHA256
+    fetch_tar https://gstreamer.freedesktop.org/src/gst-plugins-ugly/gst-plugins-ugly-$GST_VERSION.tar.xz $GST_UGLY_SHA256
 fi
 if has mono; then
     [ -f "$MONO_MSI" ] || curl -fsSL -o "$MONO_MSI" "$MONO_URL"
@@ -230,6 +263,42 @@ if has steam; then
     '
 fi
 
+# ---- media: FFmpeg as static libraries (position-independent), linked into gst-libav's plugin with
+# its symbols hidden (--exclude-libs), so it cannot clash with the phone's own libavcodec60, which
+# other programs load; then asfdemux alone from gst-plugins-ugly. Both against the container's
+# GStreamer 1.24.2 headers, the phone's version.
+if has media; then
+    echo "media: building FFmpeg $FFMPEG_VERSION, gst-libav and asfdemux $GST_VERSION (logs: build/runtime-obj/media-*.log)"
+    cp "$REPO_DIR/tools/mesa-build/cross-aarch64.ini" "$OBJ/media-cross.ini"
+    in_container '
+        M=/obj/media; rm -rf $M /obj/media-out; mkdir -p $M/ffmpeg /obj/media-out
+        cd $M/ffmpeg
+        /src/ffmpeg-'"$FFMPEG_VERSION"'/configure --prefix=$M/ff --enable-cross-compile --arch=aarch64 \
+            --target-os=linux --cross-prefix=aarch64-linux-gnu- --pkg-config=pkg-config \
+            --enable-pic --enable-static --disable-shared --disable-programs --disable-doc --disable-debug \
+            --disable-network --disable-autodetect --disable-everything --disable-swscale --disable-swresample \
+            --enable-decoder='"$(echo $FFMPEG_DECODERS | tr ' ' ,)"' --enable-demuxer=xwma \
+            --enable-filter=buffer,buffersink,yadif > /obj/media-ffmpeg.log 2>&1 \
+            || { tail -20 /obj/media-ffmpeg.log >&2; exit 1; }
+        make -j$J >> /obj/media-ffmpeg.log 2>&1 && make install >> /obj/media-ffmpeg.log 2>&1 \
+            || { grep -E "error|Error" /obj/media-ffmpeg.log | head -20 >&2; exit 1; }
+        export PKG_CONFIG_LIBDIR=/usr/lib/aarch64-linux-gnu/pkgconfig:/usr/share/pkgconfig
+        meson setup $M/libav /src/gst-libav-'"$GST_VERSION"' --cross-file /obj/media-cross.ini --buildtype=release \
+            --wrap-mode=nofallback -Dpkg_config_path=$M/ff/lib/pkgconfig -Ddoc=disabled -Dtests=disabled \
+            -Dc_link_args=-Wl,--exclude-libs,ALL > /obj/media-libav.log 2>&1 && ninja -C $M/libav >> /obj/media-libav.log 2>&1 \
+            || { tail -30 /obj/media-libav.log >&2; exit 1; }
+        meson setup $M/ugly /src/gst-plugins-ugly-'"$GST_VERSION"' --cross-file /obj/media-cross.ini --buildtype=release \
+            --wrap-mode=nofallback -Dauto_features=disabled -Dasfdemux=enabled -Dgpl=disabled \
+            > /obj/media-ugly.log 2>&1 && ninja -C $M/ugly >> /obj/media-ugly.log 2>&1 \
+            || { tail -30 /obj/media-ugly.log >&2; exit 1; }
+        cp $M/libav/ext/libav/libgstlibav.so $M/ugly/gst/asfdemux/libgstasf.so /obj/media-out/
+        # FFmpeg must be inside the plugin, not needed from the phone
+        if aarch64-linux-gnu-readelf -d /obj/media-out/*.so | grep NEEDED | grep -E "libav|libsw"; then
+            echo "media: a plugin links to a system FFmpeg library" >&2; exit 1
+        fi
+    '
+fi
+
 # ---- assemble the runtime folder from whatever has been built
 echo "assembling build/runtime/utdeck-runtime"
 in_container '
@@ -255,6 +324,10 @@ in_container '
     mkdir -p $R/lib/dxvk $R/lib/vkd3d-proton
     for a in arm64ec x32 aarch64; do cp -a /obj/dxvk/dxvk-'"$DXVK_VERSION"'/$a $R/lib/dxvk/; done
     for a in arm64x x86; do cp -a /obj/vkd3d/vkd3d-proton-'"$VKD3D_VERSION"'/$a $R/lib/vkd3d-proton/; done
+    if [ -d /obj/media-out ]; then
+        mkdir -p $R/lib/gstreamer-1.0 && cp /obj/media-out/*.so $R/lib/gstreamer-1.0/
+        aarch64-linux-gnu-strip --strip-unneeded $R/lib/gstreamer-1.0/*.so
+    fi
 '
 mkdir -p "$RT/share/wine/mono"
 cp "$MONO_MSI" "$RT/share/wine/mono/"
@@ -273,6 +346,11 @@ VERSION="11.16-$(date -u +%Y%m%d)"
     echo "vkd3d-proton: $VKD3D_URL $VKD3D_COMMIT ($VKD3D_VERSION)"
     echo "wine-mono: $MONO_URL sha256 $MONO_SHA256"
     [ -f "$RT/lib/wine/aarch64-unix/lsteamclient.so" ] && echo "lsteamclient, steam.exe: $PROTON_URL $PROTON_COMMIT (proton-11.0-2e)"
+    if [ -f "$RT/lib/gstreamer-1.0/libgstlibav.so" ]; then
+        echo "gstreamer plugins: gst-libav and asfdemux (gst-plugins-ugly) $GST_VERSION, FFmpeg $FFMPEG_VERSION linked in"
+        echo "  ffmpeg sha256 $FFMPEG_SHA256, gst-libav $GST_LIBAV_SHA256, gst-plugins-ugly $GST_UGLY_SHA256"
+        echo "  ffmpeg decoders: $(echo $FFMPEG_DECODERS)"
+    fi
     echo "size: $(du -sh "$RT" | cut -f1)"
     echo "sha256:"
     (cd "$RT" && sha256sum bin/wine bin/wineserver lib/wine/aarch64-unix/ntdll.so lib/wine/aarch64-unix/win32u.so \

@@ -102,8 +102,9 @@ game list and table from Steam). See [plan-change-steam-early.md](plan-change-st
   ARM64 Steam client runs hidden as a service on Ubuntu Touch; UTDeck's runtime is Steam's default
   compatibility tool; Proton's `lsteamclient` and Wine patch 0009 give Windows games Steam's API
   (Ys: Memories of Celceta runs from Steam, with audio, touch and controller); Wine patch 0010
-  shows a game window smaller than the screen filling it. Left: clean start and quit (step 6),
-  games' videos (step 7); known issues listed there (K1-K9). Then 3.2b.
+  shows a game window smaller than the screen filling it; games start and quit cleanly (step 6);
+  games' videos play through the runtime's own GStreamer plugins (FFmpeg), and games' sound follows
+  the volume keys (step 7). Known issues listed there (K1-K10). Next: 3.2b.
 
 Rules for this stage, from the project rules:
 - Nothing system-wide on the phone: the runtime lives in a folder, chosen with environment

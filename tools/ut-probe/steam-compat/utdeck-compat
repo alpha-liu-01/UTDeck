@@ -73,19 +73,16 @@ prepare_prefix() {
             wine regedit /S "$(winepath -w "$TOOL/steam-prefix.reg" 2>/dev/null)" > /dev/null 2>&1 && wineserver -w &&
                 echo "$sum" > "$DATA/utdeck-prefix-reg" && echo "  Steam registry keys imported" >> "$LOG"
         fi
-        # UTDECK_RESOLUTION=WxH (per-game, utdeck-env): a display mode smaller than the panel, for
-        # games whose "fullscreen" is a desktop-sized window or that only offer windows: Wine scales
-        # a mode smaller than the monitor to the panel (patch 0006); patch 0008's screen-shaped
-        # modes (1200x540, 1600x720, 1920x864, 2000x900) fill it with no black bars.
-        # - With UTDECK_RESOLUTION_FOR="EXE [ARGS];..." only those programs get the mode, while they
-        #   run (Wine patch 0010); the prefix's desktop stays native, so a game's launcher fits.
-        #   Ys: Memories of Celceta: UTDECK_RESOLUTION_FOR=Ysc_dx11.exe nlc (its launcher starts the
-        #   game with "nlc").
-        # - Without it the whole prefix's desktop gets the mode: setmode.exe stores it in the
-        #   registry, and Wine's explorer applies it at every start of the prefix. It runs only when
-        #   the setting changes, with the game's display environment (landscape).
-        want=native
-        [ -n "${UTDECK_RESOLUTION:-}" ] && [ -z "${UTDECK_RESOLUTION_FOR:-}" ] && want=$UTDECK_RESOLUTION
+        # The prefix's desktop mode. Usually native: a game window smaller than the screen (a lower
+        # resolution in borderless or windowed mode) already fills the panel (fill mode, Wine patch
+        # 0010), and a game's launcher keeps the whole desktop. UTDECK_RESOLUTION=WxH (per-game,
+        # utdeck-env) sets a smaller mode for the whole prefix instead, for a game that only follows
+        # the desktop's size; Wine scales it to the panel (patch 0006), and patch 0008's
+        # screen-shaped modes (1200x540, 1600x720, 1920x864, 2000x900) fill it with no black bars.
+        # setmode.exe stores the mode in the registry and Wine's explorer applies it at every start
+        # of the prefix; it runs only when the setting changes, with the game's display environment
+        # (landscape).
+        want=${UTDECK_RESOLUTION:-native}
         if [ "$(cat "$DATA/utdeck-resolution" 2>/dev/null || echo native)" != "$want" ]; then
             out=$(WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-wayland-0} UTDECK_WAYLAND_LANDSCAPE=1 DISPLAY= \
                   wine "$(winepath -w "$TOOL/setmode.exe" 2>/dev/null)" "$want" 2>&1 | grep -v -i wayland)

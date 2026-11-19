@@ -22,4 +22,15 @@ export VK_DRIVER_FILES=$P/zink/turnip_icd.json
 export __EGL_VENDOR_LIBRARY_FILENAMES=$P/zink/egl_vendor.json
 export MESA_LOADER_DRIVER_OVERRIDE=zink
 export XDG_RUNTIME_DIR=/run/user/32011
+# Games' videos and sounds: Wine plays them through the phone's GStreamer, plus the runtime's own
+# plugins (FFmpeg's decoders, the WMV/WMA reader). GStreamer keeps a list of the plugins it found
+# (the registry); with a plugin folder the system's programs do not have, ours lives in its own file,
+# so the Media Player's list is not rebuilt each time a game starts, and the other way round.
+export GST_PLUGIN_PATH=$W/runtime/lib/gstreamer-1.0
+export GST_REGISTRY_1_0=$HOME/.cache/utdeck/gstreamer-registry.bin
+# Sound: the volume keys (ayatana-indicator-sound) set the volume of a media role, which PulseAudio's
+# stream-restore applies to every stream with that role. Wine gives its streams no role, so games
+# played at a fixed 0 dB that no key could change. As "multimedia" they follow the media volume,
+# like the Media Player (default -8 dB, /etc/pulse/touch-stream-restore.table).
+export PULSE_PROP='media.role=multimedia'
 unset GLIBC_TUNABLES LD_PRELOAD

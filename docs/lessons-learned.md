@@ -1011,3 +1011,27 @@ Problems met while building UTDeck on the Redmi Note 12 5G (stone). Details in `
   screen at the panel's resolution; for a game shown scaled (fill mode) it turned its 1200x540
   window into 1080x2400: a portrait picture and four times the pixels. Lesson: when Wine shows a
   window differently from its size, keep the window's size and change only how it is shown.
+- **A black world with a working HUD can be the game itself (stage 3.S).** Ys went black in the
+  middle of play, only the HUD left, with no error and the GPU as busy as before. The logs ruled
+  out the picture's way to the screen; the game's forum history showed the same bug on Windows,
+  tied to controllers; the phone's journal showed the controller had connected after the game
+  started. Starting with the controller already on fixed it. Lesson: when only part of the picture
+  is wrong, check what is still drawn (HUD, menus, a model) and look up the game's own known bugs
+  before changing the runtime; and note what changed just before (here a controller waking up).
+- **Wine lists GStreamer plugins inside the game (stage 3.S).** Wine starts GStreamer with
+  `--gst-disable-registry-fork`, so a new or changed plugin is loaded into the game's own process
+  to be listed; on Ubuntu Touch the hybris plugin then ends the process (it needs a glibc setting
+  Wine's environment does not have). Giving Wine its own plugin list turned a hidden risk into a
+  crash at the first movie. Lesson: build GStreamer's list outside Wine before it starts, and know
+  which system plugins a Wine process can reach.
+- **A sound that repeats its last second means the stream stalled, not the sound (stage 3.S).** The
+  sound card replays its buffer when nothing new arrives. Here the video renderer hung, which held
+  the whole movie. Lesson: on a looping sound, look for the thread that stopped (a trace of the
+  media path showed the video thread stuck in the renderer's blit), not at the audio decoder.
+- **A file's name does not tell its container (stage 3.S).** Ys's `op.wmv` is an AVI file; the
+  other two `.wmv` are ASF. Wine handles the two very differently. Lesson: read the first bytes
+  (`RIFF`, or the ASF header GUID `30 26 b2 75`) before reasoning about a media file.
+- **Sound without a media role escapes the volume keys (stage 3.S).** On Ubuntu Touch the keys
+  change a role's volume (`multimedia`, ...); Wine's streams had no role and played at a fixed
+  0 dB. `PULSE_PROP='media.role=multimedia'` fixes every Wine program at once. Lesson: check a new
+  sound source with `pactl list sink-inputs` (role, restore id, volume) and the volume keys.

@@ -32,6 +32,14 @@ if [ ! -d "$WINEPREFIX/drive_c" ]; then
 fi
 { printf 'game: %s, in %s: %s %s\n' "$LABEL" "$DIR" "$EXE" "$*"; echo "runtime: $(command -v wine), prefix $WINEPREFIX";
   echo "overrides: $WINEDLLOVERRIDES"; echo "extra: ${GAME_ENV:-}"; } > $B.log
+# GStreamer's plugin list (env.sh: GST_REGISTRY_1_0) is brought up to date here, outside Wine. Wine
+# starts GStreamer with --gst-disable-registry-fork, so a Wine process loads every new or changed
+# plugin into itself to list it; the phone's hybris plugin (Android's hardware decoders) cannot load
+# without the session's GLIBC_TUNABLES and then ends the whole process: the game dies at its first
+# video. Here GStreamer uses its helper process, which takes such failures and marks the plugin
+# as unusable; Wine then only reads the list. About 3 s after a system update, 0.1 s otherwise.
+python3 -c 'import ctypes; ctypes.CDLL("libgstreamer-1.0.so.0").gst_init(None, None)' >> $B.log 2>&1 \
+    || echo "gstreamer: plugin list not updated" >> $B.log
 K=/sys/class/kgsl/kgsl-3d0
 ( prev=$(head -1 /proc/stat)
   while :; do

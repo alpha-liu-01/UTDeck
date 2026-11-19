@@ -27,10 +27,10 @@ Terms used here:
 | 4 | A game without Steam DRM started through our runtime | No such game in the library; covered by step 5 |
 | 5 | Proton's `lsteamclient` built against our Wine; a Steamworks game | **Done** (M13): Ys passes its Steam check; launcher and game run; audio, touch, controller work |
 | 5b | A game in a smaller window fills the screen (found with Ys) | **Done** (M14): fill mode, Wine patch 0010; started sideways, known issue K1 |
-| 6 | Start and quit cleanly, twice; hidden Steam back to idle | **Next** |
-| 7 | Games' videos play (Ys: WMV) | To do |
+| 6 | Start and quit cleanly, twice; hidden Steam back to idle | **Done** (M16): both quits clean; Steam 9 % of one core while a game runs, back to idle after |
+| 7 | Games' videos play (Ys: WMV) | **Done**: GStreamer plugins in the runtime (FFmpeg decoders, ASF reader); Ys's logo movie plays; games' sound follows the volume keys |
 
-Exit of 3.S: steps 6 and 7 done, the notes and the roadmap up to date; then 3.2b.
+Exit of 3.S: all steps done or parked; the notes, the roadmap and the lessons up to date; then 3.2b.
 
 ## Known issues
 
@@ -40,33 +40,25 @@ Recorded, not blocking the tests of stage 3:
 | --- | --- | --- | --- |
 | K1 | A game started by hidden Steam with the phone **sideways** gets a portrait fullscreen size from Lomiri, and Lomiri then stops rotating its window (M15). Started upright, every rotation works (M14) | Start games with the phone upright, then turn it | Stage 4: games started through UTDeck's library, a Lomiri app with a desktop file that declares landscape (as in stage 2.3, M4) |
 | K2 | Steam's own interface is drawn in software (2-5 fps), touch in its right half lands on the middle, no on-screen keyboard for X11 (M11) | Not needed: sign-in once; buy and download from the Steam phone app; games started by `steam-service.sh launch` | Stage 4 or 7: UTDeck's own library and dialogs; a viewer or Steam's Gaming Mode later |
-| K3 | A controller connected while a game runs is not seen by it (M13) | Connect it before starting the game | Stage 5 (controllers) |
+| K3 | A controller connected while a game runs: not seen by it (M13), or worse: Ys drew its world black, only the HUD left, once the controller was used (M16) | Turn the controller on before starting the game | Stage 5 (controllers) |
 | K4 | Steam runs the game's install script again at every start (about 3 s; all steps skipped) | None needed | Later in stage 3, if Proton does not do the same |
 | K5 | Each game's prefix is about 1 GB (Wine copies its DLLs in), plus one for Steam's driver query (app 0) | 60 GB free | Later in stage 3: hard links to the runtime's files |
 | K6 | A game's exclusive fullscreen at the panel's resolution (Ys "Fullscreen") is too heavy and cannot be scaled down | Borderless or windowed at a smaller size: fill mode shows it on the whole screen | By design (the game chooses the resolution) |
 | K7 | Steam's Direct3D 12 driver query fails (`E_INVALIDARG`) | None needed: the A619 has feature level 11_1 (stage 3.1); Steam only reports it | Not a problem |
 | K8 | Steam's overlay and pipeline cache (fossilize) are off for games | None needed for tests | Overlay: stage 7; fossilize: measured in 3.3-3.6 |
 | K9 | 32-bit games run under Box64; Steam's installers under FEX (Box64 hangs in the VC++ installer) | Done in `utdeck-compat` | Which emulator for games: measured in 3.3-3.6 |
+| K10 | DirectShow's default video renderer (the window renderer, drawn with DirectDraw) fails on this phone: a short movie lost most frames (`Failed to blit`, `DDERR_INVALIDRECT`), a long one hung on its second frame, and the sound then repeated its last second (step 7) | Games that draw movies themselves (Ys) or use VMR-9 (Direct3D 9) are not affected | 3.2b, with an older game that plays its movies in a plain window; DirectDraw games need the same path |
 
 ## Next steps
 
-1. **Step 6, start and quit (M16, the maintainer, a few minutes).** Ys started twice with
-   `steam-service.sh launch 587110` (phone upright, K1), quit from the game's menu each time.
-   Checked from the PC: no Wine, `steam.exe` or `reaper` process left; Steam's log shows the game
-   ended; hidden Steam back to its idle CPU and memory (13 %, 1.33 GB before), with its cost while
-   a game runs measured too.
-2. **Step 7, games' videos.** The phone's GStreamer cannot decode WMV or read ASF (Ys's
-   `op.wmv`). Plan: a GStreamer FFmpeg plugin (`gst-libav`) with a small FFmpeg built only with the
-   decoders and readers games use (WMV/WMA in ASF, H.264 and AAC in MP4, VP8/VP9 in WebM, Theora),
-   from pinned sources in the cross container, shipped in the runtime and found through
-   `GST_PLUGIN_PATH`; checked with Ys's opening movie. (Proton ships its own GStreamer and FFmpeg
-   for the same reason.)
-3. **Close 3.S:** notes, the stage 3 roadmap, lessons; a commit when the maintainer asks.
-4. **Stage 3.2b, the game table from the Steam library:** five or more of the maintainer's games
+1. **Close 3.S:** notes, the stage 3 roadmap, lessons; a commit when the maintainer asks.
+2. **Stage 3.2b, the game table from the Steam library:** five or more of the maintainer's games
    covering Direct3D 9, 11 and 12, 32- and 64-bit, several engines (Unity, Unreal, XNA,
    GameMaker); each one's size checked before the remote download, its folder checked, then run
-   with the frame and sensor logs (`game-run.sh` through `utdeck-compat`), phone started upright.
-   Ys is the first entry.
+   with the frame and sensor logs (`game-run.sh` through `utdeck-compat`), phone started upright
+   and the controller on before the start (K1, K3). Ys is the first entry; its numbers from M16
+   (below) are the starting point: dips to 16-25 fps in busy scenes with the GPU half idle (a CPU
+   thread is the limit), and single stalls of 150-700 ms in new areas.
 
 ## Step 1: the client
 
@@ -499,6 +491,128 @@ policy for it; in stage 2.3 (M4) a game started from a desktop file declaring la
 landscape and stayed so. Options: give the game's window an app id that matches a desktop file
 with landscape orientation, or start Steam games through a Lomiri app (UTDeck's library, stage 4).
 
+## Step 6: start and quit (manual run M16, 2026-11-19)
+
+Ys started twice with `steam-service.sh launch 587110`, phone upright, quit from the game's menu
+each time. Checked from the PC after each quit: no Wine, `steam.exe`, `reaper` or wrapper process
+left; `utdeck-compat` logged `exit 0`; Steam's log shows "Game process removed" and the app state
+back to "Fully Installed" within a second; Steam's shared memory segments back to 20 (43 while the
+game ran).
+
+| Hidden Steam | Memory (PSS) | CPU, over 60 s |
+| --- | --- | --- |
+| Before, idle | 1341 MB, 10 processes | 12 % of one core |
+| While Ys runs | 1384 MB, 13 processes (with the launch wrapper and `reaper`) | 9 % of one core |
+| After the second quit | 1345 MB, 10 processes | 13 % of one core |
+
+**The first run turned black.** The controller (a BETOP T6 over Bluetooth, which reports itself as
+an Xbox One S pad, `045e:02e0`) connected a minute after the game started. When it was picked up,
+the 3D world became black and stayed so: the HUD, menus, sound and input kept working, the
+character model in the equip menu was drawn, and neither the menu, an area change nor a rotation
+brought the world back. The game kept 30 fps with the GPU as busy as before and logged no error,
+so it was still drawing, but its world came out black. The controller's axis ranges were normal;
+Wine reads it through SDL2. This is a known bug of the game, on Windows too: with some
+controllers the world goes black once Adol can be moved, and only the HUD is left (GOG forum,
+"Ys Memories of Celceta bugs", 2018-2021). **The second run, with the controller on before the
+start, played half of the first dungeon with no problem.** Recorded as part of K3.
+
+Second run, 12 minutes: 27.6 fps on average (capped at 30); game memory steady at 841-858 MB;
+CPU at most 50 °C, GPU 46 °C. In busy dungeon scenes 16-25 fps, with the GPU 36-56 % busy at
+390-650 MHz, so the limit is a CPU thread (the game is x86, emulated), not the GPU; about 20
+single stalls of 150-700 ms, most likely DXVK compiling shaders for areas seen the first time.
+Both go to 3.2b.
+
+## Step 7: games' videos and sound (2026-11-19)
+
+### What was missing
+
+Ys's movies did not play: "Missing decoder: Advanced Streaming Format (ASF)". Wine plays games'
+video and sound through the phone's GStreamer 1.24.2 (`winegstreamer`), for DirectShow, Windows
+Media and the decoder objects; Media Foundation's file readers would use FFmpeg directly
+(`winedmo`), but our Wine is built without FFmpeg, so they fall back to GStreamer too. The phone's
+GStreamer has no FFmpeg plugin (`gst-libav`) and no ASF reader (`asfdemux`, in plugins-ugly). The
+phone does have Ubuntu's `libavcodec60` (FFmpeg 6.1, a dependency of something else), but not
+`libavformat` or `libavfilter`, which gst-libav also needs. Hardware decoders exist only for H.264,
+HEVC and VP9 (Qualcomm's Codec2 through `amcviddec`, see stone-ut's `roadmap-hardware-2.md` item 3),
+and not for WMV; they live in the hybris plugin, which cannot load in a Wine process (below).
+
+Ys's three movies: `logo.wmv` and `ins01.wmv` are ASF with WMV2 video and no sound; `op.wmv`
+(100 s, the opening) is in fact an AVI file (`RIFF`) with WMV2 video at 1600x900 and PCM sound.
+The file's first bytes tell the container, not its name.
+
+### The runtime's media part ([`build-runtime.sh`](../../tools/wine-build/build-runtime.sh), part `media`)
+
+- FFmpeg 7.1.5 (its long-term branch; signature checked with FFmpeg's release key), built as
+  static, position-independent libraries with only the decoders games use: Windows Media (WMV 7-9,
+  VC-1, WMA, XMA), MPEG-1/2/4, H.264, HEVC, VP8/VP9, Theora, old AVI codecs (Cinepak, Indeo,
+  MS Video 1, ...), AAC, MP3, Vorbis, Opus, FLAC, AC-3, ADPCM, ATRAC. LGPL only, no external
+  libraries, no network, no programs.
+- gst-libav 1.24.13 linked with it into one plugin, `libgstlibav.so` (6 MB), with FFmpeg's symbols
+  hidden (`--exclude-libs`): it exports only the two plugin entry points, so it cannot clash with
+  the phone's `libavcodec60`. gst-libav does not offer FFmpeg's ASF reader ("ignoring asf").
+- `asfdemux` alone from gst-plugins-ugly 1.24.13: `libgstasf.so`.
+- Both against the container's GStreamer 1.24.2 headers (the phone's version; any 1.24.x loads
+  them), installed in the runtime's `lib/gstreamer-1.0`. Build: 44 s.
+
+[`wine-env.sh`](../../tools/ut-probe/wine-env.sh) points `GST_PLUGIN_PATH` at that folder and keeps
+GStreamer's plugin list (the registry) in a file of its own, `~/.cache/utdeck/gstreamer-registry.bin`,
+so the system's list (the Media Player's) is not rebuilt each time a game starts, and the other way
+round.
+
+First check, on the phone with stone-ut's `gst-decode-test.py` (GStreamer through Python): all three
+movies decode to the end, `op.wmv` at 143 fps (4.7 times real time), the two ASF files at 167-300 fps.
+
+### The game died at its first movie: Wine lists plugins inside itself
+
+With the new runtime, Ys closed as soon as the game started. Its log ends with the hybris plugin's
+"Failed to load hybris linker ... cannot allocate memory in static TLS block". Cause, in two parts:
+
+- Wine starts GStreamer with `--gst-disable-registry-fork` (`winegstreamer/unixlib.c`). Normally
+  GStreamer lists new or changed plugins in a helper process (`gst-plugin-scanner`); with that
+  option it loads each one into the calling process, here the game.
+- The phone's hybris plugin (Android's hardware decoders) needs the session's `GLIBC_TUNABLES`,
+  which Wine's environment drops; without it `libhybris` ends the whole process.
+
+Before step 7, Wine used the system's list, already built by the Media Player, so it never
+listed anything itself. With a list of its own, the first start listed all of the phone's plugins
+inside the game. (The old setup had a hidden risk too: through the system's list, a game playing
+H.264 could have picked the hybris decoder and died the same way.)
+
+Fix, in [`game-run.sh`](../../tools/ut-probe/game-run.sh): before Wine starts, a one-line Python
+`gst_init` brings the list up to date with the same environment. That process uses the helper,
+which takes the hybris failure and marks the plugin as unusable; Wine then only reads the list.
+About 3 s when the phone's plugins changed, 0.1 s otherwise. Checked with a fresh list: no crash.
+
+### Wine's video path checked with a test program ([`win/vidtest.c`](../../tools/ut-probe/win/vidtest.c))
+
+`vidtest.exe FILE [SECONDS] [vmr9]` (32-bit x86, like Ys) plays a file through DirectShow, with the
+default renderer or with VMR-9 (Direct3D 9, through DXVK), and prints how it ended.
+
+| File | Renderer | Result |
+| --- | --- | --- |
+| `logo.wmv` (ASF) | default (DirectDraw) | Played to the end in real time (11.5 s), but 287 of 332 frames not shown: `Failed to blit, hr 0x88760096` (`DDERR_INVALIDRECT`) |
+| `op.wmv` (AVI) | default (DirectDraw) | **Hung**: the video thread stopped inside the renderer's blit on its second frame; the sound repeated its last second (heard by the maintainer); even Stop waited forever on the filter's lock. Known issue K10 |
+| `logo.wmv` | VMR-9 | Played to the end (11.7 s) |
+| `op.wmv` | VMR-9 | **Played to the end in 100.6 s** (the file: 100.1 s), picture 29.9 fps on average with no dropped frame logged, sound right (the maintainer: smooth with a few drops, sound correct); 40-44 % of the whole CPU, GPU 31-38 %, 244 MB, 36-38 °C |
+
+In the game: Ys played `logo.wmv` through DirectShow with its own drawing (329 frames delivered, no
+renderer errors, no missing decoder). It did not ask for `op.wmv` while left on its title screen.
+
+How the two files differ inside Wine: ASF goes through Wine's ASF reader, which decodes inside its
+GStreamer pipeline; AVI goes through the AVI splitter, which hands the still-compressed video to
+Wine's "WMV decoder DMO" (a Windows-style decoder object, fed one frame at a time, `wg_transform`
+with `avdec_wmv2`). Both decoded correctly; only the window renderer failed.
+
+### Volume: games did not follow the volume keys
+
+The volume keys (ayatana-indicator-sound) set the volume of a media role (`multimedia`, `alert`,
+...), which PulseAudio's `module-stream-restore` applies to every stream with that role. Wine gives
+its streams no role, so PulseAudio kept their volume by program name, and games played at a fixed
+0 dB, louder than the media default (-8 dB) and out of the keys' reach. Fix in `wine-env.sh`:
+`PULSE_PROP='media.role=multimedia'`, which libpulse adds to every stream of the process. Checked:
+the stream showed `media.role = "multimedia"`, started at the media volume (46 %), and moved
+46 → 58 → 42 → 40 % while the maintainer pressed the keys; the music followed.
+
 ## Account and privacy
 
 The maintainer signed in on the phone (M11); Steam keeps its login token there. Steam's logs on the
@@ -549,3 +663,13 @@ chosen); both are Valve's program files, with no account data, kept in `build/` 
   fixed by keeping the window's size and fitting into the configured size. M14 (started upright):
   works in both orientations. M15 (started sideways): Lomiri configures portrait and stops
   rotating the window; open.
+- 2026-11-19, later: the 3.S notes got a known issues table (K1-K9) and next steps. Step 6 (M16):
+  two clean starts and quits, hidden Steam back to idle. In the first run the controller connected
+  after the start and Ys drew its world black (a known game bug with some controllers); with the
+  controller on before the start the second run played normally. Step 7 next.
+- 2026-11-19, later: step 7. The runtime got a `media` part: FFmpeg 7.1.5 inside gst-libav 1.24.13,
+  and asfdemux. The first game start with it died: Wine lists GStreamer plugins inside the game,
+  and the phone's hybris plugin ends the process; fixed by updating the list before Wine starts.
+  Ys's logo movie plays; its opening (an AVI) plays to the end through VMR-9 with sound; the
+  default DirectShow window renderer fails (K10). Games' sound now follows the volume keys
+  (`media.role=multimedia`). 3.S done, except what is parked or listed as known issues.
