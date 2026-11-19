@@ -1,0 +1,73 @@
+#!/usr/bin/env python3
+"""UTDeck stage 3.S: make a compatibility tool Steam's default for Windows games, without its window.
+
+    set-default.py [TOOL]          default TOOL: utdeck; "--show" prints the current mappings
+
+Runs on the phone, with Steam stopped (Steam rewrites config.vdf while it runs). Writes the entry
+the settings page "Enable Steam Play for all other titles" writes: CompatToolMapping, app "0", into
+~/.local/share/Steam/config/config.vdf, under InstallConfigStore/Software/Valve/Steam. Only that
+block is touched; the old file is kept next to it as config.vdf.utdeck-bak, on the phone (the file
+holds account data and never leaves the phone). Prints only the mapping block, nothing else of the
+file.
+"""
+import os
+import re
+import shutil
+import subprocess
+import sys
+
+CFG = os.path.expanduser("~/.local/share/Steam/config/config.vdf")
+arg = sys.argv[1] if len(sys.argv) > 1 else "utdeck"
+
+if subprocess.run(["pgrep", "-u", str(os.getuid()), "-f", "[s]teamrtarm64/"],
+                  stdout=subprocess.DEVNULL).returncode == 0 and arg != "--show":
+    sys.exit("Steam is running: stop it first (steam-service.sh stop)")
+
+lines = open(CFG, encoding="utf-8").read().split("\n")
+
+
+def find_block(start, end, depth, key):
+    """Index of the line `<depth tabs>"key"` followed by `<depth tabs>{`, and of its closing brace."""
+    head = "\t" * depth + f'"{key}"'
+    for i in range(start, end):
+        if lines[i] == head and lines[i + 1] == "\t" * depth + "{":
+            for j in range(i + 2, end):
+                if lines[j] == "\t" * depth + "}":
+                    return i, j
+    return None
+
+
+path = [(0, "InstallConfigStore"), (1, "Software"), (2, "Valve"), (3, "Steam")]
+lo, hi = 0, len(lines)
+for depth, key in path:
+    b = find_block(lo, hi, depth, key)
+    if not b:
+        sys.exit(f"config.vdf: no {key} block where expected; not touching it")
+    lo, hi = b
+m = find_block(lo, hi, 4, "CompatToolMapping")
+
+if arg == "--show":
+    print("\n".join(lines[m[0]:m[1] + 1]) if m else "no CompatToolMapping block")
+    sys.exit(0)
+if not re.fullmatch(r"[A-Za-z0-9_.-]+", arg):
+    sys.exit("tool name: letters, digits, _ . - only")
+
+t = "\t"
+entry = [t * 5 + '"0"', t * 5 + "{", t * 6 + f'"name"\t\t"{arg}"', t * 6 + '"config"\t\t""',
+         t * 6 + '"priority"\t\t"75"', t * 5 + "}"]
+if m:
+    old = find_block(m[0] + 2, m[1], 5, "0")
+    if old:
+        del lines[old[0]:old[1] + 1]
+        m = (m[0], m[1] - (old[1] + 1 - old[0]))
+    lines[m[0] + 2:m[0] + 2] = entry
+else:
+    lines[lo + 2:lo + 2] = [t * 4 + '"CompatToolMapping"', t * 4 + "{"] + entry + [t * 4 + "}"]
+
+shutil.copy2(CFG, CFG + ".utdeck-bak")
+tmp = CFG + ".utdeck-tmp"
+with open(tmp, "w", encoding="utf-8") as f:
+    f.write("\n".join(lines))
+os.replace(tmp, CFG)
+m = find_block(lo, len(lines), 4, "CompatToolMapping")
+print("\n".join(lines[m[0]:m[1] + 1]))

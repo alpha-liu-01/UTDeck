@@ -430,7 +430,8 @@ waits through `wineserver` like upstream Wine; the base is decided by measuremen
 ([stage3.1-runtime-build.md](stage3.1-runtime-build.md)): one script builds the whole runtime from
 pinned sources, byte-identical between builds, half Hangover's size, equal in every test, with
 VKD3D-Proton added (Direct3D 12 runs on the A619); it is now the default on the phone, and 3DMark
-11 and the gamepad work on it. Next: 3.2, the game list.
+11 and the gamepad work on it. 3.2 closed with no games in the table (the copies at hand carried DRM
+bypasses); Steam moves forward into stage 3 ([plan-change-steam-early.md](plan-change-steam-early.md)).
 
 ### Stage 4. The frontend
 
@@ -489,6 +490,10 @@ setup.
    No DRM bypass or Steam emulator is shipped.
 
 Exit: games from at least two stores start from UTDeck's library.
+
+Plan change (2026-11-19): the part of step 3 that lets Steam games start through UTDeck's runtime
+moves into stage 3 (stage 3.S), so the compatibility table can use the maintainer's Steam library:
+[plan-change-steam-early.md](plan-change-steam-early.md). The rest of this stage stays here.
 
 ### Stage 8. More devices
 

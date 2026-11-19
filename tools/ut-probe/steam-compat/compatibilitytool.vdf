@@ -1,0 +1,16 @@
+// UTDeck stage 3.S: UTDeck's runtime as a Steam compatibility tool (installed by steam-push.sh into
+// ~/.local/share/Steam/compatibilitytools.d/utdeck). Windows games to Linux (Steam's name for this
+// phone's platform too).
+"compatibilitytools"
+{
+  "compat_tools"
+  {
+    "utdeck"
+    {
+      "install_path" "."
+      "display_name" "UTDeck runtime"
+      "from_oslist" "windows"
+      "to_oslist" "linux"
+    }
+  }
+}

@@ -905,3 +905,109 @@ Problems met while building UTDeck on the Redmi Note 12 5G (stone). Details in `
   pushed `rt-gfx.sh` replaced the phone's executable copy and the user unit failed with status 126
   (no permission). The repository's scripts are now executable, and tests check the unit's journal
   when a log does not appear.
+- **Look for DRM bypasses before the first start, not after (stage 3.2).** Three game copies
+  offered for the compatibility table turned out to carry cracks: a Steam emulator
+  (`steam_emu.ini`, a replaced `steam_api.dll`), a no-DVD executable (the marker `*!ReLOADeD!*` in
+  `speed.exe`) and a crack DLL for a publisher's DRM (`kDays.dll`, "Universal Cracker Kernel"). One
+  of them was found only after it had been tested, and its results were withdrawn. UTDeck does not
+  test games through DRM bypasses. Lesson: before copying a game to the phone, check its folder
+  (`steam_emu.ini`, `*.cdx`, unexpected `steam_api.dll`, crack DLLs) and run `strings` on its
+  executables and DLLs for group names and words like "crack".
+- **Ubuntu Touch's session sets variables that steer other programs (stage 3.S).** Every app gets
+  `SDL_VIDEODRIVER=wayland,x11`, `XDG_SESSION_TYPE=mir`, `QT_QPA_PLATFORM=...` and a glibc tunable
+  (`glibc.rtld.optional_static_tls=4096`, which libhybris programs need). An SDL3 built without
+  Wayland stops at the first name instead of trying the second; a libhybris tool run from adb
+  (`mirscreencast`) fails with "cannot allocate memory in static TLS block" without the tunable.
+  Lesson: read `systemctl --user show-environment` before guessing why a program behaves
+  differently from adb and from the app drawer, and set such variables outright, not with `${X:-}`.
+- **Valve's ARM64 Steam client assumes the Steam Frame (stage 3.S).** Its web helper asks SDL3 for
+  Wayland whatever the environment says, its bundled SDL3 has no Wayland, its start script sets
+  `LIBGL_KOPPER_DISABLE=true` and pins it to CPUs 2-6, and it expects its parts to run in the Steam
+  Runtime. Each of these had a different fix (our own SDL3 at Valve's commit, Mesa patches 0003 and
+  0004, the runtime's tools in `PATH`). Lesson: with a build made for one device, list what that
+  device provides (compositor, runtime, CPU layout) and check each against ours, instead of fixing
+  errors one at a time as they appear.
+- **Killed Steam runs leave shared memory behind (stage 3.S).** `/dev/shm` (RAM) held 1.1 GB of
+  `u<uid>-Shm_*` segments after a day of test runs. The start script now removes them when no Steam
+  process is left. Lesson: after killing a program in tests, check `/dev/shm` as well as processes.
+- **The phone's screen can be checked from the PC (stage 3.S).** `mirscreencast` with the session's
+  glibc tunable gives a raw RGBA frame (`tools/ut-probe/screenshot.sh`). Many "does it show?"
+  questions no longer need the maintainer.
+- **SDL3 ignores SDL_VIDEODRIVER on Ubuntu Touch (stage 3.S).** `SDL_IsUbuntuTouch()` (true when
+  `XDG_SESSION_DESKTOP=ubuntu-touch`) makes SDL3 always use Wayland. A program whose SDL has no
+  Wayland, or which needs X11 handles (Steam's web helper), fails with misleading errors. Unset
+  `XDG_SESSION_DESKTOP` for such programs. It took a day of other theories to find, because the
+  logged error ("Invalid window") was a stale one. Lesson: when a library seems to ignore its
+  configuration, read the library's source for platform special cases before testing more
+  settings; a disassembler on the caller then shows what it really needs.
+- **Steam on ARM64 would emulate all of Proton (stage 3.S).** The ARM64 client downloads the
+  x86-64 Proton and runs it, Wine included, through FEX inside Steam Linux Runtime 4: it adds FEX
+  under every tool named `SteamLinuxRuntime_*` (not `-arm64`), and Proton requires SLR 4. A custom
+  compatibility tool whose `toolmanifest.vdf` requires nothing gets neither the container nor FEX.
+  Lesson: before replacing a vendor's chain, read its manifests and the client's rule for chaining
+  them (here in `steamclient.so`, next to its debug messages).
+- **Steam gives install scripts paths relative to its own folder (stage 3.S).** The install script
+  is started as `iscriptevaluator.exe legacycompat\evaluatorscript_<appid>.vdf` from Steam's folder.
+  Our launcher changed into the program's folder first, so the script was not found (exit 1).
+  Lesson: a launcher keeps the working folder it is given, as Proton does; Steam already sets it to
+  the game's folder for games.
+- **`echo` of the phone's `sh` reads backslashes (stage 3.S).** `legacycompat\evaluatorscript...`
+  was logged as `legacycompatvaluatorscript...` (`\e` became an escape character), which hid the
+  real argument. Lesson: in sh scripts, print paths and arguments with `printf '%s\n'`, never `echo`.
+- **A wrapper returned the wrong exit code (stage 3.S).** `game-run.sh` ended with `wineserver -k`,
+  so every run looked like exit 0 to Steam and to our log, while the program had returned 1 or 53.
+  Lesson: save `$?` right after the command that matters and `exit` with it at the end.
+- **Box64 spins in the Visual C++ 2015 installer; FEX runs it (stage 3.S).** Steam's redistributable
+  step started `vc_redist.x86.exe /q`; its unelevated child (WiX "burn" engine) used one core at
+  100 % for 10 minutes without progress under Box64 0.4.4 (Wine's default for 32-bit code). Under
+  FEX (`HODLL=libwow64fex.dll`) the same installer finished in 8 s. Our tool now runs Steam's
+  install scripts under FEX. Lesson: when 32-bit code hangs at full CPU, try the other emulator
+  before debugging Wine; which one games get is a measurement, not a guess.
+- **Steam passes Steam Frame settings to every game (stage 3.S).** `VK_INSTANCE_LAYERS` names two
+  Vulkan layers this phone does not have (the loader skips them, with a warning) and `TU_DEBUG_FILE`
+  lets a file change Turnip's debug options while a game runs. Our tool clears both. Lesson: log
+  the environment a launcher receives (names only where values can hold account data, as
+  `SteamUser` does) before trusting it.
+- **The phone dropped off USB during work (stage 3.S, 2026-11-19).** adbd logged
+  `FUNCTIONFS_SUSPEND` then `DISABLE` (the PC side stopped the link); the PC's kernel then logged a
+  reconnect with `error -71` (a USB protocol error) and another drop 21 s later. The phone had not
+  rebooted (it was up for a day); the maintainer restarted it and it has worked since. Cause still
+  open: the cable or the PC's port are the first suspects, not Steam. Lesson: when adb disappears,
+  check `journalctl -k` on the PC and adbd's log on the phone before suspecting the last command.
+- **Proton's Steam bridge is half in Proton, half in Proton's Wine (stage 3.S).** `lsteamclient` and
+  `steam.exe` build from Proton's tree, but a game reaches them only because Proton's Wine loader
+  turns Valve's Windows `steamclient.dll` into jumps to `lsteamclient`; without that (our Wine,
+  AndreRH's), the game loads Valve's DLL, finds no Steam and quits (Ys: exit 53). Ported as Wine
+  patch 0009. Lesson: when taking one component from a project, search its other repositories
+  (here its Wine fork) for the code that calls it.
+- **Wine's makedep cannot build a module from outside the tree (stage 3.S).** Proton's Wine has a
+  makedep change for that; ours crashes (no `include` among the folders) or wants every IDL
+  dependency. A copy of the build tree made of links, with the module added, and `make` asked for
+  only the module's files, builds it without touching Wine's own tree. Check with `make -n` which
+  folders a build would write before running it on a shared tree.
+- **A hidden window still costs CPU (stage 3.S).** Steam's main window opened on the invisible
+  Xvfb screen when a game was started with `steam -applaunch` (which brings the window up, as a
+  second start of Steam does); its Store page played trailers, composited in software by Mesa's
+  llvmpipe: 200-280 % CPU while the game ran, unseen. Found by listing the windows on that screen
+  (`xwin.py`, through libX11 with ctypes, as the phone has no X tools) and fixed by closing the
+  window. Lesson: when a background program costs CPU, look at what it draws, even where nobody
+  can see it; thread names (`llvmpipe-N`, `Media`) point at the cause.
+- **Steam account numbers appear in paths (stage 3.S).** Steam's folders for an account are named
+  by its number (`userdata/<n>`, `Steam Controller Configs/<n>`), so log lines and file lists can
+  show it. Filters now also mask numbers of 9 digits or more.
+- **This phone's `adb shell` always exits 0 (stage 3.S).** Wait loops written as
+  `until adb shell 'pgrep ...'` stopped at the first try, so some waits looked as if programs had
+  been running for less time than had passed. Already noted in `runtime-push.sh`, missed again.
+  Lesson: over adb, decide on the command's output (`[ "$(adb shell '... | grep -c X')" -gt 0 ]`),
+  never on its exit code.
+- **Lomiri decides a window's orientation, and may stop rotating it (stage 3.S).** A fullscreen
+  window from a background service (a Steam game) got 1080x2400 although the phone was sideways,
+  and then no configure at all when the phone turned; started upright, every turn arrived. A
+  program cannot rotate itself on Lomiri: it can only follow the sizes Lomiri sends. Lesson: test
+  orientation from both starting positions, and note how the program was started (a Lomiri app
+  with a desktop file, or not).
+- **Do not let the compositor resize a game's window behind its back (stage 3.S).** Patch 0003
+  resizes a fullscreen window to follow a rotation, which is right for games that fill the
+  screen at the panel's resolution; for a game shown scaled (fill mode) it turned its 1200x540
+  window into 1080x2400: a portrait picture and four times the pixels. Lesson: when Wine shows a
+  window differently from its size, keep the window's size and change only how it is shown.

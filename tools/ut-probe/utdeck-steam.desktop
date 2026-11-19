@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Steam (UTDeck test)
+Comment=UTDeck stage 3.S: Valve's ARM64 Steam client on Ubuntu Touch
+Exec=/home/phablet/utdeck-probe/steam/steam-run.sh -cef-disable-breakpad
+Icon=/home/phablet/.local/share/Steam/public/steam_tray.ico
+Terminal=false
+X-Lomiri-Touch=true
+X-Lomiri-Single-Instance=true

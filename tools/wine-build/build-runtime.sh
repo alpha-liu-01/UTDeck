@@ -16,6 +16,9 @@
 #          games), aarch64 (plain ARM64 programs)
 #   vkd3d  VKD3D-Proton (Direct3D 12): arm64x (both kinds of 64-bit process) and x86 (32-bit)
 #   mono   Wine Mono (.NET), the version this Wine asks for, found by wineboot in share/wine/mono
+#   steam  Proton's lsteamclient (Steam's API for Windows games, passed on to the Linux Steam client)
+#          and its steam.exe helper, built in Wine's own build tree as Proton does: ARM64X and i386
+#          DLLs, an aarch64 Unix library (needs the wine part's build tree in build/runtime-obj)
 #
 # Layout: bin/ (wine, wineserver and the user-facing launchers), lib/wine/{aarch64-unix,
 # aarch64-windows,i386-windows}, share/wine, lib/dxvk/<arch>, lib/vkd3d-proton/<arch>. Wine finds
@@ -32,7 +35,7 @@ RT="$OUT/utdeck-runtime"
 TC_VER=20261104
 TC="$REPO_DIR/build/toolchains/llvm-mingw-$TC_VER-ucrt-ubuntu-22.04-x86_64"
 IMAGE=utdeck-wine-cross
-PARTS=${PARTS:-wine fex box64 dxvk vkd3d mono}
+PARTS=${PARTS:-wine fex box64 dxvk vkd3d mono steam}
 if [ -z "${PATCHES+x}" ]; then PATCHES=$(ls "$REPO_DIR"/tools/wine-build/patches/*.patch 2>/dev/null || true); fi
 
 WINE_URL=https://github.com/AndreRH/wine.git
@@ -51,6 +54,8 @@ MONO_VERSION=11.3.0
 MONO_URL=https://dl.winehq.org/wine/wine-mono/$MONO_VERSION/wine-mono-$MONO_VERSION-arm64.msi
 MONO_SHA256=b0c47d374efaf22cbff76cb10488ac2d1627b067e085aef7acec573884120e0f   # as in Wine's appwiz.cpl
 MONO_MSI="$REPO_DIR/build/toolchains/wine-mono-$MONO_VERSION-arm64.msi"
+PROTON_URL=https://github.com/ValveSoftware/Proton.git
+PROTON_COMMIT=bc896217ffcd67f892f952b010f898fe7bd0f0a1  # proton-11.0-2e: lsteamclient and steam_helper only
 
 has() { case " $PARTS " in *" $1 "*) return 0;; esac; return 1; }
 
@@ -100,6 +105,15 @@ if has dxvk; then
     for p in "$REPO_DIR"/tools/wine-build/patches-dxvk/*.patch; do git -C "$SRC/dxvk" apply "$p"; done
 fi
 has vkd3d && fetch "$SRC/vkd3d-proton" "$VKD3D_URL" "$VKD3D_COMMIT"
+if has steam; then
+    # Only the two folders: Proton's other submodules (Wine, DXVK, gstreamer, ...) are large and unused.
+    if [ "$(git -C "$SRC/proton" rev-parse -q --verify HEAD 2>/dev/null || true)" != "$PROTON_COMMIT" ]; then
+        [ -d "$SRC/proton/.git" ] || { git init -q "$SRC/proton" && git -C "$SRC/proton" remote add origin "$PROTON_URL"; }
+        git -C "$SRC/proton" sparse-checkout set --no-cone /lsteamclient/ /steam_helper/
+        git -C "$SRC/proton" fetch -q --depth 1 --filter=blob:none origin "$PROTON_COMMIT"
+        git -C "$SRC/proton" checkout -q --force --detach "$PROTON_COMMIT"
+    fi
+fi
 if has mono; then
     [ -f "$MONO_MSI" ] || curl -fsSL -o "$MONO_MSI" "$MONO_URL"
     echo "$MONO_SHA256  $MONO_MSI" | sha256sum -c --quiet
@@ -183,6 +197,39 @@ if has vkd3d; then
     '
 fi
 
+# ---- lsteamclient and steam.exe: Proton builds them with Wine's makedep inside Wine's build tree
+# (its Wine's makedep accepts modules from outside the tree; ours does not). So both modules are
+# added to a copy of the tree made of links: steam-src (Wine's sources plus dlls/lsteamclient and
+# programs/steam) and steam-obj (our finished wine-arm64 build plus a copy of its include folder),
+# and only their five files are built. The Unix side is C++ and links with gcc: -lstdc++ added.
+if has steam; then
+    echo "steam: building lsteamclient and steam.exe (log: build/runtime-obj/steam-make.log)"
+    rm -rf "$OBJ/steam-src" "$OBJ/steam-obj" "$OBJ/steam-out"
+    in_container '
+        S=/obj/steam-src B=/obj/steam-obj
+        mkdir -p $S/dlls $S/programs $B/dlls $B/programs /obj/steam-out
+        for f in /wine/*; do n=${f##*/}; case $n in dlls|programs) ;; *) ln -s $f $S/$n ;; esac; done
+        for f in /wine/dlls/* /wine/programs/*; do ln -s $f $S/${f#/wine/}; done
+        ln -s /src/proton/lsteamclient $S/dlls/lsteamclient
+        ln -s /src/proton/steam_helper $S/programs/steam
+        for f in /obj/wine-arm64/*; do n=${f##*/}; case $n in dlls|programs|include|Makefile|config.status) ;; *) ln -s $f $B/$n ;; esac; done
+        for f in /obj/wine-arm64/dlls/* /obj/wine-arm64/programs/*; do ln -s $f $B/${f#/obj/wine-arm64/}; done
+        cp -a /obj/wine-arm64/include $B/include
+        touch -r /obj/wine-arm64/config.status $B/config.status   # older than include/stamp-h: no reconfigure
+        sed -e "1 i\\UNIX_LIBS = -lstdc++" \
+            -e "/^all:\$/,\$c all:" \
+            -e "s#^SUBDIRS = *\\\\\$#SUBDIRS = dlls/lsteamclient programs/steam \\\\#" \
+            -e "/^TOP_INSTALL_LIB/c TOP_INSTALL_LIB =" -e "/^TOP_INSTALL_DEV/c TOP_INSTALL_DEV =" \
+            -e "/^srcdir/c srcdir = $S" /obj/wine-arm64/Makefile > $B/Makefile
+        cd $B && /obj/wine-tools/tools/makedep
+        T="dlls/lsteamclient/aarch64-windows/lsteamclient.dll dlls/lsteamclient/i386-windows/lsteamclient.dll
+           dlls/lsteamclient/lsteamclient.so programs/steam/aarch64-windows/steam.exe programs/steam/i386-windows/steam.exe"
+        make -j$J $T > /obj/steam-make.log 2>&1 || { grep -E "error:|Error [0-9]" /obj/steam-make.log | head -20 >&2; exit 1; }
+        for t in $T; do a=${t%/*}; a=${a##*/}; case $a in lsteamclient|steam) a=aarch64-unix ;; esac
+            mkdir -p /obj/steam-out/$a && cp $t /obj/steam-out/$a/; done
+    '
+fi
+
 # ---- assemble the runtime folder from whatever has been built
 echo "assembling build/runtime/utdeck-runtime"
 in_container '
@@ -200,6 +247,11 @@ in_container '
         -o -name "*.sys" -o -name "*.cpl" -o -name "*.ocx" -o -name "*.acm" -o -name "*.ax" -o -name "*.ds" \) \
         -exec llvm-strip --strip-debug {} +
     cp /obj/libarm64ecfex.dll /obj/libwow64fex.dll /obj/wowbox64.dll $R/lib/wine/aarch64-windows/
+    if [ -d /obj/steam-out ]; then
+        cp -a /obj/steam-out/aarch64-windows /obj/steam-out/i386-windows /obj/steam-out/aarch64-unix $R/lib/wine/
+        aarch64-linux-gnu-strip --strip-unneeded $R/lib/wine/aarch64-unix/lsteamclient.so
+        llvm-strip --strip-debug $R/lib/wine/*-windows/lsteamclient.dll $R/lib/wine/*-windows/steam.exe
+    fi
     mkdir -p $R/lib/dxvk $R/lib/vkd3d-proton
     for a in arm64ec x32 aarch64; do cp -a /obj/dxvk/dxvk-'"$DXVK_VERSION"'/$a $R/lib/dxvk/; done
     for a in arm64x x86; do cp -a /obj/vkd3d/vkd3d-proton-'"$VKD3D_VERSION"'/$a $R/lib/vkd3d-proton/; done
@@ -220,6 +272,7 @@ VERSION="11.16-$(date -u +%Y%m%d)"
     echo "dxvk: $DXVK_URL $DXVK_COMMIT ($DXVK_VERSION), patches: $(cd "$REPO_DIR/tools/wine-build/patches-dxvk" && ls | tr '\n' ' ')"
     echo "vkd3d-proton: $VKD3D_URL $VKD3D_COMMIT ($VKD3D_VERSION)"
     echo "wine-mono: $MONO_URL sha256 $MONO_SHA256"
+    [ -f "$RT/lib/wine/aarch64-unix/lsteamclient.so" ] && echo "lsteamclient, steam.exe: $PROTON_URL $PROTON_COMMIT (proton-11.0-2e)"
     echo "size: $(du -sh "$RT" | cut -f1)"
     echo "sha256:"
     (cd "$RT" && sha256sum bin/wine bin/wineserver lib/wine/aarch64-unix/ntdll.so lib/wine/aarch64-unix/win32u.so \

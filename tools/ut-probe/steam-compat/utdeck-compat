@@ -1,0 +1,155 @@
+#!/bin/sh
+# UTDeck stage 3.S: what Steam runs to start a Windows game with UTDeck's runtime (our custom
+# compatibility tool; toolmanifest.vdf: "/utdeck-compat %verb%").
+#
+#   utdeck-compat VERB [ARGS...]
+#
+# Verbs, the same as Proton's:
+#   run, waitforexitandrun   start the game (ARGS = its command line) through game-run.sh, so it
+#                            gets our driver, the landscape monitor, MAILBOX, the frame statistics
+#                            and the sensor log; waitforexitandrun first waits for the prefix's
+#                            Wine to finish (Steam uses it after install scripts)
+#   runinprefix              run ARGS with Wine in the game's prefix, nothing else
+#   getcompatpath PATH       Linux path to Windows path
+#   getnativepath PATH       Windows path to Linux path
+#   destroyprefix            remove the game's prefix
+#
+# Each game has its own Wine prefix, as with Proton: $STEAM_COMPAT_DATA_PATH/pfx
+# (steamapps/compatdata/<appid>/pfx), made on the first start and prepared for Steam as Proton
+# does: Valve's Windows Steam files from Steam's legacycompat folder in C:\Program Files (x86)\Steam,
+# and the registry keys that point games at them (steam-prefix.reg). Programs are started through
+# Proton's steam.exe (built into the runtime, stage 3.S step 5), which tells the Linux client which
+# game runs and writes Steam's registry; a game's steamclient.dll then becomes lsteamclient (Wine
+# patch 0009), which passes its calls to the Linux client. Every call is logged to
+# $STEAM_COMPAT_DATA_PATH/utdeck-compat.log with the environment Steam gave, restricted to names
+# that cannot hold account data (Steam also passes SteamUser, which is the account name).
+set -u
+VERB=${1:-}
+[ $# -gt 0 ] && shift
+W=/home/phablet/utdeck-probe/wine
+DATA=${STEAM_COMPAT_DATA_PATH:-}
+[ -n "$DATA" ] || { echo "utdeck-compat: no STEAM_COMPAT_DATA_PATH" >&2; exit 1; }
+mkdir -p "$DATA"
+LOG=$DATA/utdeck-compat.log
+APPID=${STEAM_COMPAT_APP_ID:-${SteamAppId:-0}}
+{
+    echo "== $(date '+%F %T') verb=$VERB appid=$APPID"
+    # printf, not echo: this sh's echo reads backslashes as escapes, and Windows paths have them
+    for a in "$@"; do printf '  arg: %s\n' "$a"; done
+    env | grep -E '^(STEAM_COMPAT_[A-Z_]+|SteamAppId|SteamGameId|SteamOverlayGameId|STEAM_RUNTIME[A-Z_]*|LD_PRELOAD|LD_LIBRARY_PATH|ENABLE_VK_[A-Za-z_0-9]+|DISABLE_VK_[A-Za-z_0-9]+|VK_[A-Z_]+|DISPLAY|WAYLAND_DISPLAY|SDL_[A-Z_]+|PWD)=' \
+        | sed -E 's/[0-9]{15,}/(long number)/g; s/^/  env: /'
+    echo "  other variables (names only): $(env | sed -n 's/^\([A-Za-z_][A-Za-z_0-9]*\)=.*/\1/p' | grep -vE '^(STEAM_COMPAT_|SteamAppId$|SteamGameId$|SteamOverlayGameId$|STEAM_RUNTIME|LD_PRELOAD$|LD_LIBRARY_PATH$|ENABLE_VK_|DISABLE_VK_|VK_|DISPLAY$|WAYLAND_DISPLAY$|SDL_|PWD$)' | sort | tr '\n' ' ')"
+} >> "$LOG"
+
+export WINEPREFIX=$DATA/pfx
+# Per-game settings: compatdata/<appid>/utdeck-env, one NAME=value per line (for example
+# WINEDEBUG_GAME=+loaddll or GAME_OVERRIDES=d3dx9_43=n), since Steam starts us with its own
+# environment. Lines starting with # are skipped.
+if [ -f "$DATA/utdeck-env" ]; then
+    while IFS= read -r line; do
+        case "$line" in ''|'#'*) continue ;; *=*) export "$line"; printf '  per-game: %s\n' "$line" >> "$LOG" ;; esac
+    done < "$DATA/utdeck-env"
+fi
+TOOL=$(cd "$(dirname "$0")" && pwd)
+STEAM=${STEAM_COMPAT_CLIENT_INSTALL_PATH:-$HOME/.local/share/Steam}
+
+# prepare_prefix: make the prefix if needed (as game-run.sh would), then the Steam parts. The
+# registry file is imported again when it changes (its checksum is kept in the prefix).
+prepare_prefix() {
+    (
+        . $W/env.sh
+        if [ ! -d "$WINEPREFIX/drive_c" ]; then
+            wineboot -i > /dev/null 2>&1; wineserver -w; $W/prefix-dlls.sh > /dev/null
+            echo "  prefix made" >> "$LOG"
+        fi
+        S="$WINEPREFIX/drive_c/Program Files (x86)/Steam"
+        mkdir -p "$S"
+        for f in steamclient.dll steamclient64.dll GameOverlayRenderer64.dll Steam.dll; do
+            [ -f "$STEAM/legacycompat/$f" ] && cp -u "$STEAM/legacycompat/$f" "$S/$f"
+        done
+        [ -f "$STEAM/legacycompat/SteamService.exe" ] && cp -u "$STEAM/legacycompat/SteamService.exe" "$S/steam.exe"
+        sum=$(sha256sum "$TOOL/steam-prefix.reg" | cut -c1-16)
+        if [ "$(cat "$DATA/utdeck-prefix-reg" 2>/dev/null)" != "$sum" ]; then
+            wine regedit /S "$(winepath -w "$TOOL/steam-prefix.reg" 2>/dev/null)" > /dev/null 2>&1 && wineserver -w &&
+                echo "$sum" > "$DATA/utdeck-prefix-reg" && echo "  Steam registry keys imported" >> "$LOG"
+        fi
+        # UTDECK_RESOLUTION=WxH (per-game, utdeck-env): a display mode smaller than the panel, for
+        # games whose "fullscreen" is a desktop-sized window or that only offer windows: Wine scales
+        # a mode smaller than the monitor to the panel (patch 0006); patch 0008's screen-shaped
+        # modes (1200x540, 1600x720, 1920x864, 2000x900) fill it with no black bars.
+        # - With UTDECK_RESOLUTION_FOR="EXE [ARGS];..." only those programs get the mode, while they
+        #   run (Wine patch 0010); the prefix's desktop stays native, so a game's launcher fits.
+        #   Ys: Memories of Celceta: UTDECK_RESOLUTION_FOR=Ysc_dx11.exe nlc (its launcher starts the
+        #   game with "nlc").
+        # - Without it the whole prefix's desktop gets the mode: setmode.exe stores it in the
+        #   registry, and Wine's explorer applies it at every start of the prefix. It runs only when
+        #   the setting changes, with the game's display environment (landscape).
+        want=native
+        [ -n "${UTDECK_RESOLUTION:-}" ] && [ -z "${UTDECK_RESOLUTION_FOR:-}" ] && want=$UTDECK_RESOLUTION
+        if [ "$(cat "$DATA/utdeck-resolution" 2>/dev/null || echo native)" != "$want" ]; then
+            out=$(WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-wayland-0} UTDECK_WAYLAND_LANDSCAPE=1 DISPLAY= \
+                  wine "$(winepath -w "$TOOL/setmode.exe" 2>/dev/null)" "$want" 2>&1 | grep -v -i wayland)
+            wineserver -w
+            printf '  %s\n' "$out" >> "$LOG"
+            case "$out" in *"set and stored"*) echo "$want" > "$DATA/utdeck-resolution" ;; esac
+        fi
+    )
+}
+# Steam's Vulkan layers for games stay out for now: its overlay is not wired up for our runtime, and
+# its pipeline-caching layer (fossilize) is measured separately before it is allowed in.
+unset ENABLE_VK_LAYER_VALVE_steam_overlay_1 ENABLE_VK_LAYER_VALVE_steam_fossilize_1
+export DISABLE_VK_LAYER_VALVE_steam_fossilize_1=1
+# Left from the Steam Frame build, set by the client for every game: two Vulkan layers this phone
+# does not have (VK_LAYER_VALVE_rpo, VK_LAYER_VALVE_fdm_injection; the loader skips missing ones,
+# but nothing of the Steam Frame belongs here) and a file through which Turnip's debug options can
+# be changed while the game runs.
+unset VK_INSTANCE_LAYERS TU_DEBUG_FILE
+
+case "$VERB" in
+run|waitforexitandrun)
+    [ $# -gt 0 ] || { echo "  no command line" >> "$LOG"; exit 1; }
+    if [ "$VERB" = waitforexitandrun ] && [ -d "$WINEPREFIX" ]; then
+        ( . $W/env.sh; wineserver -w )
+    fi
+    # Steam's install scripts (iscriptevaluator.exe, which starts the Steamworks redistributables'
+    # installers) run their 32-bit code under FEX, not Box64: Box64 0.4.4 spins forever in the
+    # Visual C++ 2015 installer (its WiX "burn" engine, 100 % of a core, no progress in 10 min); under
+    # FEX it finishes in 8 s. Games keep the runtime's default until 32-bit emulators are measured.
+    case "$1" in
+    */iscriptevaluator.exe) export HODLL=libwow64fex.dll ;;
+    esac
+    prepare_prefix
+    # game-run.sh sets the rest of the environment (env.sh, Wayland, overrides) and the logs, in
+    # wine/games/steam-<appid>-<time>.*. It starts in Steam's working folder, as Proton does: Steam
+    # sets it to the game's folder for games, and gives paths relative to it for its install
+    # scripts (legacycompat\evaluatorscript_<appid>.vdf, from Steam's own folder). steam.exe is
+    # Proton's builtin one ("b"), never the Valve SteamService.exe copied as Steam\steam.exe.
+    GAME_OVERRIDES="steam.exe=b${GAME_OVERRIDES:+;$GAME_OVERRIDES}" \
+        "$W/game-run.sh" "steam-$APPID" "$PWD" 'C:\windows\system32\steam.exe' "$@"
+    rc=$?
+    echo "  exit $rc ($(date +%T))" >> "$LOG"
+    exit $rc
+    ;;
+runinprefix)
+    . $W/env.sh
+    wine "$@"
+    ;;
+getcompatpath)
+    . $W/env.sh
+    wine winepath -w "$1" 2>> "$LOG"
+    ;;
+getnativepath)
+    . $W/env.sh
+    wine winepath "$1" 2>> "$LOG"
+    ;;
+destroyprefix)
+    case "$WINEPREFIX" in
+    */steamapps/compatdata/*/pfx) rm -rf "$WINEPREFIX"; echo "  prefix removed" >> "$LOG" ;;
+    *) echo "  not removing unexpected path $WINEPREFIX" >> "$LOG"; exit 1 ;;
+    esac
+    ;;
+*)
+    echo "  unknown verb" >> "$LOG"
+    exit 1
+    ;;
+esac

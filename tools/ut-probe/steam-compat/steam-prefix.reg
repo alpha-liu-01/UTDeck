@@ -1,0 +1,40 @@
+REGEDIT4
+
+; UTDeck: what Proton's wine.inf ([SteamClient64]) and default prefix put into every prefix, read by
+; Windows games and Steam's installers: where "Steam" is (Valve's Windows files copied from Steam's
+; legacycompat folder by utdeck-compat) and which steamclient.dll to load (patch 0009 turns it into
+; lsteamclient). Every path points to C:\Program Files (x86)\Steam, where the files are.
+
+[HKEY_CURRENT_USER\Software\Valve\Steam]
+"SteamPath"="C:\\Program Files (x86)\\Steam"
+"SteamExe"="C:\\Program Files (x86)\\Steam\\Steam.exe"
+
+[HKEY_CURRENT_USER\Software\Valve\Steam\ActiveProcess]
+"PID"=dword:0000fffe
+"SteamClientDll"="C:\\Program Files (x86)\\Steam\\steamclient.dll"
+"SteamClientDll64"="C:\\Program Files (x86)\\Steam\\steamclient64.dll"
+"SteamPath"="C:\\Program Files (x86)\\Steam"
+
+[HKEY_LOCAL_MACHINE\Software\Wow6432Node\Valve\Steam]
+"InstallPath"="C:\\Program Files (x86)\\Steam"
+
+; Steam's install scripts skip a step whose key exists. As in Proton: .NET and XNA are marked
+; installed, because Microsoft's installers do not work under Wine (Wine Mono stands in for .NET).
+[HKEY_LOCAL_MACHINE\Software\Wow6432Node\Valve\Steam\Apps\CommonRedist\.NET\3.5]
+"3.5"=dword:00000001
+[HKEY_LOCAL_MACHINE\Software\Wow6432Node\Valve\Steam\Apps\CommonRedist\.NET\3.5 Client Profile]
+"3.5 Client Profile"=dword:00000001
+[HKEY_LOCAL_MACHINE\Software\Wow6432Node\Valve\Steam\Apps\CommonRedist\.NET\4.0]
+"4.0"=dword:00000001
+[HKEY_LOCAL_MACHINE\Software\Wow6432Node\Valve\Steam\Apps\CommonRedist\.NET\4.0 Client Profile]
+"4.0 Client Profile"=dword:00000001
+[HKEY_LOCAL_MACHINE\Software\Wow6432Node\Valve\Steam\Apps\CommonRedist\.NET\4.5.2]
+"4.5.2"=dword:00000001
+[HKEY_LOCAL_MACHINE\Software\Wow6432Node\Valve\Steam\Apps\CommonRedist\.NET\4.6.2]
+"4.6.2"=dword:00000001
+[HKEY_LOCAL_MACHINE\Software\Wow6432Node\Valve\Steam\Apps\CommonRedist\.NET\4.7.2]
+"4.7.2"=dword:00000001
+[HKEY_LOCAL_MACHINE\Software\Wow6432Node\Valve\Steam\Apps\CommonRedist\.NET\4.8]
+"4.8"=dword:00000001
+[HKEY_LOCAL_MACHINE\Software\Wow6432Node\Valve\Steam\Apps\CommonRedist\XNA\4.0]
+"4.0"=dword:00000001

@@ -1,0 +1,9 @@
+// No "require_tool_appid": the ARM64 client puts its FEX layer (x86-64 emulation for a whole
+// container) only under SteamLinuxRuntime tools, and Proton gets it through SLR 4. UTDeck's runtime
+// is ARM64 code (ARM64EC Wine) and runs directly on Ubuntu Touch, with no container.
+"manifest"
+{
+  "version" "2"
+  "commandline" "/utdeck-compat %verb%"
+  "use_tool_subprocess_reaper" "1"
+}

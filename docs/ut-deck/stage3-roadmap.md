@@ -82,13 +82,28 @@ Terraria and others); some of those run from their folder without Steam, and we 
 
 ## Status
 
+**Plan change (2026-11-19):** Steam comes forward from stage 7, so the table can use the
+maintainer's Steam library: new stage **3.S** (Steam far enough to test games), then **3.2b** (the
+game list and table from Steam). See [plan-change-steam-early.md](plan-change-steam-early.md).
+
 - **3.1 (2026-11-18): done.** Notes:
   [stage3.1-runtime-build.md](stage3.1-runtime-build.md). `build-runtime.sh` builds Wine (our six
   patches), FEX, Box64, DXVK 2.7.1, VKD3D-Proton 3.1 and Wine Mono from pinned sources in 3-5
   minutes, identical byte for byte between builds; 1.1 GB (Hangover: 2.4 GB), prefixes 974 MB
   (2.3 GB). Same results and speed as Hangover in every stage 2 test; sound checked; **Direct3D 12
   runs on the A619** (feature level 11_1, shader model 5.1). Now the default on the phone; M9: the
-  gamepad and 3DMark 11 (3D, sound, filling the screen) work on it. Next: 3.2, the game list.
+  gamepad and 3DMark 11 (3D, sound, filling the screen) work on it.
+- **3.2 (2026-11-19): closed with no table entries.** Notes: [stage3.2-games.md](stage3.2-games.md).
+  The games at hand carried DRM bypasses (one was found only after testing, its results withdrawn)
+  or had been broken by a mod pack. Kept: Wine patches 0007 (frame statistics) and 0008 (display
+  modes with the screen's shape), `game-run.sh`, `push-d3dx9.sh`, a bypass check before every
+  first start. Next: 3.S, Steam.
+- **3.S (started 2026-11-19): in progress.** Notes: [stage3S-steam.md](stage3S-steam.md). Valve's
+  ARM64 Steam client runs hidden as a service on Ubuntu Touch; UTDeck's runtime is Steam's default
+  compatibility tool; Proton's `lsteamclient` and Wine patch 0009 give Windows games Steam's API
+  (Ys: Memories of Celceta runs from Steam, with audio, touch and controller); Wine patch 0010
+  shows a game window smaller than the screen filling it. Left: clean start and quit (step 6),
+  games' videos (step 7); known issues listed there (K1-K9). Then 3.2b.
 
 Rules for this stage, from the project rules:
 - Nothing system-wide on the phone: the runtime lives in a folder, chosen with environment

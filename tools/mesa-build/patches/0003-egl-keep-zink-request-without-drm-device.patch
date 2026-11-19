@@ -7,13 +7,13 @@ index a6c6f95..8c38af9 100644
              }
              if (!success) {
 -               disp->Options.Zink = EGL_FALSE;
-+               /* Keep an explicit request for zink (MESA_LOADER_DRIVER_OVERRIDE=zink): its
-+                * software-style path, which presents through Vulkan WSI (kopper), is also the way
-+                * to reach a GPU that has no DRM render node, such as Qualcomm's KGSL. Zink then
-+                * takes the first Vulkan device unless LIBGL_ALWAYS_SOFTWARE asks for a CPU one.
++               /* Keep zink (UTDeck): its software-style path, which presents through Vulkan WSI
++                * (kopper), is the way to reach a GPU with no DRM render node, such as Qualcomm's
++                * KGSL. Zink then takes the first Vulkan device. Used unless MESA_LOADER_DRIVER_OVERRIDE
++                * names another driver, so programs need no variable (Steam's web helper).
 +                */
 +               const char *override = os_get_option("MESA_LOADER_DRIVER_OVERRIDE");
-+               disp->Options.Zink = override && !strcmp(override, "zink");
++               disp->Options.Zink = !override || !*override || !strcmp(override, "zink");
                 disp->Options.ForceSoftware = EGL_TRUE;
                 if (!_eglDriver.Initialize(disp))
                    RETURN_EGL_ERROR(disp, EGL_NOT_INITIALIZED, EGL_FALSE);

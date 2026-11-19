@@ -1,0 +1,24 @@
+diff --git a/src/egl/drivers/dri2/egl_dri2.c b/src/egl/drivers/dri2/egl_dri2.c
+index edee4ff..8f4c043 100644
+--- a/src/egl/drivers/dri2/egl_dri2.c
++++ b/src/egl/drivers/dri2/egl_dri2.c
+@@ -573,9 +573,18 @@ dri2_detect_swrast_kopper(_EGLDisplay *disp)
+ {
+    struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
+ 
++   bool kopper_disable = debug_get_bool_option("LIBGL_KOPPER_DISABLE", false);
++
++   /* UTDeck: zink chosen because no DRM device works (Qualcomm's KGSL, see eglInitialize) can only
++    * present through kopper (Vulkan WSI); without it EGL cannot start at all. So ignore
++    * LIBGL_KOPPER_DISABLE there (Steam's web helper sets it for every system).
++    */
++   if (disp->Options.Zink && disp->Options.ForceSoftware)
++      kopper_disable = false;
++
+    /* Kopper won't work on Android without extra platform level support. */
+    dri2_dpy->kopper = dri2_dpy->driver_name && !strcmp(dri2_dpy->driver_name, "zink") &&
+-                      !debug_get_bool_option("LIBGL_KOPPER_DISABLE", false) && disp->Platform != _EGL_PLATFORM_ANDROID;
++                      !kopper_disable && disp->Platform != _EGL_PLATFORM_ANDROID;
+    dri2_dpy->swrast = (disp->Options.ForceSoftware && !dri2_dpy->kopper && strcmp(dri2_dpy->driver_name, "vmwgfx")) ||
+                       !dri2_dpy->driver_name || strstr(dri2_dpy->driver_name, "swrast");
+    dri2_dpy->swrast_not_kms = dri2_dpy->swrast && (!dri2_dpy->driver_name || strcmp(dri2_dpy->driver_name, "kms_swrast"));
