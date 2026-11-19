@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=3DMark 11 (UTDeck test)
+Comment=UTDeck stage 2.4: 3DMark 11 through Wine, DXVK and Turnip
+Exec=/home/phablet/utdeck-probe/wine/3dmark11-app.sh
+Icon=/home/phablet/utdeck-probe/wine/prefix/drive_c/Program Files/Futuremark/3DMark11/fm_xp_vista.ico
+Terminal=false
+X-Lomiri-Touch=true
+X-Lomiri-Single-Instance=true
+X-Lomiri-Supported-Orientations=landscape

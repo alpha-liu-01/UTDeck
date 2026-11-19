@@ -1,0 +1,66 @@
+From: UTDeck
+Subject: [PATCH] winewayland: follow the compositor's rotation for fullscreen windows
+
+Lomiri (Mir 1.x) never reports a rotation through wl_output: the mode stays portrait and there is
+no transform. The only sign is the size it configures windows with (2400x1080 instead of
+1080x2400). winewayland keeps a fullscreen window's size whatever the compositor asks (some
+applications insist on their fullscreen size), so a rotated phone showed a portrait picture in a
+landscape window.
+
+- A fullscreen window is resized when the compositor configures it with the other orientation,
+  so the application gets WM_SIZE and recreates its swapchain at the new size.
+- UTDECK_WAYLAND_LANDSCAPE=1 reports portrait output modes as landscape, so that games, which
+  pick their resolution from the monitor's modes, see a landscape screen.
+---
+diff --git a/dlls/winewayland.drv/wayland_output.c b/dlls/winewayland.drv/wayland_output.c
+index f76881a1..e08121ad 100644
+--- a/dlls/winewayland.drv/wayland_output.c
++++ b/dlls/winewayland.drv/wayland_output.c
+@@ -208,9 +208,27 @@ static void output_handle_mode(void *data, struct wl_output *wl_output,
+ {
+     struct wayland_output *output = data;
+ 
++    static int landscape = -1;
++
+     /* Windows apps don't expect a zero refresh rate, so use a default value. */
+     if (refresh == 0) refresh = default_refresh;
+ 
++    /* UTDECK_WAYLAND_LANDSCAPE=1: report a portrait output (a phone held upright) as landscape,
++     * so that games, which pick their resolution from the monitor's modes, see a landscape
++     * screen. Lomiri (Mir 1.x) reports rotation only through the size it configures windows
++     * with, which fullscreen windows follow (window.c). */
++    if (landscape < 0)
++    {
++        const char *env = getenv("UTDECK_WAYLAND_LANDSCAPE");
++        landscape = env && atoi(env);
++    }
++    if (landscape && width < height)
++    {
++        int32_t tmp = width;
++        width = height;
++        height = tmp;
++    }
++
+     wayland_output_state_add_mode(&output->pending, width, height, refresh,
+                                   (flags & WL_OUTPUT_MODE_CURRENT));
+ 
+diff --git a/dlls/winewayland.drv/window.c b/dlls/winewayland.drv/window.c
+index 270fdfb4..593994ff 100644
+--- a/dlls/winewayland.drv/window.c
++++ b/dlls/winewayland.drv/window.c
+@@ -552,7 +552,14 @@ static void wayland_configure_window(HWND hwnd)
+         wayland_surface_config_is_compatible(&surface->processing, surface_rect,
+                                              surface->window.state))
+     {
+-        flags |= SWP_NOSIZE;
++        /* Except when the compositor asks for the other orientation: the screen has been
++         * rotated (Lomiri on Mir 1.x reports rotation only this way, never through wl_output),
++         * so the fullscreen window follows it and the application gets a WM_SIZE. */
++        BOOL rotated = width && height &&
++                       (width > height) != (surface_rect.right - surface_rect.left >
++                                            surface_rect.bottom - surface_rect.top);
++        if (!rotated) flags |= SWP_NOSIZE;
++        else TRACE("hwnd=%p fullscreen window follows the rotation to %dx%d\n", hwnd, width, height);
+     }
+ 
+     /* Detect a restore from an application-initiated minimize: the last

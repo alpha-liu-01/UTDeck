@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=UTDeck vktest (test)
+Comment=UTDeck stage 2.3: a Windows Vulkan test through Wine, landscape
+Exec=/home/phablet/utdeck-probe/wine/vktest-app.sh
+Icon=/usr/share/icons/suru/apps/scalable/system-settings-symbolic.svg
+Terminal=false
+X-Lomiri-Touch=true
+X-Lomiri-Single-Instance=true
+X-Lomiri-Supported-Orientations=landscape

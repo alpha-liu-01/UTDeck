@@ -1,12 +1,12 @@
 #!/bin/sh
-# Build Wine's Wayland driver (Unix side, winewayland.so) for Ubuntu Touch, with our patches, from
+# Build Wine's Wayland driver (Unix side, winewayland.so) and win32u.so for Ubuntu Touch, with our patches, from
 # the exact Wine source of the Hangover release we run, so it drops into that Hangover unchanged.
 #
-#   tools/wine-build/build-winewayland.sh     -> build/winewayland/winewayland.so (stripped) + BUILD-INFO
+#   tools/wine-build/build-winewayland.sh     -> build/winewayland/{winewayland.so,win32u.so} (stripped) + BUILD-INFO
 #
 # Source: AndreRH/wine at the commit Hangover 11.16 pins (its `wine` submodule), configured as
 # Hangover's Ubuntu 24.04 package does (--enable-archs=arm64ec,aarch64,i386, llvm-mingw). Only
-# winewayland.so is built; everything else on the phone stays Hangover's.
+# winewayland.so and win32u.so (patch 0005) are built; everything else on the phone stays Hangover's.
 # Patches: tools/wine-build/patches/*.patch (PATCHES="" builds the source as it is).
 set -eu
 
@@ -45,17 +45,20 @@ docker run --rm -u "$(id -u):$(id -g)" -v "$SRC":/wine:ro -v "$OUT":/out -v "$TC
     export PATH=/opt/llvm-mingw/bin:$PATH
     export PKG_CONFIG_LIBDIR=/usr/lib/aarch64-linux-gnu/pkgconfig:/usr/share/pkgconfig
     [ -f Makefile ] || /wine/configure --prefix=/usr --with-mingw=clang --enable-archs=arm64ec,aarch64,i386 \
-        --disable-tests --without-freetype --without-x --host=aarch64-linux-gnu --with-wine-tools=/out/tools \
+        --disable-tests --without-x --host=aarch64-linux-gnu --with-wine-tools=/out/tools \
         CC=aarch64-linux-gnu-gcc PKG_CONFIG=pkg-config > configure.log 2>&1
-    grep -i -E "wayland|xkb|egl" configure.log | grep -i -v "^checking" || true
-    make -j$J dlls/winewayland.drv/winewayland.so > make.log 2>&1
+    grep -i -E "wayland|xkb|egl|freetype|fontconfig" configure.log | grep -i -v "^checking" || true
+    grep -q "define HAVE_FT2BUILD_H 1" include/config.h || { echo "FreeType not found: win32u would have no fonts" >&2; exit 1; }
+    make -j$J dlls/winewayland.drv/winewayland.so dlls/win32u/win32u.so > make.log 2>&1
     aarch64-linux-gnu-strip -o /out/winewayland.so dlls/winewayland.drv/winewayland.so
+    aarch64-linux-gnu-strip -o /out/win32u.so dlls/win32u/win32u.so
 '
 {
     echo "source: $WINE_URL"
     echo "commit: $WINE_COMMIT ($(git -C "$SRC" log -1 --format=%s)) $(cat "$SRC/VERSION")"
     echo "patches: $(for p in $PATCHES; do printf '%s ' "$(basename "$p")"; done)"
     echo "built: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    echo "sha256: $(sha256sum "$OUT/winewayland.so" | cut -d' ' -f1)"
+    echo "sha256: winewayland.so $(sha256sum "$OUT/winewayland.so" | cut -d' ' -f1)"
+    echo "sha256: win32u.so $(sha256sum "$OUT/win32u.so" | cut -d' ' -f1)"
 } > "$OUT/BUILD-INFO"
 cat "$OUT/BUILD-INFO"

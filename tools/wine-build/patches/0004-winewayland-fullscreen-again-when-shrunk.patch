@@ -1,0 +1,113 @@
+From: UTDeck
+Subject: [PATCH] winewayland: ask again for fullscreen when the compositor shrinks it
+
+Lomiri (Ubuntu Touch) keeps one window state per app it manages and can configure a fullscreen
+window at the screen size less its top panel (2400x1017 on a 2400x1080 screen) while still
+calling it fullscreen, so a game shows the panel over its picture. As the Dolphin port of Ubuntu
+Touch does for its game window: once the size has been stable for 0.5 s, if a fullscreen window
+that presents frames does not cover the output, ask for fullscreen again (unset, then set), at
+most three times; the count resets once the window covers the output.
+---
+diff --git a/dlls/winewayland.drv/wayland_surface.c b/dlls/winewayland.drv/wayland_surface.c
+index f33bc2c8..98919a23 100644
+--- a/dlls/winewayland.drv/wayland_surface.c
++++ b/dlls/winewayland.drv/wayland_surface.c
+@@ -1270,6 +1270,8 @@ static void wayland_client_surface_present(struct client_surface *client, HDC hd
+         {
+             wl_surface_commit(wayland_surface->wl_surface);
+         }
++
++        wayland_surface_check_fullscreen_size(wayland_surface);
+     }
+ 
+     wayland_win_data_release(data);
+diff --git a/dlls/winewayland.drv/waylanddrv.h b/dlls/winewayland.drv/waylanddrv.h
+index b470c80a..173d265a 100644
+--- a/dlls/winewayland.drv/waylanddrv.h
++++ b/dlls/winewayland.drv/waylanddrv.h
+@@ -305,6 +305,8 @@ struct wayland_surface
+ 
+     struct wayland_surface_config pending, requested, processing, current;
+     BOOL resizing;
++    int fullscreen_retries;  /* fullscreen asked again because the compositor shrank it */
++    UINT fullscreen_check_time;  /* tick count after which the size is checked (sizes settle in steps) */
+     struct wayland_window_config window;
+     int content_width, content_height;
+     HCURSOR hcursor;
+@@ -417,6 +419,7 @@ void activate_keyboard_hkl(HWND hwnd, BOOL ime);
+ void wayland_pointer_init(struct wl_pointer *wl_pointer);
+ void wayland_pointer_deinit(void);
+ void wayland_touch_init(struct wl_touch *wl_touch);
++void wayland_surface_check_fullscreen_size(struct wayland_surface *surface);
+ void wayland_touch_deinit(void);
+ void wayland_pointer_clear_constraint(void);
+ 
+diff --git a/dlls/winewayland.drv/window.c b/dlls/winewayland.drv/window.c
+index 593994ff..70de208f 100644
+--- a/dlls/winewayland.drv/window.c
++++ b/dlls/winewayland.drv/window.c
+@@ -472,6 +472,54 @@ void WAYLAND_WindowPosChanged(HWND hwnd, HWND insert_after, HWND owner_hint, UIN
+     wayland_win_data_release(data);
+ }
+ 
++/* Lomiri (Ubuntu Touch) keeps one window state per app it manages and may give a fullscreen
++ * window the screen less its top panel (2400x1017 for a 2400x1080 screen), while still calling it
++ * fullscreen. Like the Dolphin port of Ubuntu Touch: once the size has been stable for 0.5 s (a
++ * rotation passes through intermediate sizes), if the fullscreen window does not cover the output,
++ * ask for fullscreen again (unset, then set), at most three times; the count is reset once the
++ * window covers the output. Called with the window data locked, when a frame is presented. */
++void wayland_surface_check_fullscreen_size(struct wayland_surface *surface)
++{
++    struct wayland_output *output;
++    int width = surface->current.rect.right - surface->current.rect.left;
++    int height = surface->current.rect.bottom - surface->current.rect.top;
++    int out_w = 0, out_h = 0;
++
++    if (!(surface->current.state & WAYLAND_SURFACE_CONFIG_STATE_FULLSCREEN) ||
++        !(surface->window.state & WAYLAND_SURFACE_CONFIG_STATE_FULLSCREEN) ||
++        !width || !height || !surface->xdg_toplevel ||
++        (int)(NtGetTickCount() - surface->fullscreen_check_time) < 0)
++        return;
++
++    pthread_mutex_lock(&process_wayland.output_mutex);
++    wl_list_for_each(output, &process_wayland.output_list, link)
++    {
++        if (!output->current.current_mode) continue;
++        out_w = output->current.current_mode->width;
++        out_h = output->current.current_mode->height;
++        break;
++    }
++    pthread_mutex_unlock(&process_wayland.output_mutex);
++    if (!out_w || !out_h) return;
++
++    /* The output may be reported in either orientation (UTDECK_WAYLAND_LANDSCAPE), so compare
++     * the long and the short sides. */
++    if (max(width, height) >= max(out_w, out_h) && min(width, height) >= min(out_w, out_h))
++    {
++        surface->fullscreen_retries = 0;
++        return;
++    }
++    if (surface->fullscreen_retries >= 3) return;
++    surface->fullscreen_retries++;
++    surface->fullscreen_check_time = NtGetTickCount() + 500;
++
++    TRACE("hwnd=%p fullscreen at %dx%d does not cover the %dx%d output, asking again (%d)\n",
++          surface->hwnd, width, height, out_w, out_h, surface->fullscreen_retries);
++    xdg_toplevel_unset_fullscreen(surface->xdg_toplevel);
++    xdg_toplevel_set_fullscreen(surface->xdg_toplevel, NULL);
++    wl_display_flush(process_wayland.wl_display);
++}
++
+ static void wayland_configure_window(HWND hwnd)
+ {
+     struct wayland_surface *surface;
+@@ -522,6 +570,9 @@ static void wayland_configure_window(HWND hwnd)
+         width = height = 0;
+     }
+ 
++    /* Sizes settle in steps: check the fullscreen size once they have been quiet for 0.5 s. */
++    surface->fullscreen_check_time = NtGetTickCount() + 500;
++
+     if ((state & WAYLAND_SURFACE_CONFIG_STATE_RESIZING) && !surface->resizing)
+     {
+         surface->resizing = TRUE;

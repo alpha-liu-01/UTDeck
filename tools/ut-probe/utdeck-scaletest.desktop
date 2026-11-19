@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=UTDeck scaling test
+Comment=UTDeck stage 2.4: a 1280x720 Direct3D 11 picture, fit, stretch and center
+Exec=/home/phablet/utdeck-probe/wine/scaletest-app.sh
+Icon=/usr/share/icons/suru/apps/scalable/system-settings-symbolic.svg
+Terminal=false
+X-Lomiri-Touch=true
+X-Lomiri-Single-Instance=true
+X-Lomiri-Supported-Orientations=landscape

@@ -40,12 +40,22 @@ aarch64, or `winex11` through Xwayland with Mesa's software presentation, to kee
   Our `winewayland.so` (Hangover's exact source, two patches: `wp_viewporter` optional, the first
   finger as the mouse) draws Wine's Notepad and `winecfg` on Lomiri, usable by touch (M1). Windows
   keep their own size. Next: 2.3, Vulkan inside Wine.
-- **2.3 (2026-11-18): in progress.** Notes: [stage2.3-vulkan-in-wine.md](stage2.3-vulkan-in-wine.md).
+- **2.3 (2026-11-18): done.** Notes: [stage2.3-vulkan-in-wine.md](stage2.3-vulkan-in-wine.md).
   A Windows Vulkan program (x86-64 through FEX) presents through `winevulkan` on our Turnip, on a
-  subsurface with zero-copy buffers, 0.81 ms of CPU per frame; MAILBOX works windowed and
-  fullscreen, opened and closed repeatedly, no stale frames on screen (M2); FIFO deadlocks (MAILBOX
-  is forced). Open: Lomiri never reports rotation, so a landscape game gets a portrait picture;
-  next, patch 0003 to follow Lomiri's `configure` sizes.
+  subsurface with zero-copy buffers, 0.81 ms of CPU per frame; windowed and fullscreen, opened and
+  closed repeatedly, no stale frames. FIFO deadlocks under Wine on Lomiri, so MAILBOX is forced.
+  Two more `winewayland` patches: 0003 (fullscreen follows Lomiri's rotation; optional landscape
+  monitor) and 0004 (ask again for fullscreen when Lomiri shrinks it, as the Dolphin port does).
+  Started as a Lomiri app with a landscape desktop file, it comes up landscape and full screen and
+  keeps it. Next: 2.4, DXVK and the first game.
+- **2.4 (2026-11-18): done.** Notes: [stage2.4-direct3d.md](stage2.4-direct3d.md). DXVK 2.7.1
+  (ARM64EC); 3DMark 11 installed and run from its .NET GUI (Wine Mono): every test drawn correctly,
+  with sound, P566 (Graphics 529, about an Intel HD 4000); Wine patches 0005 (mode-change crash,
+  upstream bug) and 0006 (Wine scales a smaller picture: fit by default, stretch, center); a
+  Bluetooth gamepad as an XInput controller, rumble included.
+
+**Stage 2 is done (2026-11-18).** Exit met: a Direct3D 11 program on screen through Wine, FEX, DXVK
+and our Turnip, with frame rate, CPU, GPU, RAM and temperature recorded; sound and a gamepad work.
 
 Rules for this stage, from the project rules:
 - Nothing system-wide on the phone: Wine, FEX and the drivers live in a test folder, chosen with

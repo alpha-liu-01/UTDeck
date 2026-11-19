@@ -134,6 +134,17 @@ int main(int argc, char **argv)
            __builtin_cpu_supports("fma") != 0, __builtin_cpu_supports("bmi2") != 0,
            __builtin_cpu_supports("f16c") != 0, __builtin_cpu_supports("avx512f") != 0);
 #endif
+    {
+        DEVMODEW dm = { .dmSize = sizeof(dm) };
+        int n = 0;
+        printf("display modes:");
+        for (DWORD i = 0; EnumDisplaySettingsW(NULL, i, &dm); i++, n++)
+            if (n < 40) printf(" %lux%lu@%lu", dm.dmPelsWidth, dm.dmPelsHeight, dm.dmDisplayFrequency);
+        printf(" (%d modes)", n);
+        if (EnumDisplaySettingsW(NULL, ENUM_CURRENT_SETTINGS, &dm))
+            printf("; current %lux%lu@%lu", dm.dmPelsWidth, dm.dmPelsHeight, dm.dmDisplayFrequency);
+        printf("\n");
+    }
     /* Address space, as 64-bit games use it: reserve 8 GiB (2 GiB on 32-bit), touch 256 MiB. */
     SIZE_T reserve = sizeof(void *) == 8 ? (SIZE_T)8 << 30 : (SIZE_T)1 << 30;
     char *r = VirtualAlloc(NULL, reserve, MEM_RESERVE, PAGE_NOACCESS);

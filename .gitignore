@@ -49,3 +49,5 @@ tools/.sources-state.json
 
 # Local phone address for tools/deploy.sh
 tools/.phone
+
+/third_party/

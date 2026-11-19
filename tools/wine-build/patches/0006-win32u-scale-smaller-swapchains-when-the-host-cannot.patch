@@ -1,0 +1,612 @@
+From: UTDeck
+Subject: [PATCH] win32u: scale smaller swapchains in Wine when the host cannot
+
+Under an emulated display mode (a game at 1280x720 on a 2400x1080 panel) a swapchain is smaller
+than its window, and Wine asks the host to stretch it (VkSwapchainPresentScalingCreateInfoEXT).
+Hosts that cannot (Mesa's Wayland WSI on a compositor without wp_viewporter, such as Lomiri on
+Mir 1.x: supportedPresentScaling = 0) show the picture unscaled in a corner of the window.
+
+When the host surface reports no present scaling, create the host swapchain at the window's real
+size, give the application images of the size it asked for (vkGetSwapchainImagesKHR is replaced in
+the device table, which the thunks call with host handles), and on each present copy the
+application's image into the host image with vkCmdBlitImage, scaled, black around it, before the
+host present. UTDECK_SCALE chooses: fit (default: as large as possible, aspect kept), stretch,
+center (1:1), off (unchanged behaviour). For a window covering its monitor the area is the
+whole monitor (Wine fits an emulated mode into a smaller window), and its client surface is placed
+over the monitor. Nothing changes where the host can scale.
+---
+diff --git a/dlls/win32u/sysparams.c b/dlls/win32u/sysparams.c
+index fa22d629..574216f7 100644
+--- a/dlls/win32u/sysparams.c
++++ b/dlls/win32u/sysparams.c
+@@ -3098,6 +3098,22 @@ RECT map_rect_virt_to_raw( RECT rect, struct ratio dpi_from )
+     return rect;
+ }
+ 
++/* UTDeck: the physical (raw) rect of the monitor containing a rect given in MDT_DEFAULT
++ * coordinates; under an emulated display mode this is the whole panel, while map_rect_virt_to_raw
++ * maps the monitor onto the area the emulated mode is fitted into. */
++RECT get_monitor_physical_rect( RECT rect, struct ratio dpi_from )
++{
++    RECT pos = {rect.left, rect.top, rect.left, rect.top};
++    struct monitor *monitor;
++
++    if (!lock_display_devices( FALSE )) return rect;
++    if ((monitor = get_monitor_from_rect( pos, MONITOR_DEFAULTTONEAREST, dpi_from, MDT_DEFAULT )))
++        rect = monitor_get_rect( monitor, no_dpi, MDT_RAW_DPI );
++    unlock_display_devices();
++
++    return rect;
++}
++
+ /* map (absolute) window rects from MDT_DEFAULT to MDT_RAW_DPI coordinates */
+ struct window_rects map_window_rects_virt_to_raw( struct window_rects rects, struct ratio dpi_from )
+ {
+diff --git a/dlls/win32u/vulkan.c b/dlls/win32u/vulkan.c
+index 6653e16f..f9ad7810 100644
+--- a/dlls/win32u/vulkan.c
++++ b/dlls/win32u/vulkan.c
+@@ -150,13 +150,21 @@ static struct surface *surface_from_handle( VkSurfaceKHR handle )
+     return CONTAINING_RECORD( obj, struct surface, obj );
+ }
+ 
++struct scaler;
++
+ struct swapchain
+ {
+     struct vulkan_swapchain obj;
+     struct surface *surface;
+     VkExtent2D extents;
++    struct scaler *scaler;  /* UTDeck: Wine scales the picture itself (host cannot) */
+ };
+ 
++/* UTDeck scaler, defined further down (before win32u_vkCreateSwapchainKHR). */
++static PFN_vkGetSwapchainImagesKHR host_vkGetSwapchainImagesKHR;
++static VkResult scaler_vkGetSwapchainImagesKHR( VkDevice host_device, VkSwapchainKHR host_swapchain,
++                                                uint32_t *count, VkImage *images );
++
+ static struct swapchain *swapchain_from_handle( VkSwapchainKHR handle )
+ {
+     struct vulkan_swapchain *obj = vulkan_swapchain_from_handle( handle );
+@@ -801,6 +809,13 @@ static VkResult win32u_vkCreateDevice( VkPhysicalDevice client_physical_device,
+     ALL_VK_DEVICE_FUNCS
+ #undef USE_VK_FUNC
+ 
++    /* UTDeck: scaled swapchains hand out their own images (see scaler_vkGetSwapchainImagesKHR). */
++    if (device->p_vkGetSwapchainImagesKHR)
++    {
++        if (!host_vkGetSwapchainImagesKHR) host_vkGetSwapchainImagesKHR = device->p_vkGetSwapchainImagesKHR;
++        device->p_vkGetSwapchainImagesKHR = scaler_vkGetSwapchainImagesKHR;
++    }
++
+     for (i = 0; i < create_info->queueCreateInfoCount; i++) init_device_queues( device, create_info->pQueueCreateInfos + i, client_device );
+ 
+     TRACE( "Created device %p, host_device %p.\n", device, device->host.device );
+@@ -1818,6 +1833,398 @@ static BOOL extents_equals( const VkExtent2D *extents, const RECT *rect )
+     return extents->width == rect->right - rect->left && extents->height == rect->bottom - rect->top;
+ }
+ 
++/* UTDeck: present-time scaling done by Wine, for hosts that cannot scale (Lomiri on Mir 1.x has
++ * no wp_viewporter, and Mesa's Wayland WSI reports no VkSurfacePresentScalingCapabilities). When a
++ * swapchain is smaller than its window (an emulated display mode: a game at 1280x720 on a 2400x1080
++ * panel), the host swapchain is created at the window's real size, the application gets images of
++ * its own size, and each present copies the application's image into the host image, scaled, with
++ * black around it. UTDECK_SCALE selects how: "fit" (default: as large as possible, shape kept),
++ * "stretch" (the whole area), "center" (1:1, centered), "off" (Wine's own behaviour).
++ * For a window covering its monitor (fullscreen), the area is the whole monitor: Wine maps an
++ * emulated mode onto the panel keeping its shape (1280x720 becomes a 1920x1080 window on a
++ * 2400x1080 panel), so the host swapchain is made the monitor's size and the client surface is
++ * placed over the monitor (vulkan_scaler_get_monitor_rect, used by window.c). */
++
++#define SCALER_MAX_IMAGES 16
++
++enum scaler_mode { SCALER_OFF, SCALER_FIT, SCALER_STRETCH, SCALER_CENTER };
++
++struct scaler
++{
++    struct list entry;
++    struct vulkan_device *device;
++    HWND hwnd;
++    BOOL covers_monitor;   /* the host swapchain covers the window's whole monitor */
++    RECT raw_monitor;      /* that monitor, in raw (physical) coordinates */
++    VkSwapchainKHR host_swapchain;
++    VkExtent2D app_extent, host_extent;
++    uint32_t layers;
++    uint32_t count;
++    VkImage app_images[SCALER_MAX_IMAGES], host_images[SCALER_MAX_IMAGES];
++    VkDeviceMemory memory[SCALER_MAX_IMAGES];
++    uint32_t queue_family;
++    VkCommandPool pool;
++    VkCommandBuffer cmd[SCALER_MAX_IMAGES];
++    VkFence fence[SCALER_MAX_IMAGES];
++    BOOL fence_pending[SCALER_MAX_IMAGES];
++    VkSemaphore done[SCALER_MAX_IMAGES];
++    VkOffset3D dst[2];
++    BOOL clear;
++};
++
++static struct list scalers = LIST_INIT( scalers );
++static pthread_mutex_t scalers_lock = PTHREAD_MUTEX_INITIALIZER;
++
++static enum scaler_mode get_scaler_mode(void)
++{
++    static int mode = -1;
++    if (mode < 0)
++    {
++        const char *env = getenv( "UTDECK_SCALE" );
++        if (!env || !*env || !strcmp( env, "fit" )) mode = SCALER_FIT;
++        else if (!strcmp( env, "stretch" )) mode = SCALER_STRETCH;
++        else if (!strcmp( env, "center" )) mode = SCALER_CENTER;
++        else mode = SCALER_OFF;
++    }
++    return mode;
++}
++
++/* Whether hwnd covers its whole monitor (a fullscreen game); if so, the monitor in raw coordinates. */
++static BOOL window_covers_monitor( HWND hwnd, RECT *raw_monitor )
++{
++    UINT ctx = set_thread_dpi_awareness_context( NTUSER_DPI_PER_MONITOR_AWARE );
++    struct ratio dpi = get_thread_dpi();
++    MONITORINFO info = monitor_info_from_window( hwnd, MONITOR_DEFAULTTONEAREST );
++    RECT window;
++    BOOL ret;
++
++    ret = get_window_rect( hwnd, &window, dpi ) && EqualRect( &window, &info.rcMonitor );
++    if (ret) *raw_monitor = get_monitor_physical_rect( info.rcMonitor, dpi );
++    set_thread_dpi_awareness_context( ctx );
++    return ret;
++}
++
++/* For window.c: the raw monitor rect over which hwnd's client surface must be placed, when one of
++ * its swapchains is scaled over the whole monitor. */
++BOOL vulkan_scaler_get_monitor_rect( HWND hwnd, RECT *raw_monitor )
++{
++    struct scaler *scaler;
++    BOOL ret = FALSE;
++
++    pthread_mutex_lock( &scalers_lock );
++    LIST_FOR_EACH_ENTRY( scaler, &scalers, struct scaler, entry )
++    {
++        if (scaler->hwnd != hwnd || !scaler->covers_monitor) continue;
++        *raw_monitor = scaler->raw_monitor;
++        ret = TRUE;
++        break;
++    }
++    pthread_mutex_unlock( &scalers_lock );
++    return ret;
++}
++
++/* Whether the host can scale a smaller swapchain to the surface by itself. */
++static BOOL host_surface_can_scale( struct vulkan_physical_device *physical_device, struct surface *surface,
++                                    VkPresentModeKHR present_mode )
++{
++    struct vulkan_instance *instance = physical_device->instance;
++    VkSurfacePresentModeEXT mode = {.sType = VK_STRUCTURE_TYPE_SURFACE_PRESENT_MODE_EXT, .presentMode = present_mode};
++    VkPhysicalDeviceSurfaceInfo2KHR info = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SURFACE_INFO_2_KHR,
++                                            .pNext = &mode, .surface = surface->obj.host.surface};
++    VkSurfacePresentScalingCapabilitiesEXT scaling = {.sType = VK_STRUCTURE_TYPE_SURFACE_PRESENT_SCALING_CAPABILITIES_EXT};
++    VkSurfaceCapabilities2KHR caps = {.sType = VK_STRUCTURE_TYPE_SURFACE_CAPABILITIES_2_KHR, .pNext = &scaling};
++
++    if (!instance->p_vkGetPhysicalDeviceSurfaceCapabilities2KHR || !vulkan_funcs.host_extensions.has_VK_EXT_surface_maintenance1)
++        return FALSE;
++    if (instance->p_vkGetPhysicalDeviceSurfaceCapabilities2KHR( physical_device->host.physical_device, &info, &caps ))
++        return FALSE;
++    return (scaling.supportedPresentScaling & (VK_PRESENT_SCALING_STRETCH_BIT_EXT |
++                                               VK_PRESENT_SCALING_ASPECT_RATIO_STRETCH_BIT_EXT)) != 0;
++}
++
++static void scaler_compute_rect( struct scaler *scaler, enum scaler_mode mode )
++{
++    UINT sw = scaler->app_extent.width, sh = scaler->app_extent.height;
++    UINT dw = scaler->host_extent.width, dh = scaler->host_extent.height, w, h;
++
++    if (mode == SCALER_STRETCH) { w = dw; h = dh; }
++    else if (mode == SCALER_CENTER && sw <= dw && sh <= dh) { w = sw; h = sh; }
++    else if ((UINT64)sw * dh > (UINT64)sh * dw) { w = dw; h = max( 1, (UINT)((UINT64)sh * dw / sw) ); }
++    else { h = dh; w = max( 1, (UINT)((UINT64)sw * dh / sh) ); }
++
++    scaler->dst[0].x = (dw - w) / 2;
++    scaler->dst[0].y = (dh - h) / 2;
++    scaler->dst[0].z = 0;
++    scaler->dst[1].x = scaler->dst[0].x + w;
++    scaler->dst[1].y = scaler->dst[0].y + h;
++    scaler->dst[1].z = 1;
++    scaler->clear = w != dw || h != dh;
++}
++
++static void scaler_destroy( struct scaler *scaler )
++{
++    struct vulkan_device *device = scaler->device;
++    VkDevice host = device->host.device;
++    uint32_t i;
++
++    pthread_mutex_lock( &scalers_lock );
++    list_remove( &scaler->entry );
++    pthread_mutex_unlock( &scalers_lock );
++
++    for (i = 0; i < scaler->count; i++)
++        if (scaler->fence_pending[i]) device->p_vkWaitForFences( host, 1, &scaler->fence[i], VK_TRUE, UINT64_MAX );
++    if (scaler->pool)
++    {
++        device->p_vkFreeCommandBuffers( host, scaler->pool, scaler->count, scaler->cmd );
++        device->p_vkDestroyCommandPool( host, scaler->pool, NULL );
++    }
++    for (i = 0; i < scaler->count; i++)
++    {
++        if (scaler->fence[i]) device->p_vkDestroyFence( host, scaler->fence[i], NULL );
++        if (scaler->done[i]) device->p_vkDestroySemaphore( host, scaler->done[i], NULL );
++        if (scaler->app_images[i]) device->p_vkDestroyImage( host, scaler->app_images[i], NULL );
++        if (scaler->memory[i]) device->p_vkFreeMemory( host, scaler->memory[i], NULL );
++    }
++    free( scaler );
++}
++
++static struct scaler *scaler_create( struct vulkan_device *device, const VkSwapchainCreateInfoKHR *create_info,
++                                     VkSwapchainKHR host_swapchain, VkExtent2D host_extent, HWND hwnd,
++                                     const RECT *raw_monitor )
++{
++    struct vulkan_physical_device *physical_device = device->physical_device;
++    struct vulkan_instance *instance = physical_device->instance;
++    const VkImageFormatListCreateInfo *list_in = NULL;
++    VkImageFormatListCreateInfo format_list;
++    VkPhysicalDeviceMemoryProperties props;
++    VkDevice host = device->host.device;
++    struct scaler *scaler;
++    uint32_t i, t;
++
++    for (const VkBaseInStructure *ext = create_info->pNext; ext; ext = ext->pNext)
++        if (ext->sType == VK_STRUCTURE_TYPE_IMAGE_FORMAT_LIST_CREATE_INFO) list_in = (const void *)ext;
++
++    if (!(scaler = calloc( 1, sizeof(*scaler) ))) return NULL;
++    scaler->device = device;
++    scaler->hwnd = hwnd;
++    if ((scaler->covers_monitor = raw_monitor != NULL)) scaler->raw_monitor = *raw_monitor;
++    scaler->host_swapchain = host_swapchain;
++    scaler->app_extent = create_info->imageExtent;
++    scaler->host_extent = host_extent;
++    scaler->layers = create_info->imageArrayLayers;
++    scaler->queue_family = ~0u;
++    list_init( &scaler->entry );
++
++    scaler->count = SCALER_MAX_IMAGES;
++    if (host_vkGetSwapchainImagesKHR( host, host_swapchain, &scaler->count, scaler->host_images ) < 0) goto failed;
++
++    instance->p_vkGetPhysicalDeviceMemoryProperties( physical_device->host.physical_device, &props );
++    for (i = 0; i < scaler->count; i++)
++    {
++        VkImageCreateInfo info = {.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO, .imageType = VK_IMAGE_TYPE_2D,
++                                  .format = create_info->imageFormat, .mipLevels = 1,
++                                  .arrayLayers = create_info->imageArrayLayers, .samples = VK_SAMPLE_COUNT_1_BIT,
++                                  .tiling = VK_IMAGE_TILING_OPTIMAL,
++                                  .usage = create_info->imageUsage | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
++                                  .sharingMode = VK_SHARING_MODE_EXCLUSIVE, .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED};
++        VkFenceCreateInfo fence_info = {.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
++        VkSemaphoreCreateInfo sem_info = {.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
++        VkMemoryAllocateInfo alloc = {.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
++        VkMemoryRequirements req;
++
++        info.extent.width = create_info->imageExtent.width;
++        info.extent.height = create_info->imageExtent.height;
++        info.extent.depth = 1;
++        if (create_info->flags & VK_SWAPCHAIN_CREATE_MUTABLE_FORMAT_BIT_KHR)
++        {
++            info.flags = VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT | VK_IMAGE_CREATE_EXTENDED_USAGE_BIT;
++            if (list_in)
++            {
++                format_list = *list_in;
++                format_list.pNext = NULL;
++                info.pNext = &format_list;
++            }
++        }
++        if (device->p_vkCreateImage( host, &info, NULL, &scaler->app_images[i] )) goto failed;
++        device->p_vkGetImageMemoryRequirements( host, scaler->app_images[i], &req );
++        for (t = 0; t < props.memoryTypeCount; t++)
++            if ((req.memoryTypeBits & (1u << t)) &&
++                (props.memoryTypes[t].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)) break;
++        if (t == props.memoryTypeCount) goto failed;
++        alloc.allocationSize = req.size;
++        alloc.memoryTypeIndex = t;
++        if (device->p_vkAllocateMemory( host, &alloc, NULL, &scaler->memory[i] )) goto failed;
++        if (device->p_vkBindImageMemory( host, scaler->app_images[i], scaler->memory[i], 0 )) goto failed;
++        if (device->p_vkCreateFence( host, &fence_info, NULL, &scaler->fence[i] )) goto failed;
++        if (device->p_vkCreateSemaphore( host, &sem_info, NULL, &scaler->done[i] )) goto failed;
++    }
++    scaler_compute_rect( scaler, get_scaler_mode() );
++
++    pthread_mutex_lock( &scalers_lock );
++    list_add_tail( &scalers, &scaler->entry );
++    pthread_mutex_unlock( &scalers_lock );
++
++    TRACE( "scaling %ux%u into %ux%u%s at (%d,%d)-(%d,%d), %u images\n", scaler->app_extent.width,
++           scaler->app_extent.height, host_extent.width, host_extent.height,
++           scaler->covers_monitor ? " (the monitor)" : "", scaler->dst[0].x, scaler->dst[0].y,
++           scaler->dst[1].x, scaler->dst[1].y, scaler->count );
++    return scaler;
++
++failed:
++    ERR( "failed to set up scaling for swapchain %s\n", wine_dbgstr_longlong( host_swapchain ) );
++    scaler_destroy( scaler );
++    return NULL;
++}
++
++/* Replaces the host's vkGetSwapchainImagesKHR in each device's table (the thunks call it with host
++ * handles): a scaled swapchain hands out the application-sized images. */
++static VkResult scaler_vkGetSwapchainImagesKHR( VkDevice host_device, VkSwapchainKHR host_swapchain,
++                                                uint32_t *count, VkImage *images )
++{
++    struct scaler *scaler, *found = NULL;
++    VkResult res = VK_SUCCESS;
++
++    pthread_mutex_lock( &scalers_lock );
++    LIST_FOR_EACH_ENTRY( scaler, &scalers, struct scaler, entry )
++        if (scaler->host_swapchain == host_swapchain) { found = scaler; break; }
++    pthread_mutex_unlock( &scalers_lock );
++
++    if (!found) return host_vkGetSwapchainImagesKHR( host_device, host_swapchain, count, images );
++    if (!images)
++    {
++        *count = found->count;
++        return VK_SUCCESS;
++    }
++    if (*count < found->count) res = VK_INCOMPLETE;
++    else *count = found->count;
++    memcpy( images, found->app_images, *count * sizeof(*images) );
++    return res;
++}
++
++/* Records and submits the scaled copy of image index into the host image; returns the semaphore
++ * the present must wait for, or 0 on failure. */
++static VkSemaphore scaler_present( struct scaler *scaler, struct vulkan_queue *queue, uint32_t index,
++                                   uint32_t wait_count, const VkSemaphore *waits )
++{
++    struct vulkan_device *device = scaler->device;
++    VkDevice host = device->host.device;
++    VkImageSubresourceRange range = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, scaler->layers};
++    VkImageMemoryBarrier barriers[2];
++    VkPipelineStageFlags stages[16];
++    VkClearColorValue black = {{0}};
++    VkImageBlit blit = {{0}};
++    VkCommandBuffer cmd;
++    uint32_t i;
++
++    if (index >= scaler->count || wait_count > ARRAY_SIZE(stages)) return 0;
++
++    if (!scaler->pool || scaler->queue_family != queue->info.queueFamilyIndex)
++    {
++        VkCommandPoolCreateInfo pool_info = {.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
++                                             .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
++                                             .queueFamilyIndex = queue->info.queueFamilyIndex};
++        VkCommandBufferAllocateInfo alloc = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
++                                             .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY, .commandBufferCount = scaler->count};
++        if (scaler->pool)
++        {
++            for (i = 0; i < scaler->count; i++)
++                if (scaler->fence_pending[i])
++                {
++                    device->p_vkWaitForFences( host, 1, &scaler->fence[i], VK_TRUE, UINT64_MAX );
++                    device->p_vkResetFences( host, 1, &scaler->fence[i] );
++                    scaler->fence_pending[i] = FALSE;
++                }
++            device->p_vkFreeCommandBuffers( host, scaler->pool, scaler->count, scaler->cmd );
++            device->p_vkDestroyCommandPool( host, scaler->pool, NULL );
++            scaler->pool = 0;
++        }
++        if (device->p_vkCreateCommandPool( host, &pool_info, NULL, &scaler->pool )) return 0;
++        alloc.commandPool = scaler->pool;
++        if (device->p_vkAllocateCommandBuffers( host, &alloc, scaler->cmd ))
++        {
++            device->p_vkDestroyCommandPool( host, scaler->pool, NULL );
++            scaler->pool = 0;
++            return 0;
++        }
++        scaler->queue_family = queue->info.queueFamilyIndex;
++    }
++
++    if (scaler->fence_pending[index])
++    {
++        device->p_vkWaitForFences( host, 1, &scaler->fence[index], VK_TRUE, UINT64_MAX );
++        device->p_vkResetFences( host, 1, &scaler->fence[index] );
++        scaler->fence_pending[index] = FALSE;
++    }
++
++    cmd = scaler->cmd[index];
++    {
++        VkCommandBufferBeginInfo begin = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
++                                          .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT};
++        device->p_vkResetCommandBuffer( cmd, 0 );
++        if (device->p_vkBeginCommandBuffer( cmd, &begin )) return 0;
++    }
++
++    memset( barriers, 0, sizeof(barriers) );
++    for (i = 0; i < 2; i++)
++    {
++        barriers[i].sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
++        barriers[i].srcQueueFamilyIndex = barriers[i].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
++        barriers[i].subresourceRange = range;
++    }
++    barriers[0].image = scaler->app_images[index];
++    barriers[0].srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT;
++    barriers[0].dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
++    barriers[0].oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
++    barriers[0].newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
++    barriers[1].image = scaler->host_images[index];
++    barriers[1].srcAccessMask = 0;
++    barriers[1].dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
++    barriers[1].oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
++    barriers[1].newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
++    device->p_vkCmdPipelineBarrier( cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
++                                    0, NULL, 0, NULL, 2, barriers );
++    if (scaler->clear)
++    {
++        VkMemoryBarrier mb = {.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER, .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
++                              .dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT};
++        device->p_vkCmdClearColorImage( cmd, scaler->host_images[index], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
++                                        &black, 1, &range );
++        device->p_vkCmdPipelineBarrier( cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
++                                        1, &mb, 0, NULL, 0, NULL );
++    }
++    blit.srcSubresource.aspectMask = blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
++    blit.srcSubresource.layerCount = blit.dstSubresource.layerCount = scaler->layers;
++    blit.srcOffsets[1].x = scaler->app_extent.width;
++    blit.srcOffsets[1].y = scaler->app_extent.height;
++    blit.srcOffsets[1].z = 1;
++    blit.dstOffsets[0] = scaler->dst[0];
++    blit.dstOffsets[1] = scaler->dst[1];
++    device->p_vkCmdBlitImage( cmd, scaler->app_images[index], VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
++                              scaler->host_images[index], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit,
++                              VK_FILTER_LINEAR );
++    barriers[0].srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
++    barriers[0].dstAccessMask = 0;
++    barriers[0].oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
++    barriers[0].newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
++    barriers[1].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
++    barriers[1].dstAccessMask = 0;
++    barriers[1].oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
++    barriers[1].newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
++    device->p_vkCmdPipelineBarrier( cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0,
++                                    0, NULL, 0, NULL, 2, barriers );
++    if (device->p_vkEndCommandBuffer( cmd )) return 0;
++
++    for (i = 0; i < wait_count; i++) stages[i] = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
++    {
++        VkSubmitInfo submit = {.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO, .waitSemaphoreCount = wait_count,
++                               .pWaitSemaphores = waits, .pWaitDstStageMask = stages, .commandBufferCount = 1,
++                               .pCommandBuffers = &cmd, .signalSemaphoreCount = 1, .pSignalSemaphores = &scaler->done[index]};
++        if (device->p_vkQueueSubmit( queue->host.queue, 1, &submit, scaler->fence[index] )) return 0;
++    }
++    scaler->fence_pending[index] = TRUE;
++    return scaler->done[index];
++}
++
+ static VkResult win32u_vkCreateSwapchainKHR( VkDevice client_device, const VkSwapchainCreateInfoKHR *create_info,
+                                              const VkAllocationCallbacks *allocator, VkSwapchainKHR *ret )
+ {
+@@ -1833,6 +2240,9 @@ static VkResult win32u_vkCreateSwapchainKHR( VkDevice client_device, const VkSwa
+     struct ratio raw_dpi;
+     RECT client_rect;
+     VkResult res;
++    BOOL use_scaler = FALSE, covers_monitor;
++    VkExtent2D host_extent = {0};
++    RECT target_rect, raw_monitor;
+ 
+     if (!NtUserIsWindow( surface->hwnd ))
+     {
+@@ -1855,7 +2265,25 @@ static VkResult win32u_vkCreateSwapchainKHR( VkDevice client_device, const VkSwa
+      * Create the swapchain with VkSwapchainPresentScalingCreateInfoEXT to avoid this.
+      */
+     get_win_monitor_dpi( surface->hwnd, &raw_dpi );
+-    if (get_surface_rect( surface->hwnd, &client_rect, raw_dpi ) &&
++    if ((covers_monitor = window_covers_monitor( surface->hwnd, &raw_monitor )))
++    {
++        target_rect = raw_monitor;
++        OffsetRect( &target_rect, -target_rect.left, -target_rect.top );
++    }
++    else if (!get_surface_rect( surface->hwnd, &target_rect, raw_dpi )) SetRectEmpty( &target_rect );
++    if (!IsRectEmpty( &target_rect ) &&
++        !extents_equals( &create_info_host.imageExtent, &target_rect ) &&
++        get_scaler_mode() != SCALER_OFF && host_vkGetSwapchainImagesKHR &&
++        !host_surface_can_scale( physical_device, surface, create_info->presentMode ))
++    {
++        /* UTDeck: the host cannot scale; Wine does (see scaler_create). */
++        use_scaler = TRUE;
++        host_extent.width = target_rect.right - target_rect.left;
++        host_extent.height = target_rect.bottom - target_rect.top;
++        create_info_host.imageExtent = host_extent;
++        create_info_host.imageUsage |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
++    }
++    else if (get_surface_rect( surface->hwnd, &client_rect, raw_dpi ) &&
+         !extents_equals( &create_info_host.imageExtent, &client_rect ) &&
+         instance->extensions.has_VK_EXT_surface_maintenance1 &&
+         physical_device->extensions.has_VK_KHR_swapchain_maintenance1)
+@@ -1876,6 +2304,14 @@ static VkResult win32u_vkCreateSwapchainKHR( VkDevice client_device, const VkSwa
+         return res;
+     }
+ 
++    if (use_scaler && !(swapchain->scaler = scaler_create( device, create_info, host_swapchain, host_extent, surface->hwnd,
++                                                           covers_monitor ? &raw_monitor : NULL )))
++    {
++        device->p_vkDestroySwapchainKHR( device->host.device, host_swapchain, NULL );
++        free( swapchain );
++        return VK_ERROR_INITIALIZATION_FAILED;
++    }
++
+     vulkan_object_init( &swapchain->obj.obj, host_swapchain );
+     swapchain->surface = surface;
+     swapchain->extents = create_info->imageExtent;
+@@ -1895,6 +2331,7 @@ static void win32u_vkDestroySwapchainKHR( VkDevice client_device, VkSwapchainKHR
+     if (allocator) FIXME( "Support for allocation callbacks not implemented yet\n" );
+     if (!swapchain) return;
+ 
++    if (swapchain->scaler) scaler_destroy( swapchain->scaler );
+     device->p_vkDestroySwapchainKHR( device->host.device, swapchain->obj.host.swapchain, NULL );
+     instance->p_remove_object( instance, &swapchain->obj.obj );
+ 
+@@ -1961,6 +2398,8 @@ static VkResult win32u_vkQueuePresentKHR( VkQueue client_queue, const VkPresentI
+     struct vulkan_queue *queue = vulkan_queue_from_handle( client_queue );
+     VkSwapchainKHR swapchains_buffer[16], *swapchains = swapchains_buffer;
+     struct vulkan_device *device = queue->device;
++    VkSemaphore scaled_waits[16];
++    uint32_t scaled = 0;
+     const VkSwapchainKHR *client_swapchains;
+     VkResult res;
+ 
+@@ -1993,6 +2432,24 @@ static VkResult win32u_vkQueuePresentKHR( VkQueue client_queue, const VkPresentI
+         client_surface_update( surface->client );
+     }
+ 
++    /* UTDeck: copy scaled swapchains' images into their host images first; the present then waits
++     * for those copies, which themselves waited for the application's semaphores. */
++    for (uint32_t i = 0; i < present_info->swapchainCount && scaled < ARRAY_SIZE(scaled_waits); i++)
++    {
++        struct swapchain *swapchain = swapchain_from_handle( client_swapchains[i] );
++        VkSemaphore done;
++
++        if (!swapchain->scaler) continue;
++        done = scaler_present( swapchain->scaler, queue, present_info->pImageIndices[i],
++                               scaled ? 0 : present_info->waitSemaphoreCount, present_info->pWaitSemaphores );
++        if (done) scaled_waits[scaled++] = done;
++    }
++    if (scaled)
++    {
++        present_info->waitSemaphoreCount = scaled;
++        present_info->pWaitSemaphores = scaled_waits;
++    }
++
+     res = device->p_vkQueuePresentKHR( queue->host.queue, present_info );
+ 
+     for (uint32_t i = 0; i < present_info->swapchainCount; i++)
+diff --git a/dlls/win32u/win32u_private.h b/dlls/win32u/win32u_private.h
+index 03f37ca3..420209d8 100644
+--- a/dlls/win32u/win32u_private.h
++++ b/dlls/win32u/win32u_private.h
+@@ -189,6 +189,8 @@ extern HRGN map_dpi_region( HRGN region, struct ratio dpi_from, struct ratio dpi
+ extern struct window_rects map_dpi_window_rects( struct window_rects rects, struct ratio dpi_from, struct ratio dpi_to );
+ extern RECT map_rect_raw_to_virt( RECT rect, struct ratio dpi_to );
+ extern RECT map_rect_virt_to_raw( RECT rect, struct ratio dpi_from );
++extern BOOL vulkan_scaler_get_monitor_rect( HWND hwnd, RECT *raw_monitor ); /* UTDeck, vulkan.c */
++extern RECT get_monitor_physical_rect( RECT rect, struct ratio dpi_from ); /* UTDeck, sysparams.c */
+ extern struct window_rects map_window_rects_virt_to_raw( struct window_rects rects, struct ratio dpi_from );
+ extern POINT point_phys_to_win_dpi( HWND hwnd, POINT pt );
+ extern POINT point_thread_to_win_dpi( HWND hwnd, POINT pt );
+diff --git a/dlls/win32u/window.c b/dlls/win32u/window.c
+index 80e763ba..deb0b4ff 100644
+--- a/dlls/win32u/window.c
++++ b/dlls/win32u/window.c
+@@ -354,6 +354,17 @@ static RECT get_client_surface_rects( HWND toplevel, HWND hwnd, RECT *monitor_re
+     OffsetRect( &rect, rects.client.left - rects.visible.left,
+                 rects.client.top - rects.visible.top );
+ 
++    /* UTDeck: a swapchain scaled by Wine over the whole monitor (vulkan.c): place the client
++     * surface over the monitor, relative to the toplevel's visible rect as above. */
++    {
++        RECT raw_monitor;
++        if (vulkan_scaler_get_monitor_rect( hwnd, &raw_monitor ))
++        {
++            *monitor_rect = raw_monitor;
++            OffsetRect( monitor_rect, -monitor_rects.visible.left, -monitor_rects.visible.top );
++        }
++    }
++
+     return rect;
+ }
+ 

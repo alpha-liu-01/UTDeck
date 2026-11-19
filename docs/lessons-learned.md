@@ -815,3 +815,61 @@ Problems met while building UTDeck on the Redmi Note 12 5G (stone). Details in `
   stayed portrait in a landscape window (picture on the left 45 %). The Dolphin port met the same
   (its stage 6.6). Lesson: on Lomiri, take orientation from the window's configured size, never
   from the output.
+- **Lomiri's launcher gives apps an X11 display, and Wine then picks X11 (stage 2.3).** Started from
+  a desktop file, `DISPLAY=:0` (Xwayland) was set, Wine used its X11 driver, and Vulkan failed with
+  `VK_ERROR_EXTENSION_NOT_PRESENT` (our Turnip presents only to Wayland). UTDeck's launcher unsets
+  `DISPLAY` (or sets Wine's graphics driver to `wayland`).
+- **Wine's background processes keep a Lomiri app "running" (stage 2.3).** `wineserver` and
+  `winedevice.exe` stay in the app's process group after the program exits, so Lomiri refused to
+  start the app again until systemd killed them a minute later. UTDeck ends them (`wineserver -k`)
+  when a game exits.
+- **Lomiri can shrink a fullscreen window to the size without its top bar (stage 2.3).** For apps
+  it manages (started from the drawer), it granted "fullscreen" at 2400x1017, with the bar over
+  the game. The Dolphin port met the same (its stage 5) and asked for fullscreen again once the
+  size was stable; our `winewayland` patch 0004 does the same for every game, and the bar goes
+  within a second or two. A first version that asked again at once, inside the `configure`
+  handling, never helped. Lesson: when a fix for Lomiri already exists in the Dolphin port, copy
+  its timing too, and test it on screen (with the screen off Lomiri never gave the full size).
+- **This phone's `adb shell` always exits 0 (stage 2.4).** `adb shell false` returns 0, so a PC-side
+  wait loop on `adb shell 'grep -q ...'` ended at once while the phone's installer was still
+  running. Lesson: wait on the command's output (`grep -c` and compare the text), not on adb's exit
+  status.
+- **Box64 stalls on a self-unpacking 32-bit DLL where FEX works (stage 2.4).** 3DMark 11's
+  InstallShield setup loads `ISSetup.dll`, packed with PECompact2; under Hangover's default 32-bit
+  emulator (Box64) it never got further, under FEX (`HODLL=libwow64fex.dll`) the wizard ran. Lesson:
+  when a 32-bit program hangs without an error, try the other emulator before anything else.
+- **InstallScript installers do not install silently without an answer file (stage 2.4).** `/s`
+  made 3DMark 11's setup wait forever. Record the answers once in a normal run (`setup.exe /r
+  /f1C:\file.iss`), then `/s /f1...` replays them. And never put a short time limit on a run that a
+  person may be clicking through.
+- **Old game installers bundle Microsoft runtimes that do not work under Wine (stage 2.4).**
+  3DMark 11's setup ran Microsoft's .NET Framework 4 installer for ten minutes and then hung at its
+  end. Wine provides these itself (Wine Mono for .NET, built-in `d3dx`/`d3dcompiler` for DirectX);
+  Visual C++ runtimes do install. UTDeck should install Wine Mono in every prefix and, where it can,
+  skip bundled .NET and DirectX installers (Proton and DroidDeck do the same).
+- **Wine's COM does not find 32-bit out-of-process servers from 64-bit programs (stage 2.4).**
+  Futuremark SystemInfo registers its COM service only in the 32-bit registry view; 64-bit Windows
+  lets a 64-bit client start it, Wine did not ("class not registered"). Copying the class key into
+  the 64-bit view, adding `LocalService` to its AppID and writing the missing service key fixed it.
+  Lesson: when a 64-bit program says "class not registered", look for the class under
+  `Wow6432Node\CLSID`.
+- **Wine's win32u replaces a swapchain's pNext chain when it adds present scaling (stage 2.4).**
+  Under an emulated display mode Wine sets `create_info_host.pNext = &scaling`, dropping DXVK's
+  `VkImageFormatListCreateInfo`; Mesa then read a NULL format list and every mode-changing D3D game
+  crashed in `vkCreateSwapchainKHR` (3DMark 11). Found by mapping the fault address through the
+  process's `/proc/<pid>/maps` to `libvulkan_freedreno.so` and `addr2line` on the unstripped build.
+  Lesson: "Exception in Unix call" can be found to the source line with the process's memory map
+  and an unstripped build; no debugger needed.
+- **A configure option that is harmless for one library can strip another (stage 2.4).**
+  `--without-freetype` did not matter for `winewayland.so` but removed font rendering from
+  `win32u.so`. Lesson: compare a rebuilt library's imports with the original's before using it
+  (`nm -D --undefined-only`), and make the build fail if a needed feature is missing.
+- **A stuck program's results can be read from its memory (stage 2.4).** 3DMark 11's GUI waited
+  forever for SystemInfo's hardware scan (it spins without its CPU-Z driver under Wine), but the
+  test results were already in its memory as XML; `memgrep.py` reads `/proc/<pid>/mem` (same user,
+  no Yama restriction on this kernel) and found them. Lesson: before killing a stuck process,
+  look in its memory; and kernel-driver based hardware scanners never work under Wine, so skip them.
+- **`pgrep -f NAME` also finds the shell that runs it (stage 2.4).** A wait loop on
+  `adb shell 'pgrep -fc scaletest-app.sh'` never ended: the count includes the `bash -c` holding
+  that very string. Lesson: use `pgrep -f '[s]caletest-app.sh'` (the bracket keeps the pattern from
+  matching itself).

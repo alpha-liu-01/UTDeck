@@ -19,6 +19,15 @@ because Ubuntu Touch has no compiler and few tools. Push them to a test folder o
 | `win/wtest.c` | phone, through Wine (build on the PC with `win/build.sh`, llvm-mingw) | Stage 2.1: a Windows console test built for ARM64, ARM64EC, x86-64 and x86: what Windows reports, the x86 features the emulator offers, address space and threads, and three small benchmarks (integer, float, memory copy) |
 | `win/vktest.c` | phone, through Wine (build with `win/build.sh`) | Stage 2.3: a Windows Vulkan program as a game uses Vulkan: Win32 window (windowed or fullscreen), swapchain, a moving bar, window cycles, frame-time statistics |
 | `wine-m2.sh` | phone, screen on | Stage 2.3: `vktest.exe` windowed, fullscreen three times, with rotation, and in FIFO |
+| `wine-m3.sh` | phone, screen on | Stage 2.3: rotation with patch 0003, portrait and landscape monitor |
+| `vktest-app.sh`, `utdeck-vktest.desktop` | phone (`~/.local/share/applications`) | Stage 2.3: `vktest.exe` started as a Lomiri app, landscape only, as UTDeck's games will be |
+| `win/d3d11test.c`, `win/d3d9test.c` | phone, through Wine | Stage 2.4: Direct3D 11 (shaders, adjustable GPU load) and Direct3D 9 samples, for DXVK against wined3d |
+| `win/isstream.py`, `win/pecheck.py` | PC or phone | Stage 2.4: unpack InstallShield's appended file stream; tell native Windows programs from .NET ones |
+| `wine-install.sh` | phone (user unit) | Stage 2.4: run a Windows installer in the test prefix with its errors logged |
+| `3dmark11-app.sh`, `utdeck-3dmark11.desktop` | phone (`~/.local/share/applications`) | Stage 2.4: 3DMark 11 as a Lomiri app, with GPU and temperature sampling |
+| `memgrep.py` | phone | Stage 2.4: search a running process's memory for a text (UTF-8 and UTF-16); read 3DMark 11's results from its stuck GUI |
+| `win/gptest.c`, `gptest.sh` | phone, through Wine | Stage 2.4: a gamepad through Wine (XInput and winmm), with Wine's controller messages logged |
+| `scaletest-app.sh`, `utdeck-scaletest.desktop` | phone (`~/.local/share/applications`) | Stage 2.4: a 1280x720 picture with fit, stretch and center (patch 0006) |
 | `cputime.py` | phone | Wall and CPU time of a command with its output in a file (leaves out `wineserver`, which keeps pipes open) |
 | `wine-m1.sh` | phone, screen on | Stage 2.2: Wine's Notepad and `winecfg` on Lomiri, with Wayland messages logged |
 | `pacing.sh`, `pacing2.sh`, `pacing3.sh` | phone, screen on | Stage 1.4 frame pacing: `gltest` runs with `fps-panel.py` (panel refresh, compositor commits, GPU load); with `WAYLAND_DEBUG` time stamps (callback timing); the `--flush` and frame-limiter fixes |

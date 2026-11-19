@@ -1,7 +1,8 @@
 #!/bin/sh
 # Build the UTDeck Windows test programs for every architecture, with llvm-mingw.
 #   tools/ut-probe/win/build.sh   -> build/win/wtest-{arm64,arm64ec,x86_64,i686}.exe,
-#                                    build/win/vktest-{arm64,x86_64}.exe
+#                                    build/win/vktest-{arm64,x86_64}.exe, build/win/d3d11test.exe (x86-64),
+#                                    build/win/d3d9test-{i686,x86_64}.exe, build/win/gptest.exe (x86-64)
 # llvm-mingw (mstorsjo/llvm-mingw 20261104, ucrt, Ubuntu 22.04 x86-64 host) and the Khronos Vulkan
 # headers (1.4.335) are downloaded into build/toolchains/ the first time.
 set -eu
@@ -31,4 +32,10 @@ for t in aarch64:arm64 x86_64:x86_64; do
     "$TC/bin/$cc-w64-mingw32-clang" -O2 -Wall -I"$VKH/include" -o "$OUT/vktest-$name.exe" \
         "$REPO_DIR/tools/ut-probe/win/vktest.c"
 done
+"$TC/bin/x86_64-w64-mingw32-clang" -O2 -Wall -o "$OUT/d3d11test.exe" "$REPO_DIR/tools/ut-probe/win/d3d11test.c" \
+    -ld3d11 -ldxgi -ld3dcompiler
+for t in i686 x86_64; do
+    "$TC/bin/$t-w64-mingw32-clang" -O2 -Wall -o "$OUT/d3d9test-$t.exe" "$REPO_DIR/tools/ut-probe/win/d3d9test.c" -ld3d9
+done
+"$TC/bin/x86_64-w64-mingw32-clang" -O2 -Wall -o "$OUT/gptest.exe" "$REPO_DIR/tools/ut-probe/win/gptest.c" -lxinput -lwinmm
 ls -la "$OUT"

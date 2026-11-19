@@ -389,7 +389,7 @@ Goal: Wine for ARM64 with FEX draws a Direct3D game on Lomiri with the GPU.
 Exit: one D3D11 game playable on screen, with frame rate, CPU, GPU and RAM recorded against the
 stage 0 baseline.
 
-#### Status (2026-11-18): 2.1 and 2.2 done
+#### Status (2026-11-18): done
 
 Split into four substages: [stage2-roadmap.md](stage2-roadmap.md). 2.1
 ([stage2.1-wine-console.md](stage2.1-wine-console.md)): Hangover 11.16 runs Windows console
@@ -398,6 +398,12 @@ x86 through Box64 or FEX), with no change to the system.
 2.2 ([stage2.2-winewayland.md](stage2.2-winewayland.md)): Wine's Wayland driver runs on Lomiri
 with our two patches (`wp_viewporter` optional; the first finger as the mouse, since Wine had no
 touch input); Notepad and `winecfg` are drawn correctly and usable by touch.
+2.3 ([stage2.3-vulkan-in-wine.md](stage2.3-vulkan-in-wine.md)): a Windows Vulkan program runs
+through Wine on our Turnip with zero-copy buffers and no stale frames; with two more patches it
+follows Lomiri's rotation and keeps the whole screen when started as a landscape Lomiri app.
+2.4 ([stage2.4-direct3d.md](stage2.4-direct3d.md)): 3DMark 11 (Direct3D 11) installed and run
+through Wine, FEX, DXVK and our Turnip, drawn correctly with sound and scaled to the screen: P566
+(about an Intel HD 4000); a Bluetooth gamepad works as an XInput controller. Stage 2 exit met.
 
 ### Stage 3. A runtime we build and own
 
