@@ -28,6 +28,13 @@ because Ubuntu Touch has no compiler and few tools. Push them to a test folder o
 | `memgrep.py` | phone | Stage 2.4: search a running process's memory for a text (UTF-8 and UTF-16); read 3DMark 11's results from its stuck GUI |
 | `win/gptest.c`, `gptest.sh` | phone, through Wine | Stage 2.4: a gamepad through Wine (XInput and winmm), with Wine's controller messages logged |
 | `scaletest-app.sh`, `utdeck-scaletest.desktop` | phone (`~/.local/share/applications`) | Stage 2.4: a 1280x720 picture with fit, stretch and center (patch 0006) |
+| `runtime-push.sh` | PC | Stage 3.1: copy the runtime from `tools/wine-build/build-runtime.sh` to the phone (`wine/runtime-<version>`, `wine/runtime` points at it), with `env.sh` and `prefix-dlls.sh` |
+| `wine-env.sh` | phone (installed as `wine/env.sh`) | The environment for Wine on the phone; `UTDECK_RUNTIME=utdeck` (default) or `hangover` |
+| `prefix-dlls.sh` | phone | Stage 3.1: put the runtime's DXVK and VKD3D-Proton into a prefix |
+| `rt-console.sh` | phone (user unit) | Stage 3.1: stage 2.1's console tests in a fresh prefix, for one runtime (prefix time and size, four architectures, start-up, 7-Zip) |
+| `rt-gfx.sh` | phone (user unit), screen may be off | Stage 3.1: Vulkan, D3D9, D3D11 (with mode changes), D3D12, sound and the gamepad list, for one runtime |
+| `win/d3d12test.c` | phone, through Wine | Stage 3.1: Direct3D 12 through VKD3D-Proton: device features, a pipeline, a draw per frame |
+| `win/sndtest.c` | phone, through Wine | Stage 3.1: the wave output devices and a quiet 440 Hz tone through `winepulse` |
 | `cputime.py` | phone | Wall and CPU time of a command with its output in a file (leaves out `wineserver`, which keeps pipes open) |
 | `wine-m1.sh` | phone, screen on | Stage 2.2: Wine's Notepad and `winecfg` on Lomiri, with Wayland messages logged |
 | `pacing.sh`, `pacing2.sh`, `pacing3.sh` | phone, screen on | Stage 1.4 frame pacing: `gltest` runs with `fps-panel.py` (panel refresh, compositor commits, GPU load); with `WAYLAND_DEBUG` time stamps (callback timing); the `--flush` and frame-limiter fixes |

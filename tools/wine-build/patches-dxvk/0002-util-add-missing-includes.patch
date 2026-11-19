@@ -1,0 +1,31 @@
+From 1db34b5647026dab792a950dfeb8566ad5076a2a Mon Sep 17 00:00:00 2001
+From: Jacek Caban <jacek@codeweavers.com>
+Date: Thu, 20 Aug 2026 00:33:14 +0200
+Subject: [PATCH] [util] Add missing includes
+
+Backport of upstream DXVK 1db34b5647 to v2.7.1 (util_small_vector.h has fewer
+includes there). Needed with llvm-mingw 20261104 (LLVM 23).
+
+Fixes compilation with LLVM 23, where libc++ no longer indirectly includes those.
+---
+diff --git a/src/util/config/config.cpp b/src/util/config/config.cpp
+index f6f9d6d..81e93f8 100644
+--- a/src/util/config/config.cpp
++++ b/src/util/config/config.cpp
+@@ -1,3 +1,4 @@
++#include <algorithm>
+ #include <array>
+ #include <fstream>
+ #include <sstream>
+diff --git a/src/util/util_small_vector.h b/src/util/util_small_vector.h
+index 861c9e0..f2f5fec 100644
+--- a/src/util/util_small_vector.h
++++ b/src/util/util_small_vector.h
+@@ -2,6 +2,7 @@
+ 
+ #include <cstddef>
+ #include <cstdint>
++#include <new>
+ #include <type_traits>
+ #include <utility>
+ 

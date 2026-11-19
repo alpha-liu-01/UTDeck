@@ -873,3 +873,35 @@ Problems met while building UTDeck on the Redmi Note 12 5G (stone). Details in `
   `adb shell 'pgrep -fc scaletest-app.sh'` never ended: the count includes the `bash -c` holding
   that very string. Lesson: use `pgrep -f '[s]caletest-app.sh'` (the bracket keeps the pattern from
   matching itself).
+- **Wine's configure leaves out quietly what it cannot find, and a test that does not use a
+  feature will not miss it (stage 3.1).** Our first full Wine build came from a container that had
+  only the arm64 libraries the Wayland driver needed: no PulseAudio, SDL2, udev, D-Bus, GnuTLS or
+  GStreamer, so no `winepulse.so` (no sound), no SDL gamepads in `winebus`, no `winegstreamer`, no
+  TLS. Every console and graphics test passed. A `winebth` error that Hangover did not have gave it
+  away; comparing the list of Unix-side modules with Hangover's showed the rest. Fixed by
+  installing Hangover's build dependencies (minus X11 and what the phone lacks); the build script
+  now fails if configure reports any needed feature missing or one of the key modules was not
+  built, and lists in `BUILD-INFO` what was left out. Lesson: when replacing a working build,
+  compare the file lists, not only the test results.
+- **Installing arm64 `-dev` packages can replace the container's own Python (stage 3.1).**
+  `libglib2.0-dev:arm64` (pulled in by the PulseAudio, SDL2 and GStreamer headers) depends on
+  "python3 | qemu-user | qemu-user-static"; apt chose arm64 Python, which replaced the amd64 one and
+  failed to run ("Exec format error"). Installing the amd64 `qemu-user-static` first satisfies the
+  alternative. Lesson: in a multiarch cross container, check `apt-get install -s` for `Inst python3`
+  of the foreign architecture before installing.
+- **A PE linker stamps the build time into every file (stage 3.1).** Two clean builds of the same
+  runtime differed in 1,586 of 1,799 files, by four bytes each: the PE header and debug directory
+  time stamps. llvm-mingw's linker uses `SOURCE_DATE_EPOCH` when it is set; with the Wine commit's
+  time there, two clean builds are identical in all 1,812 files. (A test DLL still differed, but
+  only because the two copies had different file names, which the export table contains.)
+- **FEX's version string becomes the emulated CPU's name, 31 characters at most (stage 3.1).**
+  A longer `OVERRIDE_VERSION` stops the build at a `static_assert` in `CPUID.cpp`.
+- **An old release may not compile with a newer toolchain, while its upstream already has the fix
+  (stage 3.1).** DXVK 2.7.1 fails with LLVM 23's libc++ (a missing `<algorithm>`, and an
+  `unordered_map::emplace` with an empty tuple); both were fixed upstream after the release. We
+  carry the two upstream commits as patches instead of changing the pinned version or the
+  toolchain.
+- **`adb push` does not keep a script executable unless the source file is (stage 3.1).** A
+  pushed `rt-gfx.sh` replaced the phone's executable copy and the user unit failed with status 126
+  (no permission). The repository's scripts are now executable, and tests check the unit's journal
+  when a log does not appear.

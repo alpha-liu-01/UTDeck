@@ -422,6 +422,16 @@ Goal: a reproducible runtime, tuned for Halium phones.
 
 Exit: the runtime builds from a script, and the table has ten or more games.
 
+#### Status (2026-11-18): 3.1 done
+
+Split into six substages: [stage3-roadmap.md](stage3-roadmap.md). Checked first: Proton 11's Wine
+is Wine 11.0 and has no esync any more (only fsync, which needs Linux 5.16), so on this kernel it
+waits through `wineserver` like upstream Wine; the base is decided by measurement in 3.3. 3.1
+([stage3.1-runtime-build.md](stage3.1-runtime-build.md)): one script builds the whole runtime from
+pinned sources, byte-identical between builds, half Hangover's size, equal in every test, with
+VKD3D-Proton added (Direct3D 12 runs on the A619); it is now the default on the phone, and 3DMark
+11 and the gamepad work on it. Next: 3.2, the game list.
+
 ### Stage 4. The frontend
 
 Goal: someone picks up the phone and plays, without a keyboard.
