@@ -1079,3 +1079,7 @@ Problems met while building UTDeck on the Redmi Note 12 5G (stone). Details in `
   the cause was one log line: VKD3D-Proton needs 5 descriptor sets, Turnip offered 4 on Adreno 6xx.
   Turnip's own option (`tu_dont_reserve_descriptor_set`) gave 5. Lesson: read the translation
   layer's errors before the hang's symptoms, and look for the driver's options before patching it.
+- **An installer's "exit 0" is not a finished install (stage 3.2b).** Microsoft's Visual C++ 2022
+  setup over an older Microsoft runtime returned 0 but left `vcruntime140.dll` missing (Wine's
+  installer removed it again with the old product); a `/repair` restored it. Lesson: after an
+  installer, check the files it should have left, and repair when they are missing.

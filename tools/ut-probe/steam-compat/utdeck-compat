@@ -108,6 +108,65 @@ prepare_prefix() {
         fi
     )
 }
+
+# fix_vc_runtime: the Visual C++ runtime of a prefix must come from one source. Steam's install
+# scripts run Microsoft's Visual C++ setups, which replace a file only by a newer one: Wine's
+# msvcp140 claims 14.50, so a 2015-2019 setup (up to 14.29) kept it but put Microsoft's older
+# vcruntime140 under it, which Wine's msvcp140 imports; under ARM64EC that pair crashed at load
+# ("MSVCP140.dll failed to initialize", Stray). Before a game starts, in system32 and syswow64:
+# - if msvcp140 and vcruntime140 come from different sources (or one of them is missing), run
+#   Microsoft's 2022 setup from Steam's shared folder (newer than Wine's: Microsoft's complete set,
+#   ARM64X on Wine's ARM64 Windows), under FEX like the install scripts. Over an older Microsoft
+#   runtime, Wine's installer removes vcruntime140.dll again while removing the old product (the
+#   upgrade step); a /repair run puts it back, so missing files get one;
+# - if they still differ (no 2022 setup on the phone, or a Wine claiming a newer version), put
+#   Wine's own copies of the whole family back in place, as for XInput.
+vc_kind() {   # vc_kind FILE: wine, microsoft or none
+    [ -f "$1" ] || { echo none; return; }
+    head -c 512 "$1" | grep -q "Wine builtin DLL" && echo wine || echo microsoft
+}
+vc_mixed() {  # the folders (system32, syswow64) where msvcp140 and vcruntime140 differ
+    for d in system32 syswow64; do
+        a=$(vc_kind "$WINEPREFIX/drive_c/windows/$d/msvcp140.dll")
+        b=$(vc_kind "$WINEPREFIX/drive_c/windows/$d/vcruntime140.dll")
+        [ "$a" != "$b" ] && printf '%s ' "$d"
+    done
+}
+vc_complete() {  # vc_complete x64|x86: Microsoft's setup left its main files in place
+    case $1 in x64) d=system32 l="msvcp140 vcruntime140 vcruntime140_1" ;; *) d=syswow64 l="msvcp140 vcruntime140" ;; esac
+    for f in $l; do [ -f "$WINEPREFIX/drive_c/windows/$d/$f.dll" ] || return 1; done
+}
+fix_vc_runtime() {
+    (
+        . $W/env.sh
+        mixed=$(vc_mixed)
+        [ -n "$mixed" ] || exit 0
+        echo "  Visual C++ runtime mixed in: $mixed" >> "$LOG"
+        V="$STEAM/steamapps/common/Steamworks Shared/_CommonRedist/vcredist/2022"
+        if [ -f "$V/VC_redist.x64.exe" ]; then
+            for a in x64 x86; do
+                for mode in install repair; do
+                    [ $mode = repair ] && vc_complete $a && break
+                    HODLL=libwow64fex.dll timeout 600 wine "$(winepath -w "$V/VC_redist.$a.exe")" /$mode /quiet /norestart \
+                        > /dev/null 2>&1
+                    echo "  Visual C++ 2022 $a /$mode: exit $?" >> "$LOG"
+                    wineserver -w
+                done
+            done
+            mixed=$(vc_mixed)
+        fi
+        [ -n "$mixed" ] || { echo "  Visual C++ runtime: Microsoft's complete set" >> "$LOG"; exit 0; }
+        R=$(dirname "$(command -v wine)")/../lib/wine
+        for d in $mixed; do
+            case $d in system32) a=aarch64-windows ;; *) a=i386-windows ;; esac
+            for f in msvcp140 msvcp140_1 msvcp140_2 msvcp140_atomic_wait msvcp140_codecvt_ids \
+                     vcruntime140 vcruntime140_1 concrt140 vccorlib140 vcomp140; do
+                [ -f "$R/$a/$f.dll" ] && cp "$R/$a/$f.dll" "$WINEPREFIX/drive_c/windows/$d/$f.dll"
+            done
+            echo "  Visual C++ runtime in $d: Wine's set put back" >> "$LOG"
+        done
+    )
+}
 # Steam's Vulkan layers for games stay out for now: its overlay is not wired up for our runtime, and
 # its pipeline-caching layer (fossilize) is measured separately before it is allowed in.
 unset ENABLE_VK_LAYER_VALVE_steam_overlay_1 ENABLE_VK_LAYER_VALVE_steam_fossilize_1
@@ -141,6 +200,7 @@ run|waitforexitandrun)
     */iscriptevaluator.exe) export HODLL=libwow64fex.dll ;;
     esac
     prepare_prefix
+    case "$1" in */iscriptevaluator.exe) ;; *) fix_vc_runtime ;; esac
     # game-run.sh sets the rest of the environment (env.sh, Wayland, overrides) and the logs, in
     # wine/games/steam-<appid>-<time>.*. It starts in Steam's working folder, as Proton does: Steam
     # sets it to the game's folder for games, and gives paths relative to it for its install

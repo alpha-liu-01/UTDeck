@@ -352,8 +352,18 @@ relevant to other games:
    programs; `vcruntime140_1` stays x64). On the way: the setup cannot replace a file in use (a
    leftover Stray launcher held `vcruntime140`; the stop command had run before `WINEPREFIX` was
    set) and only scheduled it, and Wine's restart (`wineboot -r`) did not complete that; a `/repair`
-   run did. **Open:** a general fix (UTDeck's tool running the newest Visual C++ setup into every
-   game prefix after Steam's install script, or Wine's `msvcp140` claiming a lower version).
+   run did. **General fix (same day), in `utdeck-compat` (`fix_vc_runtime`):** before a game starts
+   (not before Steam's install scripts), in `system32` and `syswow64`, `msvcp140` and `vcruntime140`
+   must come from one source (a missing one counts as different). If not, Microsoft's 2022 setup
+   from Steam's shared folder runs (`/install`, x64 and x86, under FEX), and `/repair` when its main
+   files are missing afterwards: over an older Microsoft runtime, Wine's installer removes
+   `vcruntime140.dll` again while removing the old product, and the repair puts it back (this, not a
+   file in use, was also what happened with Stray). If the pair still differs (no 2022 setup on the
+   phone), Wine's own copies of the whole family are put back. Two prefixes had the mix: Ys IX and
+   Ys: Memories of Celceta (both ran anyway: Ys IX does not use the C++ library, and Celceta is
+   32-bit, where both halves are x86). Both repaired on their next start to Microsoft's complete
+   14.51 set (x64 `/install` alone left `vcruntime140.dll` missing; the `/repair` restored it); Ys IX
+   ran (48 fps on its first screens, no error), Celceta's launcher came up.
 2. **Steam Input.** Steam uses it for Stray (`Opted-in Controller Mask ... ffff`): it tells the game
    to ignore the real controllers (`SDL_GAMECONTROLLER_IGNORE_DEVICES`, read by Wine's SDL controller
    backend) and makes a virtual Xbox controller through `/dev/uinput`, which on Ubuntu Touch belongs
@@ -465,3 +475,5 @@ the failing path. Ys: Memories of Celceta ran with it; its numbers may change.
   setup; general fix open), Steam Input without uinput and Microsoft's XInput (both fixed in
   `utdeck-compat`), see-through picture (Mesa patch 0005; Wine patch 0011 did not do it). D3D11 and
   D3D12 (with `tu_dont_reserve_descriptor_set`) at 8.3-8.4 fps. 3.2b's exit met.
+- 2026-11-19, later: the Visual C++ runtime fix made general (`fix_vc_runtime` in `utdeck-compat`):
+  Ys IX's and Celceta's mixed prefixes repaired at their next start.

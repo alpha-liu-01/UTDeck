@@ -110,8 +110,8 @@ game list and table from Steam). See [plan-change-steam-early.md](plan-change-st
   Zombies: Replanted, Stray (Goat Simulator parked); Direct3D 9, 11 and 12, 32- and 64-bit, Box64 and
   FEX, five engines. Fixed on the way: Box64 reporting x86 features (upstream patch), FEX moved to
   upstream FEX-2611.1 (an ARM64EC crash), Microsoft's XInput and Steam Input without uinput
-  (`utdeck-compat`), see-through pictures (Mesa patch 0005), `mscoree` no longer turned off. Open:
-  the Visual C++ runtime mix-up after Steam's installers (fixed by hand for Stray), Goat Simulator's
+  (`utdeck-compat`), see-through pictures (Mesa patch 0005), `mscoree` no longer turned off. The Visual C++ runtime mix-up after
+  Steam's installers is repaired before every game start (`utdeck-compat`). Open: Goat Simulator's
   hang, portrait for landscape-only games, the on-screen keyboard.
 
 Rules for this stage, from the project rules:
