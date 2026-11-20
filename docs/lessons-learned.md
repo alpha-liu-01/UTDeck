@@ -1083,3 +1083,13 @@ Problems met while building UTDeck on the Redmi Note 12 5G (stone). Details in `
   setup over an older Microsoft runtime returned 0 but left `vcruntime140.dll` missing (Wine's
   installer removed it again with the old product); a `/repair` restored it. Lesson: after an
   installer, check the files it should have left, and repair when they are missing.
+- **Bound a possible gain before building it (stage 3.3).** Whether esync was worth porting came
+  down to three cheap numbers: the server's requests per frame (`strace -c`), how much of the main
+  thread's time is blocked at all (`schedstat`: 8 % in the CPU-bound game), and what one round trip
+  costs (about 20 µs, a small benchmark). Together they capped the gain at about 2 %. Lesson: before
+  a large port, measure the most it could give.
+- **A vendor's tree can assume the vendor's build (stage 3.3).** Proton's Wine keeps no generated
+  files in git (its `autogen.sh` makes them), and its 11.0 `makedep` builds no `bin/wine` when
+  cross-compiling, because Valve builds natively on ARM64. Lesson: when adopting a tree, read its
+  owner's build recipe first (Proton's `Makefile.in`), and expect gaps where our way of building
+  differs from theirs.

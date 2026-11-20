@@ -80,6 +80,8 @@ The defaults for 3.4, collected from ARMDeck, DroidDeck, 3.S and 3.2b:
 - Wine Mono in every new game prefix, as Proton does (Goat Simulator needed it; 33 s, +332 MB).
 - Box64 or FEX for 32-bit games, per engine (KiriKiri was CPU-bound at 100 % of one core), and
   Box64's speed options.
+- `tu_override_uncached_as_cache_coherent=true`, which FEX sets for Turnip in every process it runs
+  in (3.3): never measured on this phone.
 - Shader stalls of 150-700 ms in new areas (Ys: Memories of Celceta): DXVK's state cache, and
   Steam's pipeline cache (fossilize, off now; 3.S known issue K8).
 - Smaller prefixes (about 1 GB each, 3.S known issue K5): links to the runtime's files.

@@ -5,6 +5,10 @@
 #   tools/wine-build/build-runtime.sh            -> build/runtime/utdeck-runtime/ + BUILD-INFO
 #                                                   + build/runtime/utdeck-runtime-<version>.tar.xz
 #   PARTS="dxvk vkd3d" tools/wine-build/build-runtime.sh   rebuilds only those parts, then repacks
+#   WINE_FLAVOR=proton tools/wine-build/build-runtime.sh   the same runtime on Proton 11's Wine
+#                                                   (stage 3.3), into build/runtime-proton/, with its own
+#                                                   source, build folders and patches (patches-proton/);
+#                                                   the other parts are shared with the default build
 #
 # Parts (each pinned below, the same sources and recipes as Hangover 11.16's packages, except
 # VKD3D-Proton, which Hangover does not ship, and a newer FEX):
@@ -37,15 +41,29 @@ SRC="$REPO_DIR/build/src"             # FEX, Box64, DXVK, VKD3D-Proton (Box64 wr
 WINE_SRC="$REPO_DIR/build/wine-src"   # shared with build-winewayland.sh (same commit, same patches)
 OBJ="$REPO_DIR/build/runtime-obj"
 OUT="$REPO_DIR/build/runtime"
-RT="$OUT/utdeck-runtime"
 TC_VER=20261104
 TC="$REPO_DIR/build/toolchains/llvm-mingw-$TC_VER-ucrt-ubuntu-22.04-x86_64"
 IMAGE=utdeck-wine-cross
 PARTS=${PARTS:-wine fex box64 dxvk vkd3d mono steam media}
-if [ -z "${PATCHES+x}" ]; then PATCHES=$(ls "$REPO_DIR"/tools/wine-build/patches/*.patch 2>/dev/null || true); fi
 
-WINE_URL=https://github.com/AndreRH/wine.git
-WINE_COMMIT=3ea3a14941b6a122b892c84141ce9662c008081e    # hangover-11.16 (Wine 11.16)
+# The Wine base (stage 3.3): Hangover's (the default) or Proton 11's. Each has its own source folder,
+# build folders (suffix WS inside build/runtime-obj) and output folder.
+WINE_FLAVOR=${WINE_FLAVOR:-hangover}
+case "$WINE_FLAVOR" in
+proton)
+    WINE_URL=https://github.com/ValveSoftware/wine.git
+    WINE_COMMIT=e60892cc2398b0a83c332a2078c7b85e47bdb42b    # Proton 11.0-2e's wine submodule (Wine 11.0)
+    WINE_SRC="$REPO_DIR/build/wine-proton-src"
+    OUT="$REPO_DIR/build/runtime-proton"
+    WS=-proton VERSION_BASE=proton11.0 PATCH_DIR=patches-proton ;;
+hangover)
+    WINE_URL=https://github.com/AndreRH/wine.git
+    WINE_COMMIT=3ea3a14941b6a122b892c84141ce9662c008081e    # hangover-11.16 (Wine 11.16)
+    WS="" VERSION_BASE=11.16 PATCH_DIR=patches ;;
+*) echo "WINE_FLAVOR: hangover or proton" >&2; exit 2 ;;
+esac
+RT="$OUT/utdeck-runtime"
+if [ -z "${PATCHES+x}" ]; then PATCHES=$(ls "$REPO_DIR"/tools/wine-build/$PATCH_DIR/*.patch 2>/dev/null || true); fi
 FEX_URL=${FEX_URL:-https://github.com/FEX-Emu/FEX.git}           # FEX_URL/FEX_COMMIT: for A/B builds
 FEX_COMMIT=${FEX_COMMIT:-4f9c1f1e36443d22d7655477e34f51b95b685bf1}      # FEX-2611.1 (upstream)
 # (Hangover 11.16's FEX, AndreRH/FEX fa556167 of 2026-08-09, crashed 64-bit games: an x86-64 thread
@@ -100,7 +118,7 @@ fetch() {
 # SOURCE_DATE_EPOCH (the Wine commit's time) replaces the build time that the linker would stamp
 # into every PE file, so two builds of the same sources are identical byte for byte.
 in_container() {
-    docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -e SOURCE_DATE_EPOCH="$EPOCH" \
+    docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -e SOURCE_DATE_EPOCH="$EPOCH" -e WS="$WS" \
         -v "$SRC":/src -v "$WINE_SRC":/wine:ro -v "$OBJ":/obj -v "$OUT":/out -v "$TC":/opt/llvm-mingw:ro \
         "$IMAGE" sh -euc '
             mkdir -p /tmp/bin && ln -sf /opt/llvm-mingw/bin/llvm-strip /tmp/bin/strip
@@ -120,6 +138,15 @@ if has wine; then
     git -C "$WINE_SRC" checkout -q --force --detach "$WINE_COMMIT"
     git -C "$WINE_SRC" clean -fdq
     for p in $PATCHES; do git -C "$WINE_SRC" apply "$(cd "$(dirname "$p")" && pwd)/$(basename "$p")"; done
+    # Proton's Wine keeps no generated files in git (configure, the server protocol, the DLL specs,
+    # winevulkan's thunks): its autogen.sh makes them (Perl, Python with the vk.xml in the tree, no
+    # download, autoreconf), as Proton's own build does. Run in the container, the source writable.
+    if [ ! -x "$WINE_SRC/configure" ] && [ -x "$WINE_SRC/autogen.sh" ]; then
+        echo "wine: generating configure and the generated sources (autogen.sh)"
+        docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -e XDG_CACHE_HOME=/tmp -v "$WINE_SRC":/wine "$IMAGE" \
+            sh -euc 'cd /wine && ./autogen.sh' > "$OBJ/wine-autogen$WS.log" 2>&1 \
+            || { tail -20 "$OBJ/wine-autogen$WS.log" >&2; exit 1; }
+    fi
 fi
 has fex && fetch "$SRC/fex" "$FEX_URL" "$FEX_COMMIT"
 if has box64; then
@@ -167,17 +194,17 @@ EPOCH=$(git -C "$WINE_SRC" log -1 --format=%ct "$WINE_COMMIT")   # the time stam
 
 # ---- Wine: build machine tools (amd64), then the arm64 build as Hangover's Ubuntu package does
 if has wine; then
-    echo "wine: building (log: build/runtime-obj/wine-arm64/make.log)"
+    echo "wine: building $WINE_FLAVOR's Wine (log: build/runtime-obj/wine-arm64$WS/make.log)"
     in_container '
-        mkdir -p /obj/wine-tools && cd /obj/wine-tools
+        mkdir -p /obj/wine-tools$WS && cd /obj/wine-tools$WS
         [ -f Makefile ] || /wine/configure --enable-win64 --without-x --without-wayland \
             --without-mingw --disable-tests > configure.log 2>&1
         make -j$J __tooldeps__ > make.log 2>&1
         make -j$J -C nls >> make.log 2>&1     # the locale data wrc needs to compile resources
-        mkdir -p /obj/wine-arm64 && cd /obj/wine-arm64
+        mkdir -p /obj/wine-arm64$WS && cd /obj/wine-arm64$WS
         export PKG_CONFIG_LIBDIR=/usr/lib/aarch64-linux-gnu/pkgconfig:/usr/share/pkgconfig
         [ -f Makefile ] || /wine/configure --prefix=/usr --with-mingw=clang --enable-archs=arm64ec,aarch64,i386 \
-            --disable-tests --without-x --host=aarch64-linux-gnu --with-wine-tools=/obj/wine-tools \
+            --disable-tests --without-x --host=aarch64-linux-gnu --with-wine-tools=/obj/wine-tools$WS \
             CC=aarch64-linux-gnu-gcc PKG_CONFIG=pkg-config > configure.log 2>&1
         grep -q "define HAVE_FT2BUILD_H 1" include/config.h || { echo "FreeType not found: win32u would have no fonts" >&2; exit 1; }
         # configure leaves out quietly what it cannot find: fail if any of these went missing
@@ -191,8 +218,8 @@ if has wine; then
                  winegstreamer/winegstreamer winevulkan/winevulkan winewayland.drv/winewayland secur32/secur32; do
             [ -f dlls/$m.so ] || { echo "dlls/$m.so was not built" >&2; exit 1; }
         done
-        rm -rf /obj/wine-dest
-        make install DESTDIR=/obj/wine-dest > install.log 2>&1
+        rm -rf /obj/wine-dest$WS
+        make install DESTDIR=/obj/wine-dest$WS > install.log 2>&1
     '
 fi
 
@@ -248,29 +275,29 @@ fi
 # and only their five files are built. The Unix side is C++ and links with gcc: -lstdc++ added.
 if has steam; then
     echo "steam: building lsteamclient and steam.exe (log: build/runtime-obj/steam-make.log)"
-    rm -rf "$OBJ/steam-src" "$OBJ/steam-obj" "$OBJ/steam-out"
+    rm -rf "$OBJ/steam-src$WS" "$OBJ/steam-obj$WS" "$OBJ/steam-out$WS"
     in_container '
-        S=/obj/steam-src B=/obj/steam-obj
-        mkdir -p $S/dlls $S/programs $B/dlls $B/programs /obj/steam-out
+        S=/obj/steam-src$WS B=/obj/steam-obj$WS
+        mkdir -p $S/dlls $S/programs $B/dlls $B/programs /obj/steam-out$WS
         for f in /wine/*; do n=${f##*/}; case $n in dlls|programs) ;; *) ln -s $f $S/$n ;; esac; done
         for f in /wine/dlls/* /wine/programs/*; do ln -s $f $S/${f#/wine/}; done
         ln -s /src/proton/lsteamclient $S/dlls/lsteamclient
         ln -s /src/proton/steam_helper $S/programs/steam
-        for f in /obj/wine-arm64/*; do n=${f##*/}; case $n in dlls|programs|include|Makefile|config.status) ;; *) ln -s $f $B/$n ;; esac; done
-        for f in /obj/wine-arm64/dlls/* /obj/wine-arm64/programs/*; do ln -s $f $B/${f#/obj/wine-arm64/}; done
-        cp -a /obj/wine-arm64/include $B/include
-        touch -r /obj/wine-arm64/config.status $B/config.status   # older than include/stamp-h: no reconfigure
+        for f in /obj/wine-arm64$WS/*; do n=${f##*/}; case $n in dlls|programs|include|Makefile|config.status) ;; *) ln -s $f $B/$n ;; esac; done
+        for f in /obj/wine-arm64$WS/dlls/* /obj/wine-arm64$WS/programs/*; do ln -s $f $B/${f#/obj/wine-arm64$WS/}; done
+        cp -a /obj/wine-arm64$WS/include $B/include
+        touch -r /obj/wine-arm64$WS/config.status $B/config.status   # older than include/stamp-h: no reconfigure
         sed -e "1 i\\UNIX_LIBS = -lstdc++" \
             -e "/^all:\$/,\$c all:" \
             -e "s#^SUBDIRS = *\\\\\$#SUBDIRS = dlls/lsteamclient programs/steam \\\\#" \
             -e "/^TOP_INSTALL_LIB/c TOP_INSTALL_LIB =" -e "/^TOP_INSTALL_DEV/c TOP_INSTALL_DEV =" \
-            -e "/^srcdir/c srcdir = $S" /obj/wine-arm64/Makefile > $B/Makefile
-        cd $B && /obj/wine-tools/tools/makedep
+            -e "/^srcdir/c srcdir = $S" /obj/wine-arm64$WS/Makefile > $B/Makefile
+        cd $B && /obj/wine-tools$WS/tools/makedep
         T="dlls/lsteamclient/aarch64-windows/lsteamclient.dll dlls/lsteamclient/i386-windows/lsteamclient.dll
            dlls/lsteamclient/lsteamclient.so programs/steam/aarch64-windows/steam.exe programs/steam/i386-windows/steam.exe"
-        make -j$J $T > /obj/steam-make.log 2>&1 || { grep -E "error:|Error [0-9]" /obj/steam-make.log | head -20 >&2; exit 1; }
+        make -j$J $T > /obj/steam-make$WS.log 2>&1 || { grep -E "error:|Error [0-9]" /obj/steam-make$WS.log | head -20 >&2; exit 1; }
         for t in $T; do a=${t%/*}; a=${a##*/}; case $a in lsteamclient|steam) a=aarch64-unix ;; esac
-            mkdir -p /obj/steam-out/$a && cp $t /obj/steam-out/$a/; done
+            mkdir -p /obj/steam-out$WS/$a && cp $t /obj/steam-out$WS/$a/; done
     '
 fi
 
@@ -313,22 +340,29 @@ fi
 # ---- assemble the runtime folder from whatever has been built
 echo "assembling build/runtime/utdeck-runtime"
 in_container '
-    R=/out/utdeck-runtime D=/obj/wine-dest/usr
+    R=/out/utdeck-runtime D=/obj/wine-dest$WS/usr
     rm -rf $R && mkdir -p $R/bin $R/lib/wine $R/share
+    # Proton 11.0'"'"'s makedep does not build tools/wine (the bin/wine launcher) when cross-compiling with
+    # separate tools, as we do (Valve builds natively on ARM64): bin/wine is then a link to the loader,
+    # which finds its files from its real place (Debian packages Wine the same way).
+    [ -e $D/bin/wine ] || ln -s ../lib/wine/aarch64-unix/wine $R/bin/wine
     for f in wine wineserver wineboot winecfg wineconsole winedbg winepath msiexec regedit regsvr32 notepad winefile; do
-        cp -a $D/bin/$f $R/bin/
+        [ -e $D/bin/$f ] || [ -L $D/bin/$f ] && [ "$f" != wine -o -e $D/bin/wine ] && cp -a $D/bin/$f $R/bin/
     done
     cp -a $D/lib/wine/aarch64-unix $D/lib/wine/aarch64-windows $D/lib/wine/i386-windows $R/lib/wine/
     cp -a $D/share/wine $R/share/
     find $R/lib/wine -name "*.a" -delete
     # Unix side: plain strip. Windows side: debug info out (exports and relocations stay).
-    aarch64-linux-gnu-strip --strip-unneeded $R/bin/wine $R/bin/wineserver $R/lib/wine/aarch64-unix/*.so
+    # (strip replaces a symbolic link with a stripped copy: a linked bin/wine is left alone, its target
+    # is the loader in lib/wine/aarch64-unix, stripped with the rest)
+    aarch64-linux-gnu-strip --strip-unneeded $([ -L $R/bin/wine ] || echo $R/bin/wine) $R/bin/wineserver \
+        $R/lib/wine/aarch64-unix/*.so $R/lib/wine/aarch64-unix/wine
     find $R/lib/wine/aarch64-windows $R/lib/wine/i386-windows -type f \( -name "*.dll" -o -name "*.exe" -o -name "*.drv" \
         -o -name "*.sys" -o -name "*.cpl" -o -name "*.ocx" -o -name "*.acm" -o -name "*.ax" -o -name "*.ds" \) \
         -exec llvm-strip --strip-debug {} +
     cp /obj/libarm64ecfex.dll /obj/libwow64fex.dll /obj/wowbox64.dll $R/lib/wine/aarch64-windows/
-    if [ -d /obj/steam-out ]; then
-        cp -a /obj/steam-out/aarch64-windows /obj/steam-out/i386-windows /obj/steam-out/aarch64-unix $R/lib/wine/
+    if [ -d /obj/steam-out$WS ]; then
+        cp -a /obj/steam-out$WS/aarch64-windows /obj/steam-out$WS/i386-windows /obj/steam-out$WS/aarch64-unix $R/lib/wine/
         aarch64-linux-gnu-strip --strip-unneeded $R/lib/wine/aarch64-unix/lsteamclient.so
         llvm-strip --strip-debug $R/lib/wine/*-windows/lsteamclient.dll $R/lib/wine/*-windows/steam.exe
     fi
@@ -343,14 +377,14 @@ in_container '
 mkdir -p "$RT/share/wine/mono"
 cp "$MONO_MSI" "$RT/share/wine/mono/"
 
-VERSION="11.16-$(date -u +%Y%m%d)"
+VERSION="$VERSION_BASE-$(date -u +%Y%m%d)"
 {
     echo "UTDeck runtime $VERSION"
     echo "built: $(date -u +%Y-%m-%dT%H:%M:%SZ), llvm-mingw $TC_VER, $IMAGE (Ubuntu 24.04, arm64 libraries from noble + UBports 24.04-2.x)"
     echo "wine: $WINE_URL $WINE_COMMIT ($(cat "$WINE_SRC/VERSION"))"
     echo "wine patches: $(for p in $PATCHES; do printf '%s ' "$(basename "$p")"; done)"
     echo "wine features left out by configure (not needed or not on the phone):"
-    sed 's/^configure: /  /' "$OBJ/wine-arm64/configure-notes.txt"
+    sed 's/^configure: /  /' "$OBJ/wine-arm64$WS/configure-notes.txt"
     echo "fex: $FEX_URL $FEX_COMMIT"
     echo "box64: $BOX64_URL $BOX64_COMMIT, patches: $(cd "$REPO_DIR/tools/wine-build/patches-box64" && ls | tr '\n' ' ')"
     echo "dxvk: $DXVK_URL $DXVK_COMMIT ($DXVK_VERSION), patches: $(cd "$REPO_DIR/tools/wine-build/patches-dxvk" && ls | tr '\n' ' ')"

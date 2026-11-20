@@ -42,6 +42,8 @@ because Ubuntu Touch has no compiler and few tools. Push them to a test folder o
 | `watch-game.sh` | phone | Stage 3.2b: after a launch, every 30 s the frames drawn, lock waits and memory; stops on exit or after 2 minutes without a frame |
 | `dmpinfo.py` | phone (`python3 -I`) | Stage 3.2b: a Windows minidump's exception, module and stack return addresses (dumps stay on the phone: they can hold account data) |
 | `callsite.py` | phone (`python3 -I`) | Stage 3.2b: which imported function an x64 `call [import]` before a return address calls |
+| `wineserver-cost.sh` | phone | Stage 3.3: a running game's wineserver traffic: frame rate, the server's CPU time and context switches, the game's busiest threads, the GPU's load, then the server's system calls under `strace -c` and the frame rate while it is traced |
+| `win/syncbench.c` | phone, through Wine | Stage 3.3: the cost of a wineserver round trip (event set and check, a two-thread ping-pong, `Sleep(0)`), ARM64 and x86-64 |
 | `cputime.py` | phone | Wall and CPU time of a command with its output in a file (leaves out `wineserver`, which keeps pipes open) |
 | `wine-m1.sh` | phone, screen on | Stage 2.2: Wine's Notepad and `winecfg` on Lomiri, with Wayland messages logged |
 | `pacing.sh`, `pacing2.sh`, `pacing3.sh` | phone, screen on | Stage 1.4 frame pacing: `gltest` runs with `fps-panel.py` (panel refresh, compositor commits, GPU load); with `WAYLAND_DEBUG` time stamps (callback timing); the `--flush` and frame-limiter fixes |
