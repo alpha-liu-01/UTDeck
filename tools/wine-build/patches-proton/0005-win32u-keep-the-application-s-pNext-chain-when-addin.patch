@@ -1,0 +1,32 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: UTDeck <utdeck@invalid>
+Date: Fri, 20 Nov 2026 01:02:24 -0500
+Subject: [PATCH] win32u: keep the application's pNext chain when adding
+ present scaling
+
+win32u_vkCreateSwapchainKHR adds VkSwapchainPresentScalingCreateInfoEXT when the swapchain extent
+differs from the window (DPI virtualization, display mode change emulation), but it replaces the
+whole pNext chain with it. The application's structures are lost: DXVK creates swapchains with
+VK_SWAPCHAIN_CREATE_MUTABLE_FORMAT_BIT_KHR and a VkImageFormatListCreateInfo, and Mesa's
+wsi_configure_image then dereferences the missing format list (NULL + 16), so every D3D game that
+changes the display mode (3DMark 11 at 1280x720) crashes in vkCreateSwapchainKHR. Chain the scaling
+structure in front of the application's instead. Present in upstream Wine 11.22 too.
+---
+ dlls/win32u/vulkan.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/dlls/win32u/vulkan.c b/dlls/win32u/vulkan.c
+index 911db79..72e8413 100644
+--- a/dlls/win32u/vulkan.c
++++ b/dlls/win32u/vulkan.c
+@@ -2568,6 +2568,10 @@ static VkResult win32u_vkCreateSwapchainKHR( VkDevice client_device, const VkSwa
+         physical_device->extensions.has_VK_KHR_swapchain_maintenance1)
+     {
+         scaling.scalingBehavior = VK_PRESENT_SCALING_STRETCH_BIT_EXT;
++        /* Chain it in front of the application's structures instead of replacing them: dropping
++         * e.g. VkImageFormatListCreateInfo while VK_SWAPCHAIN_CREATE_MUTABLE_FORMAT_BIT_KHR is set
++         * (as DXVK does) crashes drivers that rely on it (Mesa's wsi_configure_image). */
++        scaling.pNext = create_info_host.pNext;
+         create_info_host.pNext = &scaling;
+     }
+ 

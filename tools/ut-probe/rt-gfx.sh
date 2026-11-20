@@ -2,7 +2,7 @@
 # UTDeck stage 3.1: the stage 2.3/2.4 graphics tests on one runtime, for comparing our runtime with
 # Hangover's. Runs with the screen off too (frames are still presented, stage 2.4).
 #
-#   rt-gfx.sh utdeck|hangover          -> rt-gfx-<runtime>-<time>.log in the wine folder
+#   rt-gfx.sh utdeck|hangover|proton   -> rt-gfx-<runtime>-<time>.log in the wine folder
 #
 # Uses a prefix of its own (prefix-<runtime>-gfx, created the first time, with DXVK and, on our
 # runtime, VKD3D-Proton), then: Vulkan (x86-64 and ARM64), Direct3D 11 (DXVK; windowed, fullscreen,

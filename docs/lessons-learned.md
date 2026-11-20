@@ -1093,3 +1093,8 @@ Problems met while building UTDeck on the Redmi Note 12 5G (stone). Details in `
   cross-compiling, because Valve builds natively on ARM64. Lesson: when adopting a tree, read its
   owner's build recipe first (Proton's `Makefile.in`), and expect gaps where our way of building
   differs from theirs.
+- **Two quick runs are not a comparison (stage 3.3).** Proton's Wine ran the graphics tests up to
+  twice as fast as ours, run by run; but the phone had warmed up between the runs, Lomiri's
+  orientation (and so the picture sizes) differed, and the two bases take different picture paths.
+  Lesson: interleave the runs, fix every outside condition (orientation, temperature, background
+  load), and check that both sides do the same work before reading a gap.

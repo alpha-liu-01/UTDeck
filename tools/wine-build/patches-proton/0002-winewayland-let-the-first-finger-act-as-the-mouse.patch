@@ -1,0 +1,220 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: UTDeck <utdeck@invalid>
+Date: Fri, 20 Nov 2026 01:01:18 -0500
+Subject: [PATCH] winewayland: let the first finger act as the mouse
+
+winewayland binds wl_pointer and wl_keyboard but not wl_touch, so on a touch-only device (a
+phone running Ubuntu Touch) no input reaches Windows programs. Bind wl_touch when the seat has
+it: the first finger moves the mouse and holds the left button, as Windows does for programs
+that do not handle touch themselves; other fingers are ignored. The pointer focus and button
+serial are shared with wl_pointer, so window moves and popups work from a tap as from a click.
+
+Ported to Wine 11.0 (Proton): input is sent with flags 0, which in 11.0 already means raw input and
+window messages (11.16 needs SEND_HWMSG_RAWINPUT for that).
+---
+ dlls/winewayland.drv/wayland.c         |   6 ++
+ dlls/winewayland.drv/wayland_pointer.c | 143 +++++++++++++++++++++++++
+ dlls/winewayland.drv/waylanddrv.h      |   5 +
+ 3 files changed, 154 insertions(+)
+
+diff --git a/dlls/winewayland.drv/wayland.c b/dlls/winewayland.drv/wayland.c
+index 948e212..a18e267 100644
+--- a/dlls/winewayland.drv/wayland.c
++++ b/dlls/winewayland.drv/wayland.c
+@@ -70,6 +70,11 @@ static void wl_seat_handle_capabilities(void *data, struct wl_seat *seat,
+     else if (!(caps & WL_SEAT_CAPABILITY_POINTER) && process_wayland.pointer.wl_pointer)
+         wayland_pointer_deinit();
+ 
++    if ((caps & WL_SEAT_CAPABILITY_TOUCH) && !process_wayland.pointer.wl_touch)
++        wayland_touch_init(wl_seat_get_touch(seat));
++    else if (!(caps & WL_SEAT_CAPABILITY_TOUCH) && process_wayland.pointer.wl_touch)
++        wayland_touch_deinit();
++
+     if ((caps & WL_SEAT_CAPABILITY_KEYBOARD) && !process_wayland.keyboard.wl_keyboard)
+         wayland_keyboard_init(wl_seat_get_keyboard(seat));
+     else if (!(caps & WL_SEAT_CAPABILITY_KEYBOARD) && process_wayland.keyboard.wl_keyboard)
+@@ -225,6 +230,7 @@ static void registry_handle_global_remove(void *data, struct wl_registry *regist
+     {
+         TRACE("removing seat\n");
+         if (process_wayland.pointer.wl_pointer) wayland_pointer_deinit();
++        if (process_wayland.pointer.wl_touch) wayland_touch_deinit();
+         if (process_wayland.text_input.zwp_text_input_v3) wayland_text_input_deinit();
+         pthread_mutex_lock(&seat->mutex);
+         wl_seat_release(seat->wl_seat);
+diff --git a/dlls/winewayland.drv/wayland_pointer.c b/dlls/winewayland.drv/wayland_pointer.c
+index fb863c5..d538274 100644
+--- a/dlls/winewayland.drv/wayland_pointer.c
++++ b/dlls/winewayland.drv/wayland_pointer.c
+@@ -393,6 +393,149 @@ static const struct zwp_relative_pointer_v1_listener relative_pointer_v1_listene
+     relative_pointer_v1_relative_motion
+ };
+ 
++/**********************************************************************
++ *          wl_touch handling
++ *
++ * Touchscreens without a pointer (phones): the first finger moves the mouse and holds the
++ * left button, as Windows does for programs that do not handle touch themselves. Other
++ * fingers are ignored.
++ */
++
++static void touch_send_button(HWND hwnd, DWORD flags)
++{
++    INPUT input = {0};
++
++    input.type = INPUT_MOUSE;
++    input.mi.dwFlags = flags;
++    NtUserSendHardwareInput(hwnd, 0, &input, 0);
++}
++
++static void touch_handle_down(void *data, struct wl_touch *wl_touch, uint32_t serial,
++                              uint32_t time, struct wl_surface *wl_surface, int32_t id,
++                              wl_fixed_t x, wl_fixed_t y)
++{
++    struct wayland_pointer *pointer = &process_wayland.pointer;
++    HWND hwnd;
++
++    InterlockedExchange(&process_wayland.input_serial, serial);
++    if (!wl_surface || !(hwnd = wl_surface_get_user_data(wl_surface))) return;
++
++    pthread_mutex_lock(&pointer->mutex);
++    if (pointer->touch_active)
++    {
++        pthread_mutex_unlock(&pointer->mutex);
++        return;
++    }
++    pointer->touch_active = TRUE;
++    pointer->touch_id = id;
++    pointer->focused_hwnd = hwnd;
++    pointer->button_serial = serial;
++    pthread_mutex_unlock(&pointer->mutex);
++
++    TRACE("hwnd=%p id=%d %.2f,%.2f\n", hwnd, id, wl_fixed_to_double(x), wl_fixed_to_double(y));
++
++    pointer_handle_motion_internal(x, y);
++    touch_send_button(hwnd, MOUSEEVENTF_LEFTDOWN);
++}
++
++static void touch_handle_up(void *data, struct wl_touch *wl_touch, uint32_t serial,
++                            uint32_t time, int32_t id)
++{
++    struct wayland_pointer *pointer = &process_wayland.pointer;
++    HWND hwnd;
++
++    InterlockedExchange(&process_wayland.input_serial, serial);
++
++    pthread_mutex_lock(&pointer->mutex);
++    if (!pointer->touch_active || pointer->touch_id != id)
++    {
++        pthread_mutex_unlock(&pointer->mutex);
++        return;
++    }
++    pointer->touch_active = FALSE;
++    pointer->button_serial = 0;
++    hwnd = pointer->focused_hwnd;
++    pthread_mutex_unlock(&pointer->mutex);
++
++    TRACE("hwnd=%p id=%d\n", hwnd, id);
++
++    if (hwnd) touch_send_button(hwnd, MOUSEEVENTF_LEFTUP);
++}
++
++static void touch_handle_motion(void *data, struct wl_touch *wl_touch, uint32_t time,
++                                int32_t id, wl_fixed_t x, wl_fixed_t y)
++{
++    struct wayland_pointer *pointer = &process_wayland.pointer;
++    BOOL ours;
++
++    pthread_mutex_lock(&pointer->mutex);
++    ours = pointer->touch_active && pointer->touch_id == id;
++    pthread_mutex_unlock(&pointer->mutex);
++
++    if (ours) pointer_handle_motion_internal(x, y);
++}
++
++static void touch_handle_frame(void *data, struct wl_touch *wl_touch)
++{
++}
++
++static void touch_handle_cancel(void *data, struct wl_touch *wl_touch)
++{
++    struct wayland_pointer *pointer = &process_wayland.pointer;
++    HWND hwnd = NULL;
++
++    pthread_mutex_lock(&pointer->mutex);
++    if (pointer->touch_active) hwnd = pointer->focused_hwnd;
++    pointer->touch_active = FALSE;
++    pointer->button_serial = 0;
++    pthread_mutex_unlock(&pointer->mutex);
++
++    if (hwnd) touch_send_button(hwnd, MOUSEEVENTF_LEFTUP);
++}
++
++static void touch_handle_shape(void *data, struct wl_touch *wl_touch, int32_t id,
++                               wl_fixed_t major, wl_fixed_t minor)
++{
++}
++
++static void touch_handle_orientation(void *data, struct wl_touch *wl_touch, int32_t id,
++                                     wl_fixed_t orientation)
++{
++}
++
++static const struct wl_touch_listener touch_listener =
++{
++    touch_handle_down,
++    touch_handle_up,
++    touch_handle_motion,
++    touch_handle_frame,
++    touch_handle_cancel,
++    touch_handle_shape,
++    touch_handle_orientation,
++};
++
++void wayland_touch_init(struct wl_touch *wl_touch)
++{
++    struct wayland_pointer *pointer = &process_wayland.pointer;
++
++    pthread_mutex_lock(&pointer->mutex);
++    pointer->wl_touch = wl_touch;
++    pointer->touch_active = FALSE;
++    pthread_mutex_unlock(&pointer->mutex);
++    wl_touch_add_listener(wl_touch, &touch_listener, NULL);
++}
++
++void wayland_touch_deinit(void)
++{
++    struct wayland_pointer *pointer = &process_wayland.pointer;
++
++    pthread_mutex_lock(&pointer->mutex);
++    if (pointer->wl_touch) wl_touch_release(pointer->wl_touch);
++    pointer->wl_touch = NULL;
++    pointer->touch_active = FALSE;
++    pthread_mutex_unlock(&pointer->mutex);
++}
++
+ void wayland_pointer_init(struct wl_pointer *wl_pointer)
+ {
+     struct wayland_pointer *pointer = &process_wayland.pointer;
+diff --git a/dlls/winewayland.drv/waylanddrv.h b/dlls/winewayland.drv/waylanddrv.h
+index 9452d23..3577a1c 100644
+--- a/dlls/winewayland.drv/waylanddrv.h
++++ b/dlls/winewayland.drv/waylanddrv.h
+@@ -116,6 +116,9 @@ struct wayland_pointer
+     struct wayland_cursor cursor;
+     double accum_x;
+     double accum_y;
++    struct wl_touch *wl_touch;   /* the first finger acts as the left mouse button */
++    int32_t touch_id;
++    BOOL touch_active;
+     pthread_mutex_t mutex;
+ };
+ 
+@@ -399,6 +402,8 @@ void WAYLAND_ReleaseKbdTables(const KBDTABLES *);
+ 
+ void wayland_pointer_init(struct wl_pointer *wl_pointer);
+ void wayland_pointer_deinit(void);
++void wayland_touch_init(struct wl_touch *wl_touch);
++void wayland_touch_deinit(void);
+ void wayland_pointer_clear_constraint(void);
+ 
+ /**********************************************************************

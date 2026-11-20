@@ -120,6 +120,69 @@ phone yet, for 3.4.
 
 **Step 2 done:** Proton 11's Wine builds in our container from one switch and runs on this phone.
 
+## Step 3: our patches on Proton's Wine
+
+Dry run, on a clean checkout, in order: only 0002 (first finger as the mouse) and 0005 (the pNext
+chain) applied as they are; 0001, 0003, 0004, 0007, 0008 had one or two failed places; 0006 (the
+scaler) failed in eight of nine places in `vulkan.c`; 0010 (fill mode) in seven places; 0011 in
+three. Proton's Wine is Wine 11.0 plus Valve's patches, five months older than our 11.16, and the
+Wayland driver and `win32u`'s Vulkan code changed in between (11.0 keeps a configure state as
+`width`/`height` where 11.16 has a `rect`; it passes DPI as a number, 11.16 as a ratio; its present
+function hands the window's work to `ensure_window_surface_contents()`).
+
+The ports are kept as a branch, `utdeck-port`, in `build/wine-proton-src` (one commit per patch on
+top of Proton's commit), and exported with `git format-patch` into
+[`tools/wine-build/patches-proton/`](../../tools/wine-build/patches-proton/), numbered as ours:
+
+| Patch | On Proton's Wine |
+| --- | --- |
+| 0001 viewporter optional | Ported: the window and the client surface viewports made optional by hand (the alpha-modifier block that 11.16 has after them is not in 11.0), and the client surface's size guarded |
+| 0002 first finger as the mouse | As it is |
+| 0003 follow the rotation | Ported: the same check, on 11.0's `window_surf_width`/`height` |
+| 0004 fullscreen again when shrunk | Ported: the check reads `current.width`/`height`, and is called at the end of `ensure_window_surface_contents()`, where 11.0 does what 11.16's present function does |
+| 0005 pNext chain | As it is |
+| 0006 scaler | **Not ported: Proton's Wine has its own**, Valve's "fullscreen hack" (`fs_hack` in `win32u/vulkan.c`): the game draws into extra images, which a compute shader scales onto the real swapchain (`WINE_FULLSCREEN_INTEGER_SCALING` for whole-number scaling, `WINE_DISABLE_FULLSCREEN_HACK=1` to turn it off). It switches on when the window's DPI differs from the monitor's real DPI, the way Wine reports an emulated smaller display mode, the same condition as ours. Comparing the two scalers is part of step 4 |
+| 0007 frame statistics | Ported: the hook after the present call, which Proton holds under a global lock (11.16 does not) |
+| 0008 screen-shaped modes | Ported: added after the default sizes; Proton's list also has low-resolution modes (640x480, 960x540, not for two games) and a resolution limit |
+| 0009 Steam bridge | Proton's own code; `lsteamclient` and `steam.exe` built against Proton's tree (the `steam` part) |
+| 0010 fill mode | Not now: it extends our scaler. For the comparison, games run in fullscreen at a smaller mode, which Valve's scaler covers |
+| 0011 opaque bars | Not needed: Mesa patch 0005 fixed the see-through pictures |
+
+Build: the first try stopped at a compile error in 0002: `SEND_HWMSG_RAWINPUT` is not in Wine 11.0.
+In 11.16 raw input is opt-in and every mouse event passes that flag; in 11.0 the default (0) already
+sends raw input and window messages, and 11.0's own mouse code passes 0. The ported 0002 passes 0
+(noted in its description). Second build: Wine with the seven patches and the Steam bridge
+(`lsteamclient.so`, `steam.exe` from Proton 11.0-2e, built against Proton's tree), 1.5 minutes.
+
+`env.sh` got a third runtime choice, `UTDECK_RUNTIME=proton` (`wine/runtime-proton`, a link to the
+installed Proton build), and `rt-gfx.sh` runs with it. On the phone, `rt-gfx.sh proton` (MAILBOX
+forced, as in games; a first manual run without it met stage 2.3's FIFO deadlock on Lomiri, which is
+not Proton's):
+
+| Test | Proton's Wine (01:12) | Ours, run right after (01:15) |
+| --- | --- | --- |
+| Vulkan x86-64, fullscreen | 401 fps, 1080x2400 | **hung** after Lomiri resized the window to 2400x1017 (exit 124) |
+| Vulkan ARM64, window | 619 fps | 471 fps |
+| Direct3D 11, window / fullscreen | 529 / 208 fps | 279 / 105 fps |
+| Direct3D 11, display mode 1280x720 / 1920x1080 | 236 / 245 fps (Valve's scaler) | 147 / 118 fps (our scaler) |
+| Direct3D 9, 32-bit / 64-bit | 209 / 211 fps | 97 / 100 fps |
+| Direct3D 12, window / fullscreen | 608 / 197 fps | 387 / 128 fps |
+| Sound | 3 s tone in 3,003 ms | 3,035 ms |
+
+Every test passes on Proton's Wine: windows, the display-mode changes through Valve's scaler,
+Direct3D 9, 11 and 12, sound. The frame rates are **not yet a comparison**: Proton's ran first on a
+cooler phone; the Vulkan test's windows got different sizes in the two runs (portrait 1080x2400 for
+Proton's, a landscape resize for ours), so Lomiri's orientation differed; and on our base a
+fullscreen portrait window can go through our scaler or fill code (0006, 0010) when the monitor is
+reported landscape, an extra full-screen copy per frame that Proton's base does not make here. Our
+numbers are also below our own of 2026-11-18 (D3D11 fullscreen 154 fps then). Step 4 measures this
+properly: interleaved runs, the phone's orientation fixed, and the copy path checked. Also for step 4:
+our runtime hung after that resize (the x86-64 Vulkan test).
+
+**Step 3 done:** our patches carried over where they make sense (seven ported or applied, the scaler
+replaced by Valve's, fill mode and the opaque bars not needed for the comparison), Proton's Wine with
+the Steam bridge builds from one command and passes the graphics tests.
+
 ## Events
 
 - 2026-11-20: 3.3 started; sources checked (DroidDeck: `WINESTEAMNOEXEC=0` for one game, the same
@@ -142,3 +205,8 @@ phone yet, for 3.4.
   patches, output); Proton's `autogen.sh` run in the container; `bin/wine` linked to the loader. Proton's
   Wine 11.0 builds (2.5 minutes) and runs on the phone in all four architectures; no windows without
   patch 0001 (viewporter). Next: step 3, our patches carried over.
+- 2026-11-20: step 3: patches ported on a branch (`utdeck-port`) and exported to `patches-proton/`;
+  0006 replaced by Proton's own scaler (`fs_hack`); 0002 needed flags 0 instead of
+  `SEND_HWMSG_RAWINPUT`; built with the Steam bridge; `UTDECK_RUNTIME=proton` added. The graphics tests
+  pass on Proton's Wine; a first, unfair comparison shows it much faster, and our runtime hung after a
+  resize: both for step 4.

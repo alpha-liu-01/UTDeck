@@ -5,10 +5,12 @@
 # UTDECK_RUNTIME picks the Windows runtime:
 #   utdeck    our own build (stage 3.1, tools/wine-build/build-runtime.sh), in wine/runtime/ (default)
 #   hangover  Hangover 11.16's packages with our two .so files (stage 2), kept for comparison
+#   proton    our runtime built on Proton 11's Wine (stage 3.3, WINE_FLAVOR=proton), in wine/runtime-proton/
 P=/home/phablet/utdeck-probe
 W=$P/wine
 case "${UTDECK_RUNTIME:-utdeck}" in
     hangover) export PATH=$W/hangover-11.16/usr/bin:$PATH ;;
+    proton)   export PATH=$W/runtime-proton/bin:$PATH ;;
     *)        export PATH=$W/runtime/bin:$PATH ;;
 esac
 export WINEPREFIX=${WINEPREFIX:-$W/prefix}

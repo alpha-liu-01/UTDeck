@@ -1,0 +1,91 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: UTDeck <utdeck@invalid>
+Date: Fri, 20 Nov 2026 01:04:02 -0500
+Subject: [PATCH] win32u: UTDeck frame statistics (UTDECK_FRAMESTATS)
+
+---
+ dlls/win32u/vulkan.c | 57 ++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 57 insertions(+)
+
+diff --git a/dlls/win32u/vulkan.c b/dlls/win32u/vulkan.c
+index 72e8413..44fac5a 100644
+--- a/dlls/win32u/vulkan.c
++++ b/dlls/win32u/vulkan.c
+@@ -27,6 +27,8 @@
+ #include <math.h>
+ #include <dlfcn.h>
+ #include <pthread.h>
++#include <stdio.h>
++#include <time.h>
+ #include <unistd.h>
+ 
+ #include "ntstatus.h"
+@@ -209,6 +211,60 @@ static struct swapchain *swapchain_from_handle( VkSwapchainKHR handle )
+     return CONTAINING_RECORD( obj, struct swapchain, obj );
+ }
+ 
++/* UTDeck: frame statistics for measuring games. When UTDECK_FRAMESTATS names a file ("-" for
++ * stderr), every process appends one line per second: frames presented, frame rate, mean and
++ * longest time between presents, and the swapchain size. Off (one getenv) otherwise. */
++static void framestats_present( const struct swapchain *swapchain )
++{
++    static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
++    static int state = -1; /* -1: not read yet, 0: off, 1: on */
++    static FILE *out;
++    static double start, window_start, last, sum_dt, max_dt;
++    static unsigned int frames, total;
++    struct timespec ts;
++    double now;
++
++    if (!state) return;
++    pthread_mutex_lock( &lock );
++    if (state < 0)
++    {
++        const char *path = getenv( "UTDECK_FRAMESTATS" );
++        state = 0;
++        if (path && *path && (out = strcmp( path, "-" ) ? fopen( path, "a" ) : stderr))
++        {
++            setvbuf( out, NULL, _IOLBF, 0 );
++            state = 1;
++        }
++        if (!state)
++        {
++            pthread_mutex_unlock( &lock );
++            return;
++        }
++    }
++    clock_gettime( CLOCK_MONOTONIC, &ts );
++    now = ts.tv_sec + ts.tv_nsec / 1e9;
++    if (!total) start = window_start = now;
++    else
++    {
++        double dt = now - last;
++        sum_dt += dt;
++        if (dt > max_dt) max_dt = dt;
++        frames++;
++    }
++    total++;
++    last = now;
++    if (frames && now - window_start >= 1.0)
++    {
++        fprintf( out, "utdeck-frames: pid %d, t %.1f s, %u frames in %.2f s, %.1f fps, frame time mean %.2f ms, max %.2f ms, %ux%u\n",
++                 (int)getpid(), now - start, frames, now - window_start, frames / (now - window_start),
++                 sum_dt * 1000 / frames, max_dt * 1000, swapchain->extents.width, swapchain->extents.height );
++        window_start = now;
++        frames = 0;
++        sum_dt = max_dt = 0;
++    }
++    pthread_mutex_unlock( &lock );
++}
++
+ struct semaphore
+ {
+     struct vulkan_semaphore obj;
+@@ -3004,6 +3060,7 @@ static VkResult win32u_vkQueuePresentKHR( VkQueue client_queue, const VkPresentI
+     pthread_mutex_lock( &lock );
+     res = device->p_vkQueuePresentKHR( queue->host.queue, present_info );
+     pthread_mutex_unlock( &lock );
++    if (present_info->swapchainCount) framestats_present( swapchain_from_handle( client_swapchains[0] ) );
+ 
+     for (uint32_t i = 0; i < present_info->swapchainCount; i++)
+     {
