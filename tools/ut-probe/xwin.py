@@ -5,6 +5,10 @@
     xwin.py [DISPLAY] --shot OUT.ppm  also save the whole screen as a PPM picture
     xwin.py [DISPLAY] --close         ask every mapped top-level window to close, as its close
                                       button would (WM_DELETE_WINDOW); Steam then hides it
+    xwin.py [DISPLAY] --fit           move and resize every mapped top-level window to the screen
+                                      (Steam opens its window at the phone's size, larger than :50)
+    xwin.py [DISPLAY] --click X Y     a left mouse click at X,Y, through X11's test extension (XTest)
+Options combine; the screenshot is taken last.
 
 Used for hidden Steam's Xvfb screen (:50), where Steam's windows are drawn but nobody sees them.
 Screenshots can show account data (Steam's interface): they are copied only into build/, which git
@@ -19,6 +23,14 @@ shot = None
 close = "--close" in args
 if close:
     args.remove("--close")
+fit = "--fit" in args
+if fit:
+    args.remove("--fit")
+click = None
+if "--click" in args:
+    i = args.index("--click")
+    click = (int(args[i + 1]), int(args[i + 2]))
+    del args[i:i + 3]
 if "--shot" in args:
     i = args.index("--shot")
     shot = args[i + 1]
@@ -103,6 +115,37 @@ for i in range(n.value):
         print(f"  close requested for {w:#010x}")
 if close:
     X.XFlush(d)
+
+if fit:
+    import time
+    a = Attrs()
+    X.XGetWindowAttributes(d, root, ctypes.byref(a))
+    X.XMoveResizeWindow.argtypes = [ctypes.c_void_p, ctypes.c_ulong, ctypes.c_int, ctypes.c_int, ctypes.c_uint, ctypes.c_uint]
+    for i in range(n.value):
+        w = children[i]
+        b = Attrs()
+        X.XGetWindowAttributes(d, w, ctypes.byref(b))
+        if b.map_state == 2:
+            X.XMoveResizeWindow(d, w, 0, 0, a.width, a.height)
+            print(f"  {w:#010x} resized to {a.width}x{a.height}")
+    X.XFlush(d)
+    time.sleep(3)  # let the program draw at its new size
+
+if click:
+    import time
+    Xtst = ctypes.CDLL("libXtst.so.6")
+    Xtst.XTestFakeMotionEvent.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_ulong]
+    Xtst.XTestFakeButtonEvent.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.c_int, ctypes.c_ulong]
+    Xtst.XTestFakeMotionEvent(d, -1, click[0], click[1], 0)
+    X.XFlush(d)
+    time.sleep(0.2)
+    Xtst.XTestFakeButtonEvent(d, 1, 1, 0)
+    X.XFlush(d)
+    time.sleep(0.1)
+    Xtst.XTestFakeButtonEvent(d, 1, 0, 0)
+    X.XFlush(d)
+    print(f"  clicked at {click[0]},{click[1]}")
+    time.sleep(2)
 
 if shot:
     a = Attrs()

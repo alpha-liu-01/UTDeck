@@ -253,6 +253,163 @@ minutes of play, no crash, no new dump**; 15.7 fps at the saved spot (14.9-15.0 
 average over the session. Its 32-bit side (`libwow64fex.dll`) passes the CPU-feature test. FEX-2611.1
 is now the pinned FEX.
 
+## ATRI -My Dear Moments- (app 1230140)
+
+A visual novel, 4.2 GB. `gamecheck.py`: **no DRM-bypass marker**, `steam_api.dll` signed by Valve
+(the `.sig` files next to each `.xp3` archive are the engine's own integrity signatures). Engine:
+**KiriKiri Z** (krkr), the common Japanese visual-novel engine: `ATRI-MyDearMoments-.exe`, 32-bit x86
+(Box64), importing only basic Windows libraries; 24 plugins (`plugin/*.dll`, all 32-bit x86); game
+data in `.xp3` archives.
+- Movies: `krmovie.dll` imports `quartz.dll`, so **DirectShow** (3.S known issue K10); the movie files
+  are inside the archives.
+- Drawing: `SteamDrawDevice.dll` imports only GDI (KiriKiri loads Direct3D 9 at run time if it uses
+  it).
+- `dmmcloud.dll` imports `libubicustomevent.dll`, which is not in the folder: that plugin cannot load.
+
+### Manual run M19 (2026-11-19): pass, with one setting
+
+First start: Wine created the prefix (1.07 GB, about a minute), no install script. The maintainer:
+**everything works** (logos, the opening movie, text, voice, touch to advance, rotation), apart
+from the top bar at first.
+- Drawing: KiriKiri uses **Direct3D 9** (DXVK's 32-bit build), windowed.
+- Movies: no renderer errors at all; KiriKiri's movie plugin draws the frames itself, so known issue
+  K10 (Wine's window renderer) is not involved.
+- **Top bar:** by default the game runs in a normal, maximized window, so Lomiri gives it the space
+  under the top bar (pictures of 2400x1017 sideways, 1080x2305 upright; it followed every
+  rotation). Fill mode does not apply (the window is not smaller than the screen). With the game's
+  own **full-screen option** (set once, the game keeps it): 2400x1080, no top bar. Idea for stage 4:
+  UTDeck's library could have the Wayland driver show a maximized game window as fullscreen.
+- Performance, at 2400x1080: 82-84 fps on the warning screen; 56 fps in a story scene; **20-22 fps
+  in a scene with more moving layers**. KiriKiri mixes its layers in software on the CPU, in one
+  thread, and hands Direct3D one finished picture per frame: its main thread was at 84 % of a core
+  at 56 fps (100 % in busy scenes), the GPU at 68 % (Lomiri's own drawing included), sound mixing
+  14 %. So the drops are CPU-bound, in x86 code translated by Box64. Possible gains for 3.4: FEX
+  instead of Box64 for this engine (one A/B run), Box64's speed options. Memory 0.8-0.9 GB.
+
+## Plants vs. Zombies: Replanted (app 3654560) and Stray (app 1332010): checks
+
+| | PvZ Replanted (1.7 GB) | Stray (6.6 GB) |
+| --- | --- | --- |
+| Engine | Unity, IL2CPP (the C# code compiled ahead of time into `GameAssembly.dll`) | Unreal Engine 4 |
+| Binary | 64-bit x86-64 (FEX ARM64EC) | 64-bit x86-64 (FEX ARM64EC) |
+| Graphics | ships Microsoft's Direct3D 12 runtime (`D3D12/D3D12Core.dll`): probably Direct3D 12 | imports `d3d11` (and the D3D9 and OpenGL modules); Unreal loads D3D12 at run time if chosen |
+| Also | crash reporters (Sentry, crashpad) | its own XAudio2 2.9 (`xaudio2_9redist.dll`), PhysX, NVIDIA's GeForce NOW and Aftermath SDKs |
+| DRM | clean; both `steam_api` DLLs signed by Valve | clean; `steam_api64.dll` signed by Valve |
+
+`gamecheck.py` flagged "RELOADED" in PvZ's `global-metadata.dat` (Unity's table of the code's
+strings): it is the identifier `PVZ_RELOADED_STEAM_CLIENT`, the developers' own name, among other code
+strings; no Steam emulator or crack trace. The bare word was dropped from the markers (the release
+group's own marker `*!ReLOADeD!*` stays).
+
+### PvZ Replanted: EA's agreement on hidden Steam
+
+The first start stopped at `LaunchApp waiting for user response to ShowEula`: EA's User Agreement
+(with consent to personal data being transferred to EA), which Steam shows before the first start.
+Hidden Steam put the dialog on its invisible screen, partly outside it (Steam sized its window
+2400x1017 on the 1200x540 Xvfb), and `steam-service.sh launch` closes Steam windows anyway; the
+maintainer saw nothing. `xwin.py` got `--fit` (resize the mapped windows to the screen) and
+`--click X Y` (a click through XTest, `libXtst.so.6` on the phone): with the dialog fitted and
+photographed, the maintainer read it and decided to accept; the click on "Accept" was recorded
+(the next launch went straight to the install script). For stage 4: games with a publisher's
+agreement need a way to show it to the user; UTDeck must never accept one on its own.
+
+### Manual run M20 (2026-11-19): pass at 1600x720
+
+Unity chose **Direct3D 11** (DXVK), although the game ships the D3D12 runtime. The maintainer
+needed a keyboard to type a player name: Lomiri does not offer Wine the Wayland input-method
+protocol (`zwp_text_input_manager_v3`), so no on-screen keyboard; a physical keyboard works for now.
+
+| Setting | Frame rate | GPU |
+| --- | --- | --- |
+| 2400x1080 (default), playing | 11-14 fps | 94 % at 700 MHz |
+| 1600x720, the game's Full Screen, playing and paused | 22.8-23 fps (44 ms) | 94 % at 700 MHz |
+
+GPU-bound although 2D: Unity's renderer draws large layered sprites with effects, uncapped (V-Sync
+off); fewer pixels almost doubled the frame rate. 1200x540 is not offered (like Ys IX, nothing below
+720 lines). No error, no crash in 13 minutes; 1.6 GB, 1.4 GB left; at most 47 °C.
+
+**Portrait, ours:** when the phone turned upright, the game's picture was switched to portrait sizes
+(`1080x2400`, `1072x2366`): patch 0003 ("follow rotation") tells a fullscreen game that the screen
+changed shape. Right for a game that adapts, wrong for a landscape-only game such as PvZ, which drew
+its landscape layout into a tall picture. For stage 4: a per-game orientation setting, landscape by
+default for a handheld (fill mode already keeps a landscape band in portrait).
+
+## Stray (app 1332010): manual run M21 (2026-11-19)
+
+Unreal Engine 4.27.2, 64-bit (FEX ARM64EC). Works in the end, in Direct3D 11 and 12, at 8 fps:
+GPU-bound, not playable on the Adreno 619. Four problems on the way, all ours or Steam's, all
+relevant to other games:
+
+1. **The Visual C++ runtime, mixed.** `MSVCP140.dll failed to initialize` (`c0000005`), exit 5.
+   Steam's install script ran Microsoft's Visual C++ **2019** setup (14.28), which installed its
+   `vcruntime140`, `concrt140`, `msvcp140_1` but **kept Wine's `msvcp140` and `msvcp140_2`**, which
+   claim version 14.50 (newer). Wine's `msvcp140` imports `vcruntime140`, here Microsoft's x86-64 one:
+   that pair crashes under ARM64EC (on an x86-64 PC both halves are x86-64 and it works). Forcing
+   Wine's `vcruntime140` instead made Unreal's launcher refuse ("Microsoft Visual C++ Runtime
+   required"). Fixed in this prefix by running the **2022** setup (14.51, newer than Wine's) from
+   Steam's shared folder, under FEX: Microsoft's full set, and on Wine's ARM64 Windows the x64 setup
+   installs **ARM64X** versions (`msvcp140`, `vcruntime140`, `concrt140`: native-speed code for x64
+   programs; `vcruntime140_1` stays x64). On the way: the setup cannot replace a file in use (a
+   leftover Stray launcher held `vcruntime140`; the stop command had run before `WINEPREFIX` was
+   set) and only scheduled it, and Wine's restart (`wineboot -r`) did not complete that; a `/repair`
+   run did. **Open:** a general fix (UTDeck's tool running the newest Visual C++ setup into every
+   game prefix after Steam's install script, or Wine's `msvcp140` claiming a lower version).
+2. **Steam Input.** Steam uses it for Stray (`Opted-in Controller Mask ... ffff`): it tells the game
+   to ignore the real controllers (`SDL_GAMECONTROLLER_IGNORE_DEVICES`, read by Wine's SDL controller
+   backend) and makes a virtual Xbox controller through `/dev/uinput`, which on Ubuntu Touch belongs
+   to an Android system user (3011), so no virtual controller: the game saw none. Fixed in
+   `utdeck-compat`: without a writable `/dev/uinput` the ignore list is removed and the game gets the
+   real controller (Steam's remapping does not apply then). Giving UTDeck `uinput` is stage 5.
+3. **Microsoft's XInput.** The DirectX June 2010 setup of the install script put Microsoft's
+   `xinput1_2.dll` and `xinput1_3.dll` into `system32` and `syswow64`; they talk only to Windows' Xbox
+   controller driver, which Wine does not have, so XInput listed no controller (in Goat Simulator's
+   prefix too; the default prefix, with Wine's copies, worked: 221 events and rumble). Forcing Wine's
+   copies with `WINEDLLOVERRIDES=xinput1_3=b` made `xinput1_3` fail to load in x64 programs (error
+   126, a Wine loader corner case) and Unreal's launcher refuse ("DirectX Runtime required").
+   Fixed in `utdeck-compat`: before each start, Microsoft's `xinput*.dll` are replaced by the
+   runtime's (as `wineboot` places them); logged per file. (The controller also once came back from
+   a Bluetooth reconnect sending only the left stick; a fresh connection fixed that. Not ours.)
+4. **See-through picture.** As in Goat Simulator: the wallpaper showed through the whole picture.
+   Not the opaque hint: Wine patch 0011 (marking the game's Wayland surfaces opaque, and the
+   scaler's bars opaque black) did **not** change it; Lomiri ignores that hint. The cause is in our
+   Mesa (the Halium presentation patch, `android_wlegl`): Android has no BGRX buffer format, so an
+   opaque BGRA swapchain went out as `BGRA_8888` and the compositor used the alpha the game left.
+   **Mesa patch 0005** offers only the RGBA formats on this path: an opaque swapchain is then
+   `RGBX_8888`, which cannot be blended, at no cost (the same copy). DXVK picked `R8G8B8A8_UNORM`;
+   the maintainer: "the picture is good now", colours right. This likely also fixes Goat Simulator's
+   see-through logos. Patch 0011 stays (harmless, correct for other compositors; the opaque bars help).
+
+Results (Fullscreen 1280x720, the game's lowest settings, Sampling 50 %; in "Windowed Fullscreen"
+Unreal renders at the window's full size and ignores the resolution: 2394x985, 5.8 fps):
+
+| API | Frame rate | GPU |
+| --- | --- | --- |
+| Direct3D 11 (DXVK) | 8.4 fps (120 ms) | 90-94 % at 700 MHz |
+| Direct3D 12 (VKD3D-Proton) | 8.3 fps (121 ms) | 87-90 % at 700 MHz |
+
+**Direct3D 12 needed one driver setting.** With `-dx12` the game hung before its first frame:
+VKD3D-Proton's root signatures need **5 descriptor sets** (groups of resource bindings a shader
+uses), and Turnip offers 4 on the Adreno 6xx: the GPU has 5 and Turnip keeps one for itself. Turnip's
+option `tu_dont_reserve_descriptor_set=true` (read from the environment) gives all 5; set for Stray in
+its `utdeck-env`: no VKD3D error, correct picture, the same frame rate as D3D11. Whether it becomes
+the default for all games is a 3.4 question. Memory: 1.8-1.9 GB, 0.75-1.1 GB left.
+
+## The table so far
+
+| Game | Year, engine | Binary, emulator | Graphics | Result | Performance (Adreno 619) |
+| --- | --- | --- | --- | --- | --- |
+| Ys: Memories of Celceta | 2018 PC, Falcom | 32-bit, Box64 | Direct3D 11 | Pass (3.S): borderless 1200x540 with fill mode; controller on before the start | 30 fps (its cap) at 1200x540; 16-25 fps in busy dungeon scenes (CPU-bound) |
+| Ys IX: Monstrum Nox | 2021 PC, Falcom | 64-bit, FEX (ARM64EC) | Direct3D 11 | Pass with FEX-2611.1 (crash with the older FEX) | 15-16 fps at a test spot (1600x720, Sampling 50 %), 22 fps average; GPU-bound |
+| ATRI -My Dear Moments- | 2020, KiriKiri Z | 32-bit, Box64 | Direct3D 9 | Pass, with the game's full-screen option | 56-84 fps, 20-22 fps in busy scenes (CPU-bound) |
+| Plants vs. Zombies: Replanted | 2025, Unity (IL2CPP) | 64-bit, FEX (ARM64EC) | Direct3D 11 | Pass at 1600x720 Full Screen; EA agreement accepted by the maintainer; portrait wrong (ours) | 22.8-23 fps at 1600x720, 11-14 fps at 2400x1080; GPU-bound |
+| Stray | 2022, Unreal Engine 4.27 | 64-bit, FEX (ARM64EC) | Direct3D 11 and 12 | Works (D3D12 with `tu_dont_reserve_descriptor_set`); not playable here | 8.3-8.4 fps at 1280x720, Sampling 50 %; GPU-bound |
+| Goat Simulator | 2014, UE3 | 32-bit, Box64 | Direct3D 9 | Parked (has a Linux build); hang at level load, open | |
+
+Covered: **Direct3D 9, 11 and 12**, 32- and 64-bit, Box64 and FEX, five engines (Falcom's,
+KiriKiri, Unity, Unreal 4; Unreal 3 parked). **The exit of 3.2b is met** (five games in the table).
+For the Nothing Phone (a stronger GPU, possibly an Adreno 7xx with 8 descriptor sets): Ys IX and
+Stray, the two GPU-bound ones.
+
 ### Box64 told 32-bit programs "no SSE"
 
 A 32-bit test program (`IsProcessorFeaturePresent` and the `cpuid` instruction), in this prefix:
@@ -298,3 +455,13 @@ the failing path. Ys: Memories of Celceta ran with it; its numbers may change.
   dispatcher): open. New tools: `measure.sh`, `watch-game.sh`, `dmpinfo.py`, `callsite.py`.
 - 2026-11-19, later: the Galaxy crash came back without measuring (4 minutes). FEX-2611.1 (upstream)
   fixes it: 15.5 minutes, no crash. FEX pin moved from Hangover's to upstream FEX-2611.1.
+- 2026-11-19, later: ATRI (app 1230140, KiriKiri Z, 32-bit, Direct3D 9) checked and run (M19): pass,
+  with its full-screen option; movies fine (no K10); CPU-bound in busy scenes. Table summary added.
+- 2026-11-19, later: PvZ Replanted and Stray checked (clean, 64-bit; Unity and UE4). PvZ: EA's
+  agreement shown from the hidden screen (`xwin.py --fit`, `--click`) and accepted by the maintainer;
+  M20: pass at 1600x720 (23 fps, GPU-bound, Direct3D 11); portrait wrong (patch 0003); no on-screen
+  keyboard (physical keyboard used).
+- 2026-11-19, later: Stray (M21): Visual C++ runtime mix-up (fixed in its prefix with the 2022
+  setup; general fix open), Steam Input without uinput and Microsoft's XInput (both fixed in
+  `utdeck-compat`), see-through picture (Mesa patch 0005; Wine patch 0011 did not do it). D3D11 and
+  D3D12 (with `tu_dont_reserve_descriptor_set`) at 8.3-8.4 fps. 3.2b's exit met.

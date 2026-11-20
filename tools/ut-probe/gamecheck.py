@@ -16,9 +16,10 @@ import struct
 import sys
 
 MACHINES = {0x14c: "x86", 0x8664: "x86-64", 0xaa64: "ARM64", 0xa641: "ARM64EC"}
-# Distinctive strings only: short tags such as "CPY" or "3DM" match ordinary data.
+# Distinctive strings only: short tags such as "CPY" or "3DM" match ordinary data, and so does a
+# bare "RELOADED" (PvZ Replanted: the identifier PVZ_RELOADED_STEAM_CLIENT).
 MARKERS = [b"SmartSteamEmu", b"Goldberg", b"steam_emu.ini", b"steam_settings", b"CreamAPI",
-           b"cream_api", b"ColdClientLoader", b"ALI213", b"CODEX", b"*!ReLOADeD!*", b"RELOADED",
+           b"cream_api", b"ColdClientLoader", b"ALI213", b"CODEX", b"*!ReLOADeD!*", b"-RELOADED", b"RELOADED.nfo",
            b"SKIDROW", b"PLAZA", b"EMPRESS", b"TENOKE", b"DARKSiDERS", b"Universal Cracker",
            b"Steamless", b"SteamStub unpacked", b"OnlineFix", b"nemirtingas"]
 CHUNK = 8 << 20

@@ -68,6 +68,22 @@ prepare_prefix() {
             [ -f "$STEAM/legacycompat/$f" ] && cp -u "$STEAM/legacycompat/$f" "$S/$f"
         done
         [ -f "$STEAM/legacycompat/SteamService.exe" ] && cp -u "$STEAM/legacycompat/SteamService.exe" "$S/steam.exe"
+        # XInput: Microsoft's DLLs (the DirectX June 2010 setup of many games' install scripts puts
+        # xinput1_3.dll into system32 and syswow64) talk only to Windows' Xbox controller driver,
+        # which Wine does not have: the game then sees no controller (Stray). Forcing Wine's own with
+        # an override is not enough (x64 programs then fail to load xinput1_3, and Unreal's launcher
+        # stops with "DirectX Runtime required"); so Wine's copies go back in place, as wineboot
+        # puts them.
+        R=$(dirname "$(command -v wine)")/../lib/wine
+        for f in xinput1_1 xinput1_2 xinput1_3 xinput1_4 xinput9_1_0; do
+            for d in "system32 aarch64-windows" "syswow64 i386-windows"; do
+                set -- $d
+                t="$WINEPREFIX/drive_c/windows/$1/$f.dll"
+                [ -f "$t" ] && [ -f "$R/$2/$f.dll" ] || continue
+                head -c 512 "$t" | grep -q "Wine builtin DLL" && continue
+                cp "$R/$2/$f.dll" "$t" && echo "  $1/$f.dll: Microsoft's replaced by Wine's" >> "$LOG"
+            done
+        done
         sum=$(sha256sum "$TOOL/steam-prefix.reg" | cut -c1-16)
         if [ "$(cat "$DATA/utdeck-prefix-reg" 2>/dev/null)" != "$sum" ]; then
             wine regedit /S "$(winepath -w "$TOOL/steam-prefix.reg" 2>/dev/null)" > /dev/null 2>&1 && wineserver -w &&
@@ -101,6 +117,15 @@ export DISABLE_VK_LAYER_VALVE_steam_fossilize_1=1
 # but nothing of the Steam Frame belongs here) and a file through which Turnip's debug options can
 # be changed while the game runs.
 unset VK_INSTANCE_LAYERS TU_DEBUG_FILE
+# Steam Input: for a game that uses it (Stray), Steam makes a virtual Xbox controller through the
+# kernel's uinput and tells the game to ignore the real ones (SDL_GAMECONTROLLER_IGNORE_DEVICES, read
+# by Wine's SDL controller backend). On Ubuntu Touch /dev/uinput belongs to an Android system user,
+# so the virtual controller is never made and the game saw no controller at all. Without uinput,
+# the game gets the real controller, as in games without Steam Input (no Steam remapping then).
+if [ ! -w /dev/uinput ] && [ -n "${SDL_GAMECONTROLLER_IGNORE_DEVICES:-}" ]; then
+    unset SDL_GAMECONTROLLER_IGNORE_DEVICES SteamVirtualGamepadInfo
+    echo "  Steam Input: no uinput, so the real controllers are passed to the game" >> "$LOG"
+fi
 
 case "$VERB" in
 run|waitforexitandrun)

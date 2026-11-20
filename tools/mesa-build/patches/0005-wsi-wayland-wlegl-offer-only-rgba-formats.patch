@@ -1,0 +1,31 @@
+From: UTDeck
+Subject: [PATCH] vulkan/wsi/wayland: android_wlegl: offer only the RGBA byte order
+
+Android has no BGRX gralloc format, so an opaque BGRA swapchain was presented as BGRA_8888, and
+Lomiri blended it with the content of its alpha channel: Unreal Engine games (Stray, Goat
+Simulator) were see-through over the wallpaper. Offer only ABGR8888/XBGR8888 on android_wlegl: an
+opaque swapchain is then RGBX_8888, which cannot be blended.
+
+diff --git a/src/vulkan/wsi/wsi_common_wayland.c b/src/vulkan/wsi/wsi_common_wayland.c
+index db5ca69..270128f 100644
+--- a/src/vulkan/wsi/wsi_common_wayland.c
++++ b/src/vulkan/wsi/wsi_common_wayland.c
+@@ -1704,11 +1704,16 @@ wsi_wl_display_init(struct wsi_wayland *wsi_wl,
+    /* Round-trip again to get formats, modifiers and color properties */
+    wl_display_roundtrip_queue(display->wl_display, display->queue);
+ 
+-   /* The gralloc formats wsi_wl_wlegl_hal_format() can map */
++   /* The gralloc formats wsi_wl_wlegl_hal_format() can map. Only the RGBA byte order: Android has
++    * no BGRX format, so an opaque BGRA swapchain would be shown as BGRA_8888 and blended by the
++    * compositor with whatever its alpha channel holds (Unreal Engine games leave anything there,
++    * and were see-through over the wallpaper on Lomiri). An opaque RGBA swapchain is RGBX_8888, which
++    * the compositor cannot blend; one with alpha is RGBA_8888. The picture is copied as it is, so
++    * this costs nothing; DXVK, VKD3D-Proton and zink pick the RGBA formats offered. (UTDeck)
++    */
+    if (!display->sw && !display->wl_dmabuf && display->android_wlegl) {
+       static const uint32_t wlegl_formats[] = {
+          DRM_FORMAT_ABGR8888, DRM_FORMAT_XBGR8888,
+-         DRM_FORMAT_ARGB8888, DRM_FORMAT_XRGB8888,
+       };
+       for (unsigned i = 0; i < ARRAY_SIZE(wlegl_formats); i++)
+          wsi_wl_display_add_drm_format_modifier(display, &display->formats,

@@ -1060,3 +1060,22 @@ Problems met while building UTDeck on the Redmi Note 12 5G (stone). Details in `
   numbers hard-coded from Windows). Upstream's release fixed it in one 43 s build. Lesson: for a
   crash at the emulator boundary, list upstream's changes since the pin and A/B the newest release
   first; pinning "what Hangover ships" is a start, not a reason to stay behind.
+- **Steam's redistributable installers can leave a broken mix (stage 3.2b).** The Visual C++ 2019
+  setup kept Wine's `msvcp140` (it claims a newer version) and put Microsoft's older `vcruntime140`
+  under it; under ARM64EC that pair crashed at load. The DirectX June 2010 setup put Microsoft's
+  XInput DLLs in, which cannot work under Wine. Lesson: after a game's install script, check which
+  of Wine's DLLs were replaced and whether the result is consistent (`gamecheck.py`-style version
+  and builtin checks), and fix the prefix rather than the game.
+- **Forcing a built-in DLL with an override can break what the native file made work (stage
+  3.2b).** `xinput1_3=b` made x64 programs fail to load it at all, and Unreal's launcher refused to
+  start. Putting Wine's file back in place (as `wineboot` does) worked. Lesson: prefer restoring the
+  prefix's files over load-order overrides.
+- **An opaque hint is not opacity on Lomiri (stage 3.2b).** A Wayland opaque region on the game's
+  surface changed nothing; the buffer format did: our Halium path presented opaque BGRA pictures as
+  Android's BGRA_8888, and Lomiri blended them with the game's leftover alpha. Lesson: when a picture
+  is see-through, follow the buffer to the compositor and check its real format first; measure a fix
+  before calling it done (patch 0011 was called a fix on the strength of one unverified look).
+- **A GPU limit can hide behind a hang (stage 3.2b).** Stray in D3D12 hung before its first frame;
+  the cause was one log line: VKD3D-Proton needs 5 descriptor sets, Turnip offered 4 on Adreno 6xx.
+  Turnip's own option (`tu_dont_reserve_descriptor_set`) gave 5. Lesson: read the translation
+  layer's errors before the hang's symptoms, and look for the driver's options before patching it.

@@ -98,13 +98,21 @@ game list and table from Steam). See [plan-change-steam-early.md](plan-change-st
   or had been broken by a mod pack. Kept: Wine patches 0007 (frame statistics) and 0008 (display
   modes with the screen's shape), `game-run.sh`, `push-d3dx9.sh`, a bypass check before every
   first start. Next: 3.S, Steam.
-- **3.S (started 2026-11-19): in progress.** Notes: [stage3S-steam.md](stage3S-steam.md). Valve's
+- **3.S (2026-11-19): done** (parked parts and known issues listed in its notes). Notes: [stage3S-steam.md](stage3S-steam.md). Valve's
   ARM64 Steam client runs hidden as a service on Ubuntu Touch; UTDeck's runtime is Steam's default
   compatibility tool; Proton's `lsteamclient` and Wine patch 0009 give Windows games Steam's API
   (Ys: Memories of Celceta runs from Steam, with audio, touch and controller); Wine patch 0010
   shows a game window smaller than the screen filling it; games start and quit cleanly (step 6);
   games' videos play through the runtime's own GStreamer plugins (FFmpeg), and games' sound follows
   the volume keys (step 7). Known issues listed there (K1-K10). Next: 3.2b.
+- **3.2b (2026-11-19): exit met.** Notes: [stage3.2b-games.md](stage3.2b-games.md). Five games from
+  the maintainer's Steam library in the table: Ys: Memories of Celceta, Ys IX, ATRI, Plants vs.
+  Zombies: Replanted, Stray (Goat Simulator parked); Direct3D 9, 11 and 12, 32- and 64-bit, Box64 and
+  FEX, five engines. Fixed on the way: Box64 reporting x86 features (upstream patch), FEX moved to
+  upstream FEX-2611.1 (an ARM64EC crash), Microsoft's XInput and Steam Input without uinput
+  (`utdeck-compat`), see-through pictures (Mesa patch 0005), `mscoree` no longer turned off. Open:
+  the Visual C++ runtime mix-up after Steam's installers (fixed by hand for Stray), Goat Simulator's
+  hang, portrait for landscape-only games, the on-screen keyboard.
 
 Rules for this stage, from the project rules:
 - Nothing system-wide on the phone: the runtime lives in a folder, chosen with environment

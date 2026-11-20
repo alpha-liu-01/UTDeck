@@ -24,6 +24,7 @@ export UTDECK_FILL=${UTDECK_FILL:-1}
 # mshtml (no Gecko) stays off. mscoree (.NET's loader) stays on: many games import it without
 # running .NET (Goat Simulator, UE3), and with it off such a game cannot load at all (c0000135).
 # Games that run .NET code also need Wine Mono in the prefix (the runtime ships it; 3.4).
+# (XInput: Wine's own copies are put back into Steam prefixes by utdeck-compat.)
 export WINEDLLOVERRIDES="mshtml=;d3d11,dxgi,d3d10core,d3d9,d3d8=n;d3d12,d3d12core=n${GAME_OVERRIDES:+;$GAME_OVERRIDES}"
 for v in ${GAME_ENV:-}; do export "$v"; done
 unset DISPLAY   # Lomiri gives legacy apps Xwayland; Wine must use its Wayland driver

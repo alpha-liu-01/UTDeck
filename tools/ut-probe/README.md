@@ -36,6 +36,7 @@ because Ubuntu Touch has no compiler and few tools. Push them to a test folder o
 | `win/d3d12test.c` | phone, through Wine | Stage 3.1: Direct3D 12 through VKD3D-Proton: device features, a pipeline, a draw per frame |
 | `win/sndtest.c` | phone, through Wine | Stage 3.1: the wave output devices and a quiet 440 Hz tone through `winepulse` |
 | `win/vidtest.c` | phone, through Wine (`game-run.sh`) | Stage 3.S: play a video file through DirectShow (32-bit x86), with the default renderer or VMR-9; prints how it ended |
+| `xwin.py` | phone | Stage 3.S: hidden Steam's X11 screen (`:50`): list the windows, `--shot` a picture, `--close` Steam's window (its CPU cost), `--fit` the windows to the screen, `--click X Y` (XTest) on a dialog the maintainer decided on, such as a publisher's agreement |
 | `gamecheck.py` | phone (`python3 -I`) | Stage 3.2b: check a game folder before its first start: machine and bitness of every Windows file, the .exe imports (graphics API), Valve's signature on `steam_api`, DRM-bypass markers |
 | `measure.sh` | phone | Stage 3.2b: frame rate, frame time, GPU busy and clock of the newest game run, over N seconds (`sh measure.sh 20`) |
 | `watch-game.sh` | phone | Stage 3.2b: after a launch, every 30 s the frames drawn, lock waits and memory; stops on exit or after 2 minutes without a frame |
