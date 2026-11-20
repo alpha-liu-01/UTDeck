@@ -1,0 +1,4 @@
+# UTDeck stage 3.3 (step 5.5): runtimes that get-runtime.sh downloads on request. One line each:
+# KIND VERSION SHA256 URL. The URL is a release asset of this repository; the checksum is the
+# file's from build-runtime.sh, written here when a release is made.
+proton proton11.0-20261120 783bd04c8c06556db8ded11a6da55a58a9cd67da76d1d4bc8239441b06a279c0 https://github.com/alpha-liu-01/UTDeck/releases/download/runtime-proton11.0-20261120/utdeck-runtime-proton11.0-20261120.tar.xz

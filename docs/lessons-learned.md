@@ -1098,3 +1098,33 @@ Problems met while building UTDeck on the Redmi Note 12 5G (stone). Details in `
   orientation (and so the picture sizes) differed, and the two bases take different picture paths.
   Lesson: interleave the runs, fix every outside condition (orientation, temperature, background
   load), and check that both sides do the same work before reading a gap.
+- **A frame rate means nothing until the picture is seen on the screen (stage 3.3).** Proton's Wine
+  reported twice our frame rate for a whole night of alternated, careful runs, and I chased the gap
+  through three patches (two kept for other reasons, none closing it). Its window had lost its
+  Wayland role before the first frame: the frames were thrown away, never shown. The screen was also
+  off for every automated run (backlight 0), so no screenshot could have caught it, and screen-on
+  numbers are lower (ours: 105 fps off, 75 fps on). Lesson: before comparing, confirm with the screen
+  on (a screenshot, or the maintainer watching) that every side really shows its picture, and note
+  the shell's orientation; read the Wayland request log of both sides before guessing at causes.
+  It happened twice: after the window was fixed, Proton's "30-70 %" in display mode tests came from
+  a 1x1 or unscaled buffer (its scaler never switched on). The buffer sizes handed to the compositor
+  (`get_server_buffer_handle` in `WAYLAND_DEBUG`) show at once whether both sides draw the same thing.
+- **Rule out the settings before blaming the base (stage 3.3).** Goat Simulator hung at its first
+  level on our Wine and played on Proton's, but the two runs had different game settings (windowed
+  960x540 and lowest graphics, set by the maintainer on Proton's run). The same settings files
+  copied to our prefix made our base fail at the same point again, this time with UE3's "Pure
+  virtual function being called" crash in its render thread. Lesson: when one base works and the
+  other does not, repeat the failing side with the working side's exact settings before writing
+  down which base a game needs. A hang on one run and a crash on the next, at the same point, both
+  fit two threads racing.
+- **Valve's code assumes X11 in places that matter on Wayland (stage 3.3).** Proton's scaler for
+  display modes sized its target from the surface's minimum size, which is the window on X11 and
+  1x1 on Wayland, and read every game image as BGRA, while our Mesa makes DXVK draw RGBA. The
+  results looked like other problems (an empty screen, a frame rate twice too high). Lesson: when
+  carrying code written for gamescope or X11 over to Lomiri, check every size and format it takes
+  from the surface, and read Wine's own log line for it ("scaling from ... -> ...") before
+  measuring.
+- **A disproved claim must leave the patch too (stage 3.3).** Patch 0012's description and code
+  comment still said it halved the GPU time per frame after step 4 had measured no change; it was
+  found only while porting it. Lesson: when a measurement disproves a reason, fix the patch text,
+  the comments and the notes in the same step, not only the notes.

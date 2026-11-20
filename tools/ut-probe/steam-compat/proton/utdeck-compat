@@ -1,0 +1,7 @@
+#!/bin/sh
+# UTDeck stage 3.3: what Steam runs for a game set to "UTDeck runtime (Proton 11)". The default
+# tool's script does all the work (../utdeck/utdeck-compat, installed next to this folder); this
+# one only tells it which Wine base to use. A game's own utdeck-env can still set UTDECK_RUNTIME,
+# for tests.
+export UTDECK_TOOL_RUNTIME=proton
+exec "$(dirname "$0")/../utdeck/utdeck-compat" "$@"

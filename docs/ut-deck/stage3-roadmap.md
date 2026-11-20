@@ -66,11 +66,12 @@ Each substage needs the one before it.
 | 3.2 The game list and the first table (closed, no entries) | The maintainer's games that run without Steam | The copies at hand carried DRM bypasses; replaced by 3.S and 3.2b |
 | **3.S Steam far enough to test games** (done) | Valve's ARM64 client hidden as a service; UTDeck's runtime as its compatibility tool; Steam's API for games; videos, sound volume, fill mode | A Steam game starts, plays and quits through our runtime |
 | **3.2b The table from the Steam library** (exit met) | Five or more of the maintainer's Steam games, checked for DRM bypasses, measured | Five games: Direct3D 9, 11, 12; 32- and 64-bit; Box64 and FEX; five engines |
-| 3.3 The Wine base: ours or Proton's | Proton 11's Wine built in our container, our patches carried over, measured against ours on the table's games and the stage 2 tests; the cost of `wineserver` waits on this kernel measured, and whether an esync port is worth carrying | A decision with numbers, written down; the chosen base in the build script |
+| **3.3 Two Wine bases** (in progress) | Proton 11's Wine built in our container next to Hangover's 11.16, our patches carried over, both measured on the stage 2 tests and the table's games; the cost of `wineserver` waits on this kernel measured (no esync port). Both bases are kept, as Steam keeps several Proton versions: one is the default, the other a second compatibility tool chosen per game | Two compatibility tools in Steam, each with its own prefixes; the default fully supported, the second best-effort and downloaded on request; a per-game list of which base a game needs, with numbers |
 | 3.4 Defaults that remove losses | Each default measured on the phone and kept in one place (the list below) | Each default kept or dropped with a measurement; one place where the defaults live |
 | 3.5 CPU boost, heat and memory | `uclamp_min` for the game's threads as in the Dolphin port; long runs with CPU and GPU load together; memory under hidden Steam (1.3 GB) plus a game (up to 2.5 GB) on an 8 GB phone; the vendor's thermal service stays in charge, no limit is raised | Frame rate, temperature and free memory over 30 minutes with and without the boost |
 | 3.6 Lifecycle | What Wine and the game do when the screen locks or another app comes to the front: games started by hidden Steam are not Lomiri apps, so Lomiri may not pause them (SIGSTOP) as it pauses apps; sound, timers, the gamepad, the GPU | Pause and resume work in two games, or the problems are written down with a plan |
 | 3.7 Linux x86 games | Games with a native Linux build (Goat Simulator's) through FEX in Steam's Linux runtime, against the same games' Windows builds through our runtime | Two games measured both ways; a rule for which build UTDeck installs |
+| 3.8 Starting games from the phone (asked by the maintainer, 2026-11-20; before stage 4) | Today a game starts only from the PC (`steam-service.sh launch APPID` over adb), because hidden Steam has no window. The maintainer starts, plays and quits an installed Steam game on the phone alone, without the Steam window: at least one entry per game in Lomiri's app list, or one small launcher, that sends `-applaunch` to hidden Steam (and starts it when it is not running). Stage 4's library builds on it | Two games started and quit from the phone with no PC attached |
 
 The defaults for 3.4, collected from ARMDeck, DroidDeck, 3.S and 3.2b:
 - From before: `DOTNET_EnableWriteXorExecute=0`, FEX TSO and its other options per game, DXVK's
@@ -90,7 +91,7 @@ The defaults for 3.4, collected from ARMDeck, DroidDeck, 3.S and 3.2b:
   movies in a plain window need it.
 
 Order and why: 3.1 first, because every later number should come from the runtime we build, not
-from a prebuilt one. 3.2 (then 3.S and 3.2b) next, so that the base decision (3.3) and every default
+from a prebuilt one. 3.2 (then 3.S and 3.2b) next, so that the base comparison (3.3) and every default
 (3.4, 3.5) is measured on real games instead of on our samples. The table grows through 3.3-3.7
 until it has ten or more games (the stage exit); five are in it now.
 
@@ -159,39 +160,71 @@ game list and table from Steam). See [plan-change-steam-early.md](plan-change-st
   (`utdeck-compat`), see-through pictures (Mesa patch 0005), `mscoree` no longer turned off. The Visual C++ runtime mix-up after
   Steam's installers is repaired before every game start (`utdeck-compat`). Open: Goat Simulator's
   hang, portrait for landscape-only games, the on-screen keyboard.
+- **3.3 (started 2026-11-20): steps 1-3 done, step 4 under way.** Notes:
+  [stage3.3-wine-base.md](stage3.3-wine-base.md). No esync port (a server request costs about
+  17-24 µs, a few percent of a frame); Proton 11's Wine builds in our container with seven of our
+  patches carried over. Where both put the same picture on the screen, Proton's base is 0-10 %
+  faster; every larger gap measured was a picture Proton did not show. New patches: Wine 0012 (the
+  game's subsurface placed once, not three times a frame), 0013 (no second `set_fullscreen`), Proton
+  0009 (the window keeps its surface). **Plan change (2026-11-20):** both bases are kept, as two
+  compatibility tools; see below.
 
-## Next: 3.3, the Wine base (plan, 2026-11-19)
+## Now: 3.3, two Wine bases (plan 2026-11-19, changed 2026-11-20)
 
-The question: stay on Hangover's Wine (Wine 11.16 with Hangover's ARM64 work, plus our eleven
-patches and Proton's `lsteamclient`), or move to Proton 11's Wine (Wine 11.0 with Valve's game
-fixes, which Valve runs on ARM64 for the Steam Frame). Both now meet the same games, so the answer
-comes from them.
+The first question was: stay on Hangover's Wine (Wine 11.16 with Hangover's ARM64 work, plus our
+patches and Proton's `lsteamclient`), or move to Proton 11's Wine (Wine 11.0 with Valve's game fixes,
+which Valve runs on ARM64 for the Steam Frame).
+
+**Changed after step 4 (2026-11-20): we do not choose, we keep both.** Neither base is broken and
+the gap is small (Proton's 0-10 % faster where both show the same picture), while each brings
+something the other lacks: Hangover's 11.16 follows upstream Wine closely (Wayland driver and ARM64EC
+work arrive there first), Proton's 11.0 carries Valve's per-game fixes and launcher workarounds. Steam
+already lets a user pick a compatibility tool per game, as it offers several Proton versions; for
+"almost every game compatible", a second engine to try is worth more than 10 %. The cost is a second
+patch series and a second set of prefixes, kept low by supporting one base fully and the other on a
+best-effort basis.
 
 Steps, one at a time:
 
-1. **What waits through `wineserver` cost on this kernel**, measured on our base first, because it
-   decides whether an esync port is worth anything at all: for each table game at its test spot,
-   `wineserver`'s CPU time and its requests per second (`strace -c` on `wineserver` for 20 s, read
-   on the phone), against the game's frame time. Kernel 5.4 has `eventfd` (esync could work) but not
-   `futex_waitv` (fsync) or `/dev/ntsync`; Proton 11 has dropped esync. If `wineserver` is a few
-   percent of a frame, the esync question is closed.
-2. **Proton 11's Wine built in our container**, as a second Wine variant in `build-runtime.sh`
-   (`WINE_URL`/`WINE_COMMIT` taken from the environment, as for FEX): ValveSoftware/wine at
-   proton-11.0-2e, `--enable-archs=arm64ec,aarch64,i386`. Proton's Wine is older than the 11.15 fix
-   for this phone's 39-bit address space; stage 0 found that a `-static-pie` build starts anyway.
-3. **Our patches carried over:** 0001-0008, 0010 and 0011 (0009 is Proton's own code); each
-   conflict and what it needed written down. `lsteamclient` and `steam.exe` come with Proton's tree.
-4. **The same tests on both:** the stage 2 tests (`rt-console.sh`, `rt-gfx.sh`), start-up time,
-   prefix size; the five table games at their saved spots (frame rate, CPU, GPU, memory, with
-   `measure.sh`); Goat Simulator's hang (a test case Proton's game fixes may cover); Ys's opening
-   movie through DirectShow (`vidtest.exe`, K10).
-5. **The decision, with the numbers,** in this file and in the 3.3 notes; the chosen base becomes the
-   default in `build-runtime.sh`, the other stays buildable for comparison.
+1. **Done: what waits through `wineserver` cost on this kernel.** A request costs about 17 µs
+   (ARM64) to 24 µs (x86-64 through FEX); in Ys IX and ATRI the waits are a few percent of a frame.
+   No esync port.
+2. **Done: Proton 11's Wine built in our container** (`WINE_FLAVOR=proton` in `build-runtime.sh`,
+   own sources, build folders, patches and output).
+3. **Done: our patches carried over** to `patches-proton/` (seven of them; the scaler replaced by
+   Valve's `fs_hack`, fill mode and the opaque bars left out).
+4. **Done: the same tests on both** (2026-11-20). The stage 2 graphics tests (Proton's 0-10 %
+   faster where both show the same picture) and the table's games: Ys IX, Stray and ATRI run as
+   well on ours, which also fills the screen; **Goat Simulator needs Proton's base** (ours fails at
+   its first level); DirectShow movies fail on both (K10 stays open). List and parked items in the
+   3.3 notes.
+5. **Two compatibility tools** (was: the decision):
+   1. **The default stays our 11.16 base**: it is the complete one (it follows Lomiri's rotation,
+      gets real fullscreen, scales lower resolutions to the screen). Fully supported, tested on every
+      game.
+   2. **Proton's base brought level** with the default where a game needs it: follow Lomiri's
+      rotation (Lomiri does not give its window the fullscreen state), a working scaler for display
+      mode changes (our 0006 ported, or `fs_hack` made to switch on), our 0012 and 0013 ported.
+   3. **A second tool in Steam**, e.g. "UTDeck (Proton 11)", next to `utdeck-compat`, chosen per game in
+      the game's Properties, or written by `set-default.py --app`.
+   4. **Separate prefixes per tool** (`pfx` and `pfx-proton` per game): a prefix updated by one Wine
+      is not used by the other. Saves inside the prefix do not move across; Steam Cloud covers most
+      games, the rest are written down.
+   5. **The second runtime downloaded on request**, not shipped by default (about 210 MB packed).
+   6. **The per-game list** from step 4 in the 3.3 notes and the table: which base each game runs on
+      and why.
 
-Risks: Proton's Wine may lack ARM64EC fixes that Hangover's fork carries (then: measured, written
-down, and the fixes listed); our Wayland patches (0001-0004, 0010, 0011) may meet Proton's own
-`winewayland` changes. The maintainer is needed for the game runs in step 4 (load the saved spot,
-stand still, say "ready"), as in 3.2b.
+Exit: both tools in Steam on the phone, a game started on each, the per-game list with numbers, both
+runtimes from one build script.
+
+Risks: two patch series to port at each Wine update (this night's patches needed rework for 11.0's
+older driver); Lomiri's window logic, which treats the two Wines' windows differently and is not yet
+understood; disk space on the phone (two runtimes, two prefixes for the games that use both).
+
+What step 4 taught for every later measurement (details in the 3.3 notes and lessons-learned): a
+frame rate counts only once the picture is seen on the screen (screen on, a screenshot or the
+maintainer watching, the buffer sizes handed to Lomiri), and Lomiri's orientation is noted with
+every run.
 
 Rules for this stage, from the project rules:
 - Nothing system-wide on the phone: the runtime lives in a folder, chosen with environment

@@ -2,7 +2,10 @@
 # UTDeck stage 3.1: the stage 2.3/2.4 graphics tests on one runtime, for comparing our runtime with
 # Hangover's. Runs with the screen off too (frames are still presented, stage 2.4).
 #
-#   rt-gfx.sh utdeck|hangover|proton   -> rt-gfx-<runtime>-<time>.log in the wine folder
+#   rt-gfx.sh utdeck|hangover|proton [RUNTIME_DIR]   -> rt-gfx-<runtime>-<time>.log in the wine folder
+#
+# RUNTIME_DIR (a folder in the wine folder, e.g. runtime-p13) runs a test build instead of the
+# runtime the kind normally picks; the prefix still follows the kind.
 #
 # Uses a prefix of its own (prefix-<runtime>-gfx, created the first time, with DXVK and, on our
 # runtime, VKD3D-Proton), then: Vulkan (x86-64 and ARM64), Direct3D 11 (DXVK; windowed, fullscreen,
@@ -14,13 +17,14 @@ export UTDECK_RUNTIME=$1
 W=/home/phablet/utdeck-probe/wine
 export WINEPREFIX=$W/prefix-$1-gfx
 . $W/env.sh
+[ -n "${2:-}" ] && export PATH=$W/$2/bin:$PATH
 export WAYLAND_DISPLAY=wayland-0 MESA_VK_WSI_PRESENT_MODE=mailbox
 export DXVK_LOG_LEVEL=none VKD3D_DEBUG=none VKD3D_SHADER_DEBUG=none   # their logs crowd out the results
 unset DISPLAY
 T=$W/test
 LOG=$W/rt-gfx-$1-$(date +%H%M%S).log
 exec > "$LOG" 2>&1
-echo "runtime: $1, $(command -v wine), $(wine --version)"
+echo "runtime: $1${2:+ ($2)}, $(command -v wine), $(wine --version)"
 if [ ! -d "$WINEPREFIX" ]; then
     wineboot -i > /dev/null 2>&1; wineserver -w
     if [ "$1" = hangover ]; then

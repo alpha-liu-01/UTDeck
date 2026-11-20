@@ -1,0 +1,120 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: UTDeck <utdeck@invalid>
+Date: Fri, 20 Nov 2026 16:08:27 -0500
+Subject: [PATCH] win32u: make the fullscreen hack work on Wayland with RGBA
+ games
+
+Proton's scaler for emulated display modes (the "fullscreen hack", fs_hack) creates the host
+swapchain at the surface's minimum size and scales the game's picture over the whole of it. On
+X11 that minimum is the window's size. A Wayland surface has no size of its own: Mesa reports
+currentExtent 0xFFFFFFFF and a minimum of 1x1, so a game at 1280x720 on the phone's 2400x1080
+screen was scaled into a 1x1 picture and Lomiri showed nothing ("scaling from (1280,720) ->
+(1,1)" in Wine's log; Ys IX at 1600x720 fullscreen showed only the wallpaper, stage 3.3). When
+the surface reports no current size, use the client area at the raw DPI (the area Wine fits the
+emulated mode into, in real pixels), as on X11.
+
+The scaler also read the game's images as BGRA and wrote BGRA host images whatever the game's
+format. DXVK draws in RGBA when the driver offers no BGRA swapchain format, as our Mesa does on
+Halium (Mesa patch 0005, against see-through pictures): red and blue were swapped, and the BGRA
+host images went to Lomiri as BGRA_8888 with the game's alpha, which Lomiri blends with what is
+behind. Keep RGBA games in RGBA (sampled through the sRGB view of the same order); the opaque
+host swapchain is then RGBX, as without the scaler.
+
+This replaces our own scaler (patch 0006 on Hangover's Wine) on Proton's base.
+---
+ dlls/win32u/vulkan.c | 45 ++++++++++++++++++++++++++++++++++++++------
+ 1 file changed, 39 insertions(+), 6 deletions(-)
+
+diff --git a/dlls/win32u/vulkan.c b/dlls/win32u/vulkan.c
+index 44fac5a..2252ba2 100644
+--- a/dlls/win32u/vulkan.c
++++ b/dlls/win32u/vulkan.c
+@@ -194,6 +194,7 @@ struct swapchain
+     /* fs hack data below */
+     UINT fshack_dpi;
+     VkExtent2D host_extents;
++    VkFormat host_format; /* UTDeck: the host images' format, see fs_hack_host_format() */
+     VkCommandPool *cmd_pools; /* VkCommandPool[device->queue_count] */
+     VkDeviceMemory user_image_memory;
+     uint32_t n_images;
+@@ -2242,6 +2243,25 @@ static VkResult create_descriptor_set( struct vulkan_device *device, struct swap
+     return VK_SUCCESS;
+ }
+ 
++/* UTDeck: the scaler read the game's images as BGRA and wrote BGRA host images, whatever the
++ * game's format. A game drawing in RGBA (DXVK picks it when the driver offers no BGRA swapchain
++ * format, as our Mesa does on Halium) then had red and blue swapped, and the host's BGRA with alpha
++ * went to Lomiri as BGRA_8888, which it blends with what is behind (see-through pictures). Keep
++ * RGBA games in RGBA: the opaque host swapchain is then RGBX, which cannot be blended. */
++static VkFormat fs_hack_host_format( VkFormat app_format )
++{
++    if (app_format == VK_FORMAT_R8G8B8A8_UNORM || app_format == VK_FORMAT_R8G8B8A8_SRGB)
++        return VK_FORMAT_R8G8B8A8_UNORM;
++    return VK_FORMAT_B8G8R8A8_UNORM;
++}
++
++/* UTDeck: the format the game's images are sampled through (sRGB, decoded to linear for the
++ * filter; the shader encodes again). */
++static VkFormat fs_hack_sample_format( VkFormat host_format )
++{
++    return host_format == VK_FORMAT_R8G8B8A8_UNORM ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_B8G8R8A8_SRGB;
++}
++
+ static VkResult init_blit_images( struct vulkan_device *device, struct swapchain *swapchain )
+ {
+     VkResult res;
+@@ -2356,7 +2376,7 @@ static VkResult init_blit_images( struct vulkan_device *device, struct swapchain
+         viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+         viewInfo.image = hack->swapchain_image;
+         viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+-        viewInfo.format = VK_FORMAT_B8G8R8A8_UNORM;
++        viewInfo.format = swapchain->host_format;
+         viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+         viewInfo.subresourceRange.baseMipLevel = 0;
+         viewInfo.subresourceRange.levelCount = 1;
+@@ -2477,7 +2497,7 @@ static VkResult init_fs_hack_images( struct vulkan_device *device, struct swapch
+ 
+         if (createinfo->flags & VK_SWAPCHAIN_CREATE_MUTABLE_FORMAT_BIT_KHR)
+             imageInfo.flags |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT | VK_IMAGE_CREATE_EXTENDED_USAGE_BIT;
+-        else if (createinfo->imageFormat != VK_FORMAT_B8G8R8A8_SRGB)
++        else if (createinfo->imageFormat != fs_hack_sample_format( swapchain->host_format ))
+             imageInfo.flags |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
+ 
+         if ((res = device->p_vkCreateImage( device->host.device, &imageInfo, NULL, &hack->user_image )))
+@@ -2550,7 +2570,7 @@ static VkResult init_fs_hack_images( struct vulkan_device *device, struct swapch
+         viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+         viewInfo.image = swapchain->fs_hack_images[i].user_image;
+         viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+-        viewInfo.format = VK_FORMAT_B8G8R8A8_SRGB;
++        viewInfo.format = fs_hack_sample_format( swapchain->host_format );
+         viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+         viewInfo.subresourceRange.baseMipLevel = 0;
+         viewInfo.subresourceRange.levelCount = 1;
+@@ -2649,11 +2669,24 @@ static VkResult win32u_vkCreateSwapchainKHR( VkDevice client_device, const VkSwa
+             FIXME( "Swapchain does not support required VK_IMAGE_USAGE_STORAGE_BIT\n" );
+ 
+         swapchain->host_extents = capabilities.minImageExtent;
+-        create_info_host.imageExtent = capabilities.minImageExtent;
+-        create_info_host.imageFormat = VK_FORMAT_B8G8R8A8_UNORM;
++        /* UTDeck: the scaler draws over the whole host image, which must be the game's area in
++         * real pixels. On X11 the surface's minimum size is the window's; a Wayland surface has no
++         * size of its own (currentExtent 0xFFFFFFFF, minImageExtent 1x1), so the picture was
++         * scaled to 1x1 and nothing showed (Lomiri). Use the client area at the raw DPI instead. */
++        if (capabilities.currentExtent.width == 0xFFFFFFFF &&
++            get_surface_rect( surface->hwnd, &client_rect, swapchain->fshack_dpi ) &&
++            client_rect.right > 0 && client_rect.bottom > 0)
++        {
++            swapchain->host_extents.width = client_rect.right;
++            swapchain->host_extents.height = client_rect.bottom;
++        }
++        create_info_host.imageExtent = swapchain->host_extents;
++        swapchain->host_format = fs_hack_host_format( create_info->imageFormat );
++        create_info_host.imageFormat = swapchain->host_format;
+         create_info_host.imageUsage = VK_IMAGE_USAGE_STORAGE_BIT;
+ 
+-        if (create_info->imageFormat != VK_FORMAT_B8G8R8A8_UNORM && create_info->imageFormat != VK_FORMAT_B8G8R8A8_SRGB)
++        if (create_info->imageFormat != VK_FORMAT_B8G8R8A8_UNORM && create_info->imageFormat != VK_FORMAT_B8G8R8A8_SRGB &&
++            create_info->imageFormat != VK_FORMAT_R8G8B8A8_UNORM && create_info->imageFormat != VK_FORMAT_R8G8B8A8_SRGB)
+             FIXME( "swapchain image format is not BGRA8 UNORM/SRGB. Things may go badly. %d\n",
+                    create_info_host.imageFormat );
+     }

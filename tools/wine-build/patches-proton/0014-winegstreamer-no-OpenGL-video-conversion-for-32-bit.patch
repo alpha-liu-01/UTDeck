@@ -1,0 +1,46 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: UTDeck <utdeck@invalid>
+Date: Fri, 20 Nov 2026 16:06:05 -0500
+Subject: [PATCH] winegstreamer: no OpenGL video conversion for 32-bit programs
+
+Proton's Windows Media reader (wm_reader.c) converts the video of 32-bit programs through
+OpenGL in GStreamer (glupload, glcolorconvert, glvideoflip, gldeinterlace, gldownload), because
+32-bit GStreamer on a PC converts I420 to RGBA slowly, and turns that off per game by Steam app
+id. On UTDeck the Unix side, and so GStreamer, is always native 64-bit ARM (32-bit programs run
+through WoW64), so the reason does not apply, and GStreamer's OpenGL plugin is not on the phone.
+With it on, a 32-bit program could not open an ASF video at all ("failed to create glupload",
+then "asfdemux0: Internal data stream error ... not-linked", RenderFile 0x80040218), as with
+Ys: Memories of Celceta's logo.wmv in stage 3.3. Use GStreamer's normal conversion, as for
+64-bit programs.
+---
+ dlls/winegstreamer/wm_reader.c | 10 ++++++++--
+ 1 file changed, 8 insertions(+), 2 deletions(-)
+
+diff --git a/dlls/winegstreamer/wm_reader.c b/dlls/winegstreamer/wm_reader.c
+index 51f5ac1..d8d7a8b 100644
+--- a/dlls/winegstreamer/wm_reader.c
++++ b/dlls/winegstreamer/wm_reader.c
+@@ -1535,7 +1535,8 @@ static void free_streams(struct wm_reader *reader)
+ 
+ static HRESULT init_stream(struct wm_reader *reader)
+ {
+-    BOOL enable_opengl = sizeof(void *) == 4;
++    /* UTDeck: no OpenGL conversion (see reinit_stream). */
++    BOOL enable_opengl = FALSE;
+     wg_parser_t wg_parser;
+     HRESULT hr;
+     WORD i;
+@@ -1678,7 +1679,12 @@ out_destroy_parser:
+ 
+ static HRESULT reinit_stream(struct wm_reader *reader, bool read_compressed)
+ {
+-    BOOL enable_opengl = sizeof(void *) == 4 && !read_compressed;
++    /* UTDeck: Valve converts the video of 32-bit programs through OpenGL in GStreamer, because
++     * 32-bit GStreamer on a PC converts I420 to RGBA slowly. Here the Unix side, and so GStreamer,
++     * is always native 64-bit ARM (32-bit programs run through WoW64), the reason does not apply,
++     * and GStreamer's OpenGL plugin is not on the phone: with it on, a 32-bit program's ASF video
++     * did not open at all (glupload missing, the demuxer's output not linked). */
++    BOOL enable_opengl = FALSE;
+     wg_parser_t wg_parser;
+     HRESULT hr;
+     WORD i;

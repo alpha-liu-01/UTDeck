@@ -14,7 +14,8 @@
 #   getnativepath PATH       Windows path to Linux path
 #   destroyprefix            remove the game's prefix
 #
-# Each game has its own Wine prefix, as with Proton: $STEAM_COMPAT_DATA_PATH/pfx
+# Each game has its own Wine prefix, as with Proton: $STEAM_COMPAT_DATA_PATH/pfx (pfx-proton on
+# Proton's Wine base, the second tool "UTDeck runtime (Proton 11)", see UTDECK_RUNTIME below)
 # (steamapps/compatdata/<appid>/pfx), made on the first start and prepared for Steam as Proton
 # does: Valve's Windows Steam files from Steam's legacycompat folder in C:\Program Files (x86)\Steam,
 # and the registry keys that point games at them (steam-prefix.reg). Programs are started through
@@ -41,7 +42,6 @@ APPID=${STEAM_COMPAT_APP_ID:-${SteamAppId:-0}}
     echo "  other variables (names only): $(env | sed -n 's/^\([A-Za-z_][A-Za-z_0-9]*\)=.*/\1/p' | grep -vE '^(STEAM_COMPAT_|SteamAppId$|SteamGameId$|SteamOverlayGameId$|STEAM_RUNTIME|LD_PRELOAD$|LD_LIBRARY_PATH$|ENABLE_VK_|DISABLE_VK_|VK_|DISPLAY$|WAYLAND_DISPLAY$|SDL_|PWD$)' | sort | tr '\n' ' ')"
 } >> "$LOG"
 
-export WINEPREFIX=$DATA/pfx
 # Per-game settings: compatdata/<appid>/utdeck-env, one NAME=value per line (for example
 # WINEDEBUG_GAME=+loaddll or GAME_OVERRIDES=d3dx9_43=n), since Steam starts us with its own
 # environment. Lines starting with # are skipped.
@@ -49,6 +49,24 @@ if [ -f "$DATA/utdeck-env" ]; then
     while IFS= read -r line; do
         case "$line" in ''|'#'*) continue ;; *=*) export "$line"; printf '  per-game: %s\n' "$line" >> "$LOG" ;; esac
     done < "$DATA/utdeck-env"
+fi
+# The Wine base (stage 3.3): the tool Steam started picks it. "UTDeck runtime" is Hangover's Wine
+# 11.16 base (the default, fully supported); "UTDeck runtime (Proton 11)" (compatibilitytools.d/
+# utdeck-proton, whose script sets UTDECK_TOOL_RUNTIME=proton) is Proton 11's Wine, for the games
+# that need it. UTDECK_RUNTIME in utdeck-env overrides both, for tests (env.sh picks the runtime
+# from it). Each base has its own prefix: a prefix updated by one Wine is not used by the other.
+# Saves inside a prefix do not move across by themselves.
+export UTDECK_RUNTIME=${UTDECK_RUNTIME:-${UTDECK_TOOL_RUNTIME:-utdeck}}
+case "$UTDECK_RUNTIME" in
+proton) export WINEPREFIX=$DATA/pfx-proton ;;
+*)      export WINEPREFIX=$DATA/pfx ;;
+esac
+echo "  runtime: $UTDECK_RUNTIME${UTDECK_TOOL_RUNTIME:+ (tool: $UTDECK_TOOL_RUNTIME)}, prefix $(basename "$WINEPREFIX")" >> "$LOG"
+# Proton's base is not shipped by default (step 5.5): without it, say so and stop.
+if [ "$UTDECK_RUNTIME" = proton ] && [ ! -x "$W/runtime-proton/bin/wine" ]; then
+    echo "  Proton 11's runtime is not installed: get it with sh $W/get-runtime.sh proton" >> "$LOG"
+    echo "utdeck-compat: Proton 11's runtime is not installed (sh $W/get-runtime.sh proton)" >&2
+    exit 1
 fi
 TOOL=$(cd "$(dirname "$0")" && pwd)
 STEAM=${STEAM_COMPAT_CLIENT_INSTALL_PATH:-$HOME/.local/share/Steam}
@@ -226,7 +244,7 @@ getnativepath)
     ;;
 destroyprefix)
     case "$WINEPREFIX" in
-    */steamapps/compatdata/*/pfx) rm -rf "$WINEPREFIX"; echo "  prefix removed" >> "$LOG" ;;
+    */steamapps/compatdata/*/pfx|*/steamapps/compatdata/*/pfx-proton) rm -rf "$WINEPREFIX"; echo "  prefix removed" >> "$LOG" ;;
     *) echo "  not removing unexpected path $WINEPREFIX" >> "$LOG"; exit 1 ;;
     esac
     ;;

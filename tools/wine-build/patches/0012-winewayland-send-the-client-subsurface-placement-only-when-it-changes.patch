@@ -1,0 +1,86 @@
+From: UTDeck
+Subject: [PATCH] winewayland: send the client subsurface placement only when it changes
+
+win32u updates a window's client surface (the game's picture) before and after every Vulkan
+present. Each update repositioned and restacked the client subsurface and committed the parent
+surface, so a game sent three commits per frame instead of one, and Lomiri logged "place_above
+not implemented" for each. Remember the placement last sent, with its parent surface, and send
+and commit only a change. (Stage 3.3 first suspected these commits of doubling the GPU time per
+frame against Proton 11's Wine; with this patch the speed did not change: the gap came from
+Proton's picture not being shown. Kept because it removes work and log noise.)
+
+diff --git a/dlls/winewayland.drv/wayland_surface.c b/dlls/winewayland.drv/wayland_surface.c
+index 97231137..e1c1f4e1 100644
+--- a/dlls/winewayland.drv/wayland_surface.c
++++ b/dlls/winewayland.drv/wayland_surface.c
+@@ -797,7 +797,7 @@ static void wayland_surface_reconfigure_size(struct wayland_surface *surface,
+  *
+  * Reconfigures the subsurface covering the client area.
+  */
+-static void wayland_surface_reconfigure_client(struct wayland_surface *surface,
++static BOOL wayland_surface_reconfigure_client(struct wayland_surface *surface,
+                                                struct wayland_client_surface *client,
+                                                const RECT *client_rect)
+ {
+@@ -806,6 +806,17 @@ static void wayland_surface_reconfigure_client(struct wayland_surface *surface,
+     /* The offset of the client area origin relatively to the window origin. */
+     rect = map_rect_to_surface(surface, rect);
+ 
++    client->rect = client_rect ? *client_rect : client->rect;
++
++    /* win32u updates the client surface before and after every present. Sending the same
++     * position, stacking and size again and committing the parent each time adds two commits per
++     * frame and fills Lomiri's log (it does not implement place_above), so only a change is
++     * sent. */
++    if (client->applied_parent == surface->wl_surface && EqualRect(&client->applied_rect, &rect))
++        return FALSE;
++    client->applied_parent = surface->wl_surface;
++    client->applied_rect = rect;
++
+     TRACE("hwnd=%p rect=%s\n", surface->hwnd, wine_dbgstr_rect(&rect));
+ 
+     if (client->wl_subsurface)
+@@ -823,7 +834,7 @@ static void wayland_surface_reconfigure_client(struct wayland_surface *surface,
+     else /* We can't have a 0x0 destination, use 1x1 instead. */
+         wp_viewport_set_destination(client->wp_viewport, 1, 1);
+ 
+-    client->rect = *client_rect;
++    return TRUE;
+ }
+ 
+ /**********************************************************************
+@@ -1424,6 +1435,7 @@ void wayland_client_surface_attach(struct wayland_client_surface *client, HWND t
+         }
+ 
+         client->toplevel = 0;
++        client->applied_parent = NULL;
+         return;
+     }
+ 
+@@ -1449,9 +1461,9 @@ void wayland_client_surface_attach(struct wayland_client_surface *client, HWND t
+         client->toplevel = toplevel;
+     }
+ 
+-    wayland_surface_reconfigure_client(surface, client, rect);
+     /* Commit to apply subsurface positioning. */
+-    wl_surface_commit(surface->wl_surface);
++    if (wayland_surface_reconfigure_client(surface, client, rect))
++        wl_surface_commit(surface->wl_surface);
+ 
+ done:
+     wayland_win_data_release(toplevel_data);
+diff --git a/dlls/winewayland.drv/waylanddrv.h b/dlls/winewayland.drv/waylanddrv.h
+index b16ca533..320e1c28 100644
+--- a/dlls/winewayland.drv/waylanddrv.h
++++ b/dlls/winewayland.drv/waylanddrv.h
+@@ -259,6 +259,10 @@ struct wayland_client_surface
+     struct wl_surface *wl_surface;
+     struct wl_subsurface *wl_subsurface;
+     struct wp_viewport *wp_viewport;
++    /* The subsurface placement last sent to the compositor (surface coordinates) and the parent
++     * it was sent for, so an unchanged placement is not sent and committed again each frame. */
++    RECT applied_rect;
++    struct wl_surface *applied_parent;
+ };
+ 
+ extern struct wayland_client_surface *impl_from_client_surface(struct client_surface *client);

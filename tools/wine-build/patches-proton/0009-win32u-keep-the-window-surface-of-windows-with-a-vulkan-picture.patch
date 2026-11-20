@@ -1,0 +1,46 @@
+From: UTDeck
+Subject: [PATCH] win32u: keep the window surface of windows that show a Vulkan or OpenGL picture
+
+Proton's win32u gives no window surface to a window whose client area shows a Vulkan or OpenGL
+picture (window_clip_client_surfaces), which saves a copy on X11, where the X window stays. Wine's
+Wayland driver destroys the window's Wayland surface, and with it the xdg_toplevel, when a window
+has no surface: the game's picture showed for a second or two, then only the wallpaper, while the
+frames went on to a surface nobody displays (stage 3.3 step 4, d3d11test fullscreen reported 200 fps
+with nothing on the screen). Keep the surface, as upstream Wine does; UTDECK_WAYLAND_CLIP_CLIENTS=1
+restores Proton's behaviour.
+
+--- a/dlls/win32u/window.c
++++ b/dlls/win32u/window.c
+@@ -2113,6 +2113,17 @@
+     return ret;
+ }
+ 
++static BOOL utdeck_drop_client_window_surface(void)
++{
++    static int cached = -1;
++    if (cached == -1)
++    {
++        const char *env = getenv( "UTDECK_WAYLAND_CLIP_CLIENTS" );
++        cached = env && *env == '1';
++    }
++    return cached;
++}
++
+ static struct window_surface *get_window_surface( HWND hwnd, UINT swp_flags, BOOL create_layered,
+                                                   struct window_rects *rects, RECT *surface_rect )
+ {
+@@ -2162,7 +2173,13 @@
+     if (IsRectEmpty( surface_rect )) needs_surface = FALSE;
+     else if (create_layered || is_layered) needs_surface = TRUE;
+ 
+-    if (needs_surface && !is_layered && !create_layered && window_clip_client_surfaces( hwnd )
++    /* UTDeck: Proton drops the window surface of a window that shows a Vulkan or OpenGL picture,
++     * which saves a copy on X11. Wine's Wayland driver removes the window (its xdg_toplevel) when
++     * it has no surface, so the game's picture showed for a moment and then went to a surface
++     * nobody displays. Keep the surface, as upstream Wine does (UTDECK_WAYLAND_CLIP_CLIENTS=1 for
++     * Proton's behaviour). */
++    if (needs_surface && !is_layered && !create_layered && utdeck_drop_client_window_surface() &&
++        window_clip_client_surfaces( hwnd )
+         && !(!create_opaque && NtUserGetLayeredWindowAttributes( hwnd, NULL, NULL, &layered_flags ) && layered_flags & LWA_COLORKEY))
+     {
+         if (new_surface) window_surface_release( new_surface );

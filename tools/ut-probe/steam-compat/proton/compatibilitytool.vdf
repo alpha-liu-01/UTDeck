@@ -1,0 +1,17 @@
+// UTDeck stage 3.3: the second compatibility tool, UTDeck's runtime on Proton 11's Wine base
+// (installed by steam-push.sh into ~/.local/share/Steam/compatibilitytools.d/utdeck-proton). Chosen
+// per game in its Properties (Compatibility), or with set-default.py --app APPID utdeck-proton.
+// The default tool stays "utdeck" (Hangover's Wine 11.16 base).
+"compatibilitytools"
+{
+  "compat_tools"
+  {
+    "utdeck-proton"
+    {
+      "install_path" "."
+      "display_name" "UTDeck runtime (Proton 11)"
+      "from_oslist" "windows"
+      "to_oslist" "linux"
+    }
+  }
+}

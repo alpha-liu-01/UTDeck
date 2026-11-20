@@ -1,0 +1,58 @@
+From: UTDeck
+Subject: [PATCH] winewayland: compare the window state with the newest configure
+
+Wine decides whether to send set_fullscreen or set_maximized (and their unset) by comparing the
+window's wanted state with the last applied configure (current). A configure the compositor has
+already sent but Wine has not applied yet (requested, or processing) is ignored, so Wine asks a
+second time for a state the compositor just granted (seen with Lomiri, stage 3.3 step 4: two
+set_fullscreen requests where Proton 11's Wine sends one). Compare with the newest state the
+compositor sent.
+
+diff --git a/dlls/winewayland.drv/window.c b/dlls/winewayland.drv/window.c
+index 31da4efb..e6ac6d09 100644
+--- a/dlls/winewayland.drv/window.c
++++ b/dlls/winewayland.drv/window.c
+@@ -246,6 +246,13 @@ static void wayland_surface_update_state_toplevel(struct wayland_surface *surfac
+ {
+     BOOL processing_config = surface->processing.serial &&
+                              !surface->processing.processed;
++    /* The newest state the compositor has sent: a configure can be received or handled but not
++     * yet applied (current). Comparing with current alone asked again for a state the compositor
++     * had just granted (a second set_fullscreen right after Lomiri's fullscreen configure).
++     */
++    enum wayland_surface_config_state known = surface->requested.serial ? surface->requested.state :
++                                              surface->processing.serial ? surface->processing.state :
++                                              surface->current.state;
+ 
+     TRACE("hwnd=%p window_state=%#x %s->state=%#x\n",
+           surface->hwnd, surface->window.state,
+@@ -262,25 +269,25 @@ static void wayland_surface_update_state_toplevel(struct wayland_surface *surfac
+          /* First do all state unsettings, before setting new state. Some
+           * Wayland compositors misbehave if the order is reversed. */
+         if (!(surface->window.state & WAYLAND_SURFACE_CONFIG_STATE_MAXIMIZED) &&
+-            (surface->current.state & WAYLAND_SURFACE_CONFIG_STATE_MAXIMIZED) &&
++            (known & WAYLAND_SURFACE_CONFIG_STATE_MAXIMIZED) &&
+             !surface->window.minimized)
+         {
+             xdg_toplevel_unset_maximized(surface->xdg_toplevel);
+         }
+         if (!(surface->window.state & WAYLAND_SURFACE_CONFIG_STATE_FULLSCREEN) &&
+-            (surface->current.state & WAYLAND_SURFACE_CONFIG_STATE_FULLSCREEN) &&
++            (known & WAYLAND_SURFACE_CONFIG_STATE_FULLSCREEN) &&
+             !surface->window.minimized)
+         {
+             xdg_toplevel_unset_fullscreen(surface->xdg_toplevel);
+         }
+ 
+         if ((surface->window.state & WAYLAND_SURFACE_CONFIG_STATE_MAXIMIZED) &&
+-           !(surface->current.state & WAYLAND_SURFACE_CONFIG_STATE_MAXIMIZED))
++           !(known & WAYLAND_SURFACE_CONFIG_STATE_MAXIMIZED))
+         {
+             xdg_toplevel_set_maximized(surface->xdg_toplevel);
+         }
+         if ((surface->window.state & WAYLAND_SURFACE_CONFIG_STATE_FULLSCREEN) &&
+-           !(surface->current.state & WAYLAND_SURFACE_CONFIG_STATE_FULLSCREEN))
++           !(known & WAYLAND_SURFACE_CONFIG_STATE_FULLSCREEN))
+         {
+             xdg_toplevel_set_fullscreen(surface->xdg_toplevel, NULL);
+         }
