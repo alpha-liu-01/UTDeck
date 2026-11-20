@@ -432,6 +432,10 @@ pinned sources, byte-identical between builds, half Hangover's size, equal in ev
 VKD3D-Proton added (Direct3D 12 runs on the A619); it is now the default on the phone, and 3DMark
 11 and the gamepad work on it. 3.2 closed with no games in the table (the copies at hand carried DRM
 bypasses); Steam moves forward into stage 3 ([plan-change-steam-early.md](plan-change-steam-early.md)).
+3.S (Steam through UTDeck's runtime, hidden) and 3.2b (five games from the maintainer's Steam
+library: Direct3D 9, 11 and 12, 32- and 64-bit) are done; the plan for the rest of stage 3 (3.3 the
+Wine base, 3.4 defaults, 3.5 boost, heat and memory, 3.6 lifecycle, 3.7 Linux games) and the items
+moved to stages 4, 5 and 8 are in [stage3-roadmap.md](stage3-roadmap.md).
 
 ### Stage 4. The frontend
 
