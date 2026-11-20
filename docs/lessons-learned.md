@@ -1128,3 +1128,19 @@ Problems met while building UTDeck on the Redmi Note 12 5G (stone). Details in `
   comment still said it halved the GPU time per frame after step 4 had measured no change; it was
   found only while porting it. Lesson: when a measurement disproves a reason, fix the patch text,
   the comments and the notes in the same step, not only the notes.
+- **`gh` can pick the wrong repository (stage 3.3).** With an `upstream` remote (ARMDeck) next to
+  `origin`, `gh release create` went to `GabrielCRadu/ARMDeck` (it failed with 404, so nothing was
+  created there). Lesson: give `gh` the repository every time (`--repo alpha-liu-01/UTDeck`), and
+  a full commit hash for `--target` (a short one is refused with 422).
+- **Many quick adb connections can crash the phone's adbd (stage 3.3).** `steam-push.sh` made
+  about fifteen `adb push` and `adb shell` calls in a row; Ubuntu Touch's `adbd` died with SEGV
+  three times during it, and its restarted copy could not attach to USB again ("timed out while
+  waiting for FUNCTIONFS_BIND") until the cable was plugged in again. It looked like the phone
+  sleeping, and a phone restart in between hid the pattern. Lesson: read the phone's own log
+  (`journalctl`, `adbd.service: Main process exited`) before guessing; send several files as one
+  archive with one push and one shell.
+- **A notification that is accepted is not a notification that is shown (stage 3.8).** Lomiri's
+  notification server answered every call with an id, and the maintainer saw nothing; only
+  Lomiri's own log showed its notification QML failing (`TypeError ... of null`) at each one.
+  Lesson: for anything meant for the eyes, ask the maintainer, and read the compositor's log at the
+  same moment.

@@ -7,6 +7,9 @@
 #   steam-service.sh launch ID  start the game with that app id, then close any Steam window that
 #                               shows up on the hidden screen
 #   steam-service.sh hide       close Steam's windows on the hidden screen
+#   steam-service.sh play ID    what a game's app drawer entry runs (stage 3.8, steam-library.py):
+#                               start hidden Steam if it is not running, wait until it has signed
+#                               in, then launch the game; a phone notification while it waits
 #
 # Steam runs as a systemd user unit (utdeck-steam), not as a Lomiri app: Lomiri pauses (SIGSTOP)
 # apps that are not in front, and games need the client awake for Steam's DRM. Its X11 display is
@@ -19,6 +22,20 @@ X=$W/xvfb/root
 D=${UTDECK_STEAM_XDISPLAY:-:50}
 SIZE=${UTDECK_STEAM_XSIZE:-1200x540}
 export XDG_RUNTIME_DIR=/run/user/$(id -u) DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus
+CONN=$HOME/.local/share/Steam/logs/connection_log.txt
+
+# notify TEXT: a phone notification (Lomiri's notification service, the freedesktop interface).
+# Lomiri accepts it but does not draw it yet on this phone (its notification QML fails, stage 3.8).
+notify() {
+    gdbus call --session --dest org.freedesktop.Notifications --object-path /org/freedesktop/Notifications \
+        --method org.freedesktop.Notifications.Notify UTDeck 0 "" UTDeck "$1" "[]" "{}" 5000 > /dev/null 2>&1
+}
+# signed_in: Steam runs and the last state in its connection log is "Logged On". The log's lines
+# also hold the account's number; only the state word is read.
+signed_in() {
+    pgrep -x -u "$(id -u)" steam > /dev/null || return 1
+    [ "$(grep -o '^\[[^]]*\] \[[A-Za-z ]*,' "$CONN" 2>/dev/null | tail -1 | sed 's/.*\[//; s/,$//')" = "Logged On" ]
+}
 
 case "${1:-}" in
 start)
@@ -31,6 +48,25 @@ start)
     systemd-run --user --unit=utdeck-steam --collect --setenv=DISPLAY="$D" \
         "$W/steam/steam-run.sh" -silent -cef-disable-breakpad > /dev/null
     echo "started: Xvfb $D ($SIZE), Steam hidden (unit utdeck-steam)"
+    python3 "$W/steam/steam-library.py" > /dev/null 2>&1 || true   # the app drawer entries (3.8)
+    ;;
+play)
+    [ -n "${2:-}" ] || { echo "usage: $0 play APPID" >&2; exit 2; }
+    if ! signed_in; then
+        notify "Starting Steam, the game follows in about a minute"
+        # A fresh start must sign in anew: the log's last line is then still the previous session's.
+        n0=0
+        if ! pgrep -x -u "$(id -u)" steam > /dev/null; then
+            n0=$(wc -l < "$CONN" 2>/dev/null || echo 0)
+            "$0" start > /dev/null
+        fi
+        i=0; until signed_in && [ "$(wc -l < "$CONN")" -gt "$n0" ]; do
+            i=$((i + 1)); [ $i -le 90 ] || { notify "Steam did not sign in, the game was not started"; exit 1; }
+            sleep 2
+        done
+        sleep 3   # the client takes commands a moment after signing in
+    fi
+    "$0" launch "$2"
     ;;
 stop)
     cd "$HOME/.local/share/Steam/steamrtarm64" && DISPLAY=$D LD_LIBRARY_PATH=$PWD timeout 30 ./steam -shutdown > /dev/null 2>&1
@@ -51,6 +87,7 @@ launch|hide)
         sleep 1
         python3 "$W/xwin.py" "$D" --close | grep "close requested" && break
     done
+    true   # no Steam window to close is not a failure (the game started all the same)
     ;;
 status)
     for p in $(pgrep -u "$(id -u)" -f '[s]teamrtarm64/|[s]team-runtime|^\./steam'); do
@@ -63,5 +100,5 @@ status)
     echo "CPU over 60 s: $(( (b - a) * 100 / $(getconf CLK_TCK) / 60 )) % of one core"
     ;;
 *)
-    echo "usage: $0 start|stop|status" >&2; exit 2 ;;
+    echo "usage: $0 start|stop|status|launch ID|hide|play ID" >&2; exit 2 ;;
 esac

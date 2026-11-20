@@ -641,6 +641,12 @@ game's `utdeck-env` can still override it (`UTDECK_RUNTIME`, for tests), and eac
 own prefix (`pfx`, `pfx-proton`; step 4's form). A game is set to it in its Properties
 (Compatibility) or with `set-default.py --app APPID utdeck-proton` (Steam stopped).
 
+Checked (2026-11-20, 16:47): both tools installed, Goat Simulator set to `utdeck-proton` with
+`set-default.py`, hidden Steam restarted. Started from Steam (`steam-service.sh launch 265930`),
+Steam ran `compatibilitytools.d/utdeck-proton` by itself, for its install script and for the game
+("runtime: proton (tool: proton), prefix pfx-proton" in the game's log); first frames 1.5 minutes
+later, 45-55 fps in the intro.
+
 ### 5.5: Proton's runtime on request
 
 [`get-runtime.sh`](../../tools/ut-probe/get-runtime.sh) `proton [FILE]` installs Proton's runtime on
@@ -651,7 +657,10 @@ the phone: downloaded from the address in [`runtimes.list`](../../tools/ut-probe
 plus room for games). `runtime-push.sh proton` pushes a build from the PC and installs it through
 the same script. A game set to the Proton tool without the runtime installed stops at once with
 "Proton 11's runtime is not installed (sh .../get-runtime.sh proton)" in its `utdeck-compat.log`.
-No release exists yet, so the download address answers 404 until one is made.
+Published (the maintainer's decision) as the pre-release
+[`runtime-proton11.0-20261120`](https://github.com/alpha-liu-01/UTDeck/releases/tag/runtime-proton11.0-20261120),
+tagged on commit 41e32cd (the patches it is built from); the download from the list's address was
+checked against the list's SHA-256. A new build needs a new version name and a new line here.
 
 ### 5.2: Proton's base brought level
 
@@ -677,10 +686,35 @@ because it only checks a window the compositor calls fullscreen. Both hand Lomir
 buffers. Why Lomiri drops the state is not known (the roadmap's risk: Lomiri's window logic); what
 it means on the screen, sideways, is checked with a game.
 
+**Checked on the screen** (2026-11-20, 16:59; phone sideways, screen on, the maintainer
+watching): Ys IX on Proton's base, fullscreen 1600x720, the setting that showed only the wallpaper
+in step 4, at 30-31 fps on its first screens. The maintainer: the picture shows correctly, fills
+the screen with no top bar, the colours are right, nothing is see-through. So sideways, Lomiri
+does give Proton's fullscreen window the whole screen; the dropped state seen upright stays open.
+
 Fill mode (our 0010, a window smaller than the screen shown over all of it) is not ported: it
 extends our own scaler, which this base does not use. Windowed games on Proton's base stay 1:1 in
 a corner (Ys IX, Stray, ATRI in step 4); the games that need this base so far (Goat Simulator) run
 in a window too.
+
+### Step 5 done, 3.3 closed (2026-11-20)
+
+| step | result |
+| --- | --- |
+| 5.1 the default stays our 11.16 base | `utdeck`, Steam's default for Windows games |
+| 5.2 Proton's base brought level | patches 0006 (fullscreen hack on Wayland, RGBA), 0012, 0013, 0014; checked with Ys IX fullscreen 1600x720 on the screen. Not ported: fill mode (0010) |
+| 5.3 a second tool | "UTDeck runtime (Proton 11)", picked by Steam for Goat Simulator by itself |
+| 5.4 separate prefixes | `pfx` and `pfx-proton` per game |
+| 5.5 downloaded on request | `get-runtime.sh proton`, GitHub pre-release `runtime-proton11.0-20261120`, checksum checked |
+| 5.6 the per-game list | "Step 4 closed" above: Goat Simulator on Proton's base, the rest on ours |
+
+The exit is met: both tools in Steam on the phone, a game started on each (Goat Simulator on the
+second, Stray and Goat Simulator's check on the default), the per-game list with numbers, both
+runtimes from one build script (`build-runtime.sh`, `WINE_FLAVOR`). Open, for later: Lomiri dropping
+the fullscreen state of Proton's window upright; fill mode on Proton's base; the Ys IX crash on our
+base; DirectShow's window renderer (K10, with the `renderer=no3d`/`vulkan` test); why our base
+fails Goat Simulator's level load. The phone's default runtime is still the one games were tested
+on (11.16-20261120, without 0012/0013); the newer build waits for the next game round.
 
 ## Events
 
@@ -725,3 +759,13 @@ in a window too.
   `runtimes.list`, Proton patches 0006 (the fullscreen hack on Wayland), 0012, 0013 and 0014 (no
   OpenGL video path); Proton's runtime rebuilt and installed through `get-runtime.sh`. During the
   restart of hidden Steam to install the tools, the phone dropped off USB.
+- 2026-11-20: Proton's runtime published as the GitHub pre-release `runtime-proton11.0-20261120`
+  (download and checksum checked). The phone dropped off USB three times, each a few seconds after
+  `steam-push.sh` started (the PC's kernel log: 16:22:39, 16:29:56, 16:40:35), with the screen on
+  the last time: not sleep. Cause: the phone's `adbd` crashed (SEGV) all three times in the middle
+  of the script's fifteen quick pushes, and its restarted copy did not attach to USB again
+  ("timed out while waiting for FUNCTIONFS_BIND") until the cable was plugged in again.
+  `steam-push.sh` now sends one archive (one push, one shell): no crash since.
+- 2026-11-20: Goat Simulator started from Steam through the second tool by itself; Ys IX on
+  Proton's base at fullscreen 1600x720, phone sideways: picture, full screen, colours and opacity
+  right (the maintainer). Step 5 done, **3.3 closed**.
