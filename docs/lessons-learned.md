@@ -1035,3 +1035,28 @@ Problems met while building UTDeck on the Redmi Note 12 5G (stone). Details in `
   change a role's volume (`multimedia`, ...); Wine's streams had no role and played at a fixed
   0 dB. `PULSE_PROP='media.role=multimedia'` fixes every Wine program at once. Lesson: check a new
   sound source with `pactl list sink-inputs` (role, restore id, volume) and the volume keys.
+- **Steam's default compatibility tool skips games with a Linux build (stage 3.2b).** Goat
+  Simulator came down as its native Linux port, which on this phone would run entirely under FEX
+  and outside our runtime. Steam's "all other titles" mapping (app "0") covers only Windows-only
+  games; a per-game mapping (`set-default.py --app`) makes Steam swap to the Windows depots.
+  Lesson: after each download, check which platform's files arrived before planning the run.
+- **Turning a DLL off breaks every program that imports it (stage 3.2b).** `mscoree=` (no .NET)
+  was a default to save time; Goat Simulator imports `mscoree.dll`, so Windows' loader refused to
+  start it (`c0000135`, Steam's exit 53). Lesson: a default may turn off what programs call at run
+  time, never what they import; read the imports first (`gamecheck.py`).
+- **A sourced script can overwrite your variables (stage 3.2b).** `env.sh` sets `P` and `W`; a
+  command that set `P` to a prefix path and then sourced `env.sh` installed Wine Mono into the
+  tools folder instead. Lesson: source `env.sh` first, and use names it does not set (or check
+  `WINEPREFIX` before running wine on it).
+- **An emulator can hide the CPU's features from Windows programs (stage 3.2b).** Under Box64,
+  `IsProcessorFeaturePresent` answered "no MMX, no SSE" in every 32-bit program, because Box64's
+  WoW64 module at our pin lacked the export Wine asks (`BTCpuIsProcessorFeaturePresent`); `cpuid`
+  itself was right. Microsoft's XAudio2 refused to start; other code silently took slower paths.
+  Lesson: check what a program is told about the CPU with a small test under each emulator, and
+  look upstream for the fix before writing one.
+- **Check what upstream fixed since the pin before debugging the emulator (stage 3.2b).** A 64-bit
+  game crashed in a network thread with an address inside Wine's syscall dispatcher; FEX had changed
+  its ARM64EC system calls three times in the three months after Hangover's pin (one: syscall
+  numbers hard-coded from Windows). Upstream's release fixed it in one 43 s build. Lesson: for a
+  crash at the emulator boundary, list upstream's changes since the pin and A/B the newest release
+  first; pinning "what Hangover ships" is a start, not a reason to stay behind.

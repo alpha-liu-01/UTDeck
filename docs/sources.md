@@ -62,12 +62,12 @@ To add a source, add a row; to stop following one, delete its row.
 | [gamescope](https://github.com/ValveSoftware/gamescope) | `tags` | We patch 3.16.29 (patches 9001, 9003); a new version means re-checking both patches. |
 | [Alpine aports: gamescope](https://gitlab.alpinelinux.org/alpine/aports) | `commits: community/gamescope` | `build-gamescope-op8.sh` fetches this APKBUILD and stops if the version changes. |
 | [MangoHud](https://github.com/flightlessmango/MangoHud) | `releases` | `mangoapp` is built with our patches (`build-mangoapp-gs.sh`), and the in-game limiter is MangoHud's. |
-| [FEX](https://github.com/FEX-Emu/FEX) | `releases` | Runs x86 games on ARM; every release changes compatibility and speed. |
+| [FEX](https://github.com/FEX-Emu/FEX) | `releases` | Runs x86 games on ARM; every release changes compatibility and speed. UTDeck's runtime pins its releases (FEX-2611.1 since 3.2b; it fixed an ARM64EC crash in 64-bit games). |
 | [Proton](https://github.com/ValveSoftware/Proton) | `releases` | Proton ARM64 comes through Steam; the release notes say what changed. |
 | [DXVK](https://github.com/doitsujin/dxvk) | `releases` | Direct3D 9-11 on Vulkan; DXVK 3 needs features the Adreno 650 lacks. |
 | [VKD3D-Proton](https://github.com/HansKristian-Work/vkd3d-proton) | `releases` | Direct3D 12 on Vulkan. |
 | [Mesa](https://gitlab.freedesktop.org/mesa/mesa) | `tags: ^mesa-[0-9]+\.[0-9]+\.[0-9]+$` | Turnip, the Vulkan driver for our GPU. |
-| [Box64](https://github.com/ptitSeb/box64) | `releases` | The other x86 translator, in case FEX drops the Snapdragon 865. |
+| [Box64](https://github.com/ptitSeb/box64) | `releases` | The other x86 translator, in case FEX drops the Snapdragon 865. UTDeck uses it for 32-bit games, with an upstream fix (patches-box64/). |
 | [Proton-GE](https://github.com/GloriousEggroll/proton-ge-custom) | `releases` | Extra game fixes and features (ntsync) that later reach Proton. |
 | [distrobox](https://github.com/89luca89/distrobox) | `releases` | Runs the Fedora container Steam lives in. |
 | [Podman](https://github.com/containers/podman) | `releases` | The container engine under distrobox. |

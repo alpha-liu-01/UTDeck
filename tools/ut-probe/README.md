@@ -36,6 +36,11 @@ because Ubuntu Touch has no compiler and few tools. Push them to a test folder o
 | `win/d3d12test.c` | phone, through Wine | Stage 3.1: Direct3D 12 through VKD3D-Proton: device features, a pipeline, a draw per frame |
 | `win/sndtest.c` | phone, through Wine | Stage 3.1: the wave output devices and a quiet 440 Hz tone through `winepulse` |
 | `win/vidtest.c` | phone, through Wine (`game-run.sh`) | Stage 3.S: play a video file through DirectShow (32-bit x86), with the default renderer or VMR-9; prints how it ended |
+| `gamecheck.py` | phone (`python3 -I`) | Stage 3.2b: check a game folder before its first start: machine and bitness of every Windows file, the .exe imports (graphics API), Valve's signature on `steam_api`, DRM-bypass markers |
+| `measure.sh` | phone | Stage 3.2b: frame rate, frame time, GPU busy and clock of the newest game run, over N seconds (`sh measure.sh 20`) |
+| `watch-game.sh` | phone | Stage 3.2b: after a launch, every 30 s the frames drawn, lock waits and memory; stops on exit or after 2 minutes without a frame |
+| `dmpinfo.py` | phone (`python3 -I`) | Stage 3.2b: a Windows minidump's exception, module and stack return addresses (dumps stay on the phone: they can hold account data) |
+| `callsite.py` | phone (`python3 -I`) | Stage 3.2b: which imported function an x64 `call [import]` before a return address calls |
 | `cputime.py` | phone | Wall and CPU time of a command with its output in a file (leaves out `wineserver`, which keeps pipes open) |
 | `wine-m1.sh` | phone, screen on | Stage 2.2: Wine's Notepad and `winecfg` on Lomiri, with Wayland messages logged |
 | `pacing.sh`, `pacing2.sh`, `pacing3.sh` | phone, screen on | Stage 1.4 frame pacing: `gltest` runs with `fps-panel.py` (panel refresh, compositor commits, GPU load); with `WAYLAND_DEBUG` time stamps (callback timing); the `--flush` and frame-limiter fixes |

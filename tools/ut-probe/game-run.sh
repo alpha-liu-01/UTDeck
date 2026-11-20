@@ -21,7 +21,10 @@ export WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-wayland-0} MESA_VK_WSI_PRESENT_MODE=ma
 # it off for a game.
 export UTDECK_FILL=${UTDECK_FILL:-1}
 # DXVK for Direct3D 8-11 (its builds are in the prefix, prefix-dlls.sh); VKD3D-Proton for 12.
-export WINEDLLOVERRIDES="mscoree,mshtml=;d3d11,dxgi,d3d10core,d3d9,d3d8=n;d3d12,d3d12core=n${GAME_OVERRIDES:+;$GAME_OVERRIDES}"
+# mshtml (no Gecko) stays off. mscoree (.NET's loader) stays on: many games import it without
+# running .NET (Goat Simulator, UE3), and with it off such a game cannot load at all (c0000135).
+# Games that run .NET code also need Wine Mono in the prefix (the runtime ships it; 3.4).
+export WINEDLLOVERRIDES="mshtml=;d3d11,dxgi,d3d10core,d3d9,d3d8=n;d3d12,d3d12core=n${GAME_OVERRIDES:+;$GAME_OVERRIDES}"
 for v in ${GAME_ENV:-}; do export "$v"; done
 unset DISPLAY   # Lomiri gives legacy apps Xwayland; Wine must use its Wayland driver
 mkdir -p $W/games

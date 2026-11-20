@@ -7,11 +7,12 @@
 #   PARTS="dxvk vkd3d" tools/wine-build/build-runtime.sh   rebuilds only those parts, then repacks
 #
 # Parts (each pinned below, the same sources and recipes as Hangover 11.16's packages, except
-# VKD3D-Proton, which Hangover does not ship):
+# VKD3D-Proton, which Hangover does not ship, and a newer FEX):
 #   wine   Wine with our patches (tools/wine-build/patches), ARM64 Unix side, ARM64EC, ARM64 and
 #          i386 Windows DLLs (--enable-archs=arm64ec,aarch64,i386), stripped
 #   fex    FEX as Windows DLLs: libarm64ecfex.dll (x86-64 code) and libwow64fex.dll (32-bit x86)
-#   box64  Box64 as a Windows DLL: wowbox64.dll (32-bit x86, the faster choice for some programs)
+#   box64  Box64 as a Windows DLL: wowbox64.dll (32-bit x86, the faster choice for some programs),
+#          with patches-box64/
 #   dxvk   DXVK 2.7.1 (the pin for Adreno 6xx): arm64ec (x86-64 and ARM64EC games), x32 (32-bit
 #          games), aarch64 (plain ARM64 programs)
 #   vkd3d  VKD3D-Proton (Direct3D 12): arm64x (both kinds of 64-bit process) and x86 (32-bit)
@@ -45,8 +46,10 @@ if [ -z "${PATCHES+x}" ]; then PATCHES=$(ls "$REPO_DIR"/tools/wine-build/patches
 
 WINE_URL=https://github.com/AndreRH/wine.git
 WINE_COMMIT=3ea3a14941b6a122b892c84141ce9662c008081e    # hangover-11.16 (Wine 11.16)
-FEX_URL=https://github.com/AndreRH/FEX.git
-FEX_COMMIT=fa556167d5a64ec7adb5503c2aa15b169c292cac     # hangover-11.16's fex submodule
+FEX_URL=${FEX_URL:-https://github.com/FEX-Emu/FEX.git}           # FEX_URL/FEX_COMMIT: for A/B builds
+FEX_COMMIT=${FEX_COMMIT:-4f9c1f1e36443d22d7655477e34f51b95b685bf1}      # FEX-2611.1 (upstream)
+# (Hangover 11.16's FEX, AndreRH/FEX fa556167 of 2026-08-09, crashed 64-bit games: an x86-64 thread
+# waiting in a system call resumed into Wine's syscall dispatcher; FEX-2611.1 fixes it, stage 3.2b.)
 BOX64_URL=https://github.com/AndreRH/box64.git
 BOX64_COMMIT=2f130fab1d6e1a4ee8a71dc60cfdfcc839ad192a   # hangover-11.16's box64 submodule
 DXVK_URL=https://github.com/AndreRH/dxvk.git
@@ -83,6 +86,7 @@ has() { case " $PARTS " in *" $1 "*) return 0;; esac; return 1; }
 # fetch DIR URL COMMIT: a shallow checkout of exactly COMMIT, with its submodules.
 fetch() {
     if [ ! -d "$1/.git" ]; then git init -q "$1"; git -C "$1" remote add origin "$2"; fi
+    git -C "$1" remote set-url origin "$2"
     if [ "$(git -C "$1" rev-parse -q --verify HEAD 2>/dev/null || true)" != "$3" ]; then
         git -C "$1" fetch -q --depth 1 origin "$3"
         git -C "$1" checkout -q --force --detach "$3"
@@ -118,7 +122,14 @@ if has wine; then
     for p in $PATCHES; do git -C "$WINE_SRC" apply "$(cd "$(dirname "$p")" && pwd)/$(basename "$p")"; done
 fi
 has fex && fetch "$SRC/fex" "$FEX_URL" "$FEX_COMMIT"
-has box64 && fetch "$SRC/box64" "$BOX64_URL" "$BOX64_COMMIT"
+if has box64; then
+    # Box64's WoW64 module at this pin does not tell Wine which x86 features it emulates
+    # (BTCpuIsProcessorFeaturePresent): 32-bit programs were told "no MMX, no SSE", and some refuse to
+    # run (Microsoft's XAudio2 2.7). The upstream fix (ptitSeb/box64 ec1d5a6, #4286), in patches-box64/.
+    fetch "$SRC/box64" "$BOX64_URL" "$BOX64_COMMIT"
+    git -C "$SRC/box64" checkout -q --force -- . && git -C "$SRC/box64" clean -fdq
+    for p in "$REPO_DIR"/tools/wine-build/patches-box64/*.patch; do git -C "$SRC/box64" apply "$p"; done
+fi
 if has dxvk; then
     # DXVK 2.7.1 does not compile with LLVM 23's libc++: two upstream fixes, in patches-dxvk/.
     fetch "$SRC/dxvk" "$DXVK_URL" "$DXVK_COMMIT"
@@ -341,7 +352,7 @@ VERSION="11.16-$(date -u +%Y%m%d)"
     echo "wine features left out by configure (not needed or not on the phone):"
     sed 's/^configure: /  /' "$OBJ/wine-arm64/configure-notes.txt"
     echo "fex: $FEX_URL $FEX_COMMIT"
-    echo "box64: $BOX64_URL $BOX64_COMMIT"
+    echo "box64: $BOX64_URL $BOX64_COMMIT, patches: $(cd "$REPO_DIR/tools/wine-build/patches-box64" && ls | tr '\n' ' ')"
     echo "dxvk: $DXVK_URL $DXVK_COMMIT ($DXVK_VERSION), patches: $(cd "$REPO_DIR/tools/wine-build/patches-dxvk" && ls | tr '\n' ' ')"
     echo "vkd3d-proton: $VKD3D_URL $VKD3D_COMMIT ($VKD3D_VERSION)"
     echo "wine-mono: $MONO_URL sha256 $MONO_SHA256"
