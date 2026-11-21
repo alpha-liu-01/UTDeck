@@ -1,0 +1,27 @@
+# The Qt 6 runtime that the click for Ubuntu Touch 24.04-1.x bundles (tools/app-build/build-click.sh,
+# CLICK_UT=24.04-1.x). 24.04-1.x has no Qt 6 at all, so these come from the same UBports 24.04-2.x
+# repository the app is built against. Taken from the Dolphin port (dolphin-ut,
+# ut/docker/runtime-24.04-1.x.list, docs/ut-port/stage7-release.md), where the list was found as the
+# closure of a Qt Quick + Lomiri Components app's needs minus what 24.04-1.x installs; without
+# libhybris' Vulkan, which UTDeck's app does not use (games get Vulkan from UTDeck's own Mesa).
+
+# Qt 6.10.2
+libqt6core6t64 libqt6dbus6 libqt6gui6 libqt6network6 libqt6opengl6 libqt6qml6 libqt6qmlmeta6
+libqt6qmlmodels6 libqt6qmlworkerscript6 libqt6quick6 libqt6svg6 libqt6shadertools6
+libqt6waylandclient6 libqt6wlshellintegration6 qt6-wayland qt6-svg-plugins
+qml6-module-qtcore qml6-module-qtqml qml6-module-qtqml-models qml6-module-qtqml-workerscript
+qml6-module-qtquick qml6-module-qtquick-layouts qml6-module-qtquick-window
+qml6-module-qt-labs-folderlistmodel qml6-module-qt5compat-graphicaleffects
+
+# Lomiri Components and Content (Qt 6)
+liblomiritoolkit-qt6-1 liblomirigestures-qt6-1 liblomirimetrics-qt6-1 liblomirisysteminfo-qt6-1
+lomiri-ui-toolkit-theme-qt6 qml6-module-lomiri-components qml6-module-lomiri-components-labs
+qml6-module-lomiri-performancemetrics qml6-module-ktactilefeedback libktactilefeedback1
+liblomiri-content-hub-qt6-1 qml6-module-lomiri-content liblomiri-download-manager-client-qt6-0
+liblomiri-download-manager-common-qt6-0 libldm-common-qt6-0
+
+# The on-screen keyboard (QT_IM_MODULE=maliit)
+maliit-inputcontext-qt6
+
+# Not on 24.04-1.x: libb2 (Qt Core), libOpenGL (Qt Gui)
+libb2-1 libopengl0

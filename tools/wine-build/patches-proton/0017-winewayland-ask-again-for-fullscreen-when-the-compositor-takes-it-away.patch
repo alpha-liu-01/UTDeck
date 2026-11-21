@@ -1,0 +1,58 @@
+From: UTDeck
+Subject: [PATCH] winewayland: ask again for fullscreen when the compositor takes it away
+
+Lomiri (Ubuntu Touch) grants a new window's fullscreen request and then, once the window has drawn,
+gives it the state its app's last window closed in: a normal window under the top panel (stage
+4.1, traced on Ys: Memories of Celceta: 1080x2400 fullscreen, then 1080x2400 and 2400x1017
+normal). The Win32 window stays fullscreen-sized, nothing in it changes afterwards, and so nothing
+asks again. Patch 0004's check (on each presented frame, 0.5 s after the last configure, at most
+three times) now also asks when the compositor's state is not fullscreen at all, once the window
+has been configured and no configure waits.
+---
+
+--- a/dlls/winewayland.drv/window.c
++++ b/dlls/winewayland.drv/window.c
+@@ -496,7 +496,8 @@
+  * fullscreen. Like the Dolphin port of Ubuntu Touch: once the size has been stable for 0.5 s (a
+  * rotation passes through intermediate sizes), if the fullscreen window does not cover the output,
+  * ask for fullscreen again (unset, then set), at most three times; the count is reset once the
+- * window covers the output. Called with the window data locked, when a frame is presented. */
++ * window covers the output. The same when the compositor has taken fullscreen away altogether.
++ * Called with the window data locked, when a frame is presented. */
+ void wayland_surface_check_fullscreen_size(struct wayland_surface *surface)
+ {
+     struct wayland_output *output;
+@@ -504,12 +505,30 @@
+     int height = surface->current.height;
+     int out_w = 0, out_h = 0;
+ 
+-    if (!(surface->current.state & WAYLAND_SURFACE_CONFIG_STATE_FULLSCREEN) ||
+-        !(surface->window.state & WAYLAND_SURFACE_CONFIG_STATE_FULLSCREEN) ||
+-        !width || !height || !surface->xdg_toplevel ||
++    /* Not before the first configure, nor while one waits to be applied. */
++    if (!(surface->window.state & WAYLAND_SURFACE_CONFIG_STATE_FULLSCREEN) ||
++        !surface->xdg_toplevel || !surface->current.serial || surface->requested.serial ||
+         (int)(NtGetTickCount() - surface->fullscreen_check_time) < 0)
+         return;
+ 
++    /* UTDeck: the compositor took fullscreen away while the window still wants it (it still
++     * covers its monitor). Lomiri grants a new window's fullscreen request and then gives the
++     * window the state its app's last window closed in, once it has drawn: a normal window under
++     * the top panel. Nothing in the window changes afterwards, so nothing would ask again. Ask once
++     * the state has been settled for 0.5 s, at most three times. */
++    if (!(surface->current.state & WAYLAND_SURFACE_CONFIG_STATE_FULLSCREEN))
++    {
++        if (surface->fullscreen_retries >= 3) return;
++        surface->fullscreen_retries++;
++        surface->fullscreen_check_time = NtGetTickCount() + 500;
++        TRACE("hwnd=%p fullscreen was taken away, asking again (%d)\n",
++              surface->hwnd, surface->fullscreen_retries);
++        xdg_toplevel_set_fullscreen(surface->xdg_toplevel, NULL);
++        wl_display_flush(process_wayland.wl_display);
++        return;
++    }
++    if (!width || !height) return;
++
+     pthread_mutex_lock(&process_wayland.output_mutex);
+     wl_list_for_each(output, &process_wayland.output_list, link)
+     {

@@ -1,0 +1,15 @@
+{
+    "name": "@NAME@",
+    "title": "UTDeck",
+    "description": "Windows games from Steam on Ubuntu Touch, through Wine, FEX, DXVK and Mesa's Turnip. Source: @SOURCE@",
+    "version": "@VERSION@",
+    "architecture": "arm64",
+    "framework": "@FRAMEWORK@",
+    "maintainer": "@MAINTAINER@",
+    "hooks": {
+        "utdeck": {
+            "apparmor": "utdeck.apparmor",
+            "desktop": "utdeck.desktop"
+        }
+    }
+}

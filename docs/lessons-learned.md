@@ -1200,3 +1200,42 @@ Problems met while building UTDeck on the Redmi Note 12 5G (stone). Details in `
   device list showed it is missing in the Adreno 619's hardware. Lesson: most engines can write a
   log of their own (`-condebug` for Source, `Player.log` for Unity, `Launch.log` for Unreal 3); turn
   it on first.
+- **Newer Steam clients keep game art in hashed folders (stage 4.1).** UTDeck's library showed no
+  cover for Plants vs. Zombies: Replanted and Stray's logo instead of its cover: both looked only in
+  `appcache/librarycache/<appid>/`, while this Steam keeps some pictures in
+  `librarycache/<appid>/<hash>/`, and names the portrait cover `library_capsule.jpg` there (300x450,
+  like `library_600x900.jpg`). Lesson: search the game's cache folder one level down, by kind
+  (portrait, then wide header, then logo), and never take a logo as the cover while a cover exists.
+- **Lomiri gives every window a card and closes an app left with no window of its own (stage
+  4.1).** With the game's window tied to UTDeck (patch 0016), the app switcher showed two UTDeck
+  cards, the library and the game. Hiding the library is the fix (the Dolphin port did the same),
+  but qtmir 0.7.2 closes an app 1 s after its only process has lost all its windows
+  (`Application::updateState`: `lostAllSurfaces`, `m_stopTimer`), and the game's window counts for
+  the app's window list only, not for its processes. Lesson: read the shell's lifecycle code before
+  hiding an app's last window. Here the game's processes join the app through `DESKTOP_FILE_HINT`,
+  and the library comes back the moment the game's process ends, before Wine's leftovers close.
+- **An app paused by Lomiri while its click is upgraded can no longer be closed (stage 4.1).**
+  UTDeck 0.1.0 was in the background (Lomiri had paused it, state `T`) when 0.1.1 was installed.
+  Swiping its card away did nothing visible, and every new start of UTDeck waited behind it ("is
+  closing. Queuing start"): Lomiri wanted to wake it before closing it, but by then knew only the
+  new version ("Invalid app ID: utdeck.alphaliu01_utdeck_0.1.0.2x"). `kill -CONT` let the old one
+  close, and Lomiri started the queued 0.1.1 by itself. Lesson: stop a running app before upgrading
+  its click; `install-click.sh` now stops the app's systemd unit first. (adb's shell has no session
+  environment: `systemctl --user` needs `XDG_RUNTIME_DIR` and `DBUS_SESSION_BUS_ADDRESS` given by
+  hand, and `lomiri-app-list` lists nothing even then.)
+- **Lomiri can take fullscreen away right after granting it (stage 4.1).** Once a new window has
+  drawn, Lomiri gives it the state its app's last window closed in (`windowReady` in `Stage.qml`).
+  Celceta asked for fullscreen, got it (1080x2400), then lost it to the library's saved "normal"
+  state (2400x1017 under the top bar); the game kept a fullscreen-sized window and nothing asked
+  again. It looked fixed in M1 only because a trip through the app switcher made the game create
+  its window anew. Lesson: when a window state seems random, trace the configures (Wine's
+  `trace+waylanddrv`): one run showed the grant and the take-back in order. A client that wants
+  fullscreen on Lomiri must ask again whenever the compositor's state drops it (patch 0017).
+- **Report the size the compositor gave, even in the normal state (stage 4.1).** Held in the
+  normal state at 2400x1017 by Lomiri, Wine reported its whole 2400x1080 Win32 window as the window
+  geometry. qtmir then believed the window was already 2400x1080 and skipped the resize to that size
+  once fullscreen was granted (`MirSurface::resize` compares with the size it knows): the game sat
+  63 px short under a hidden top bar. Patch 0018 reports the visible part clipped to the configured
+  size, and Lomiri then sends the full size. Lesson: a client whose reported size disagrees with
+  the compositor's can make the compositor's own bookkeeping skip later changes; when a size
+  "never arrives", compare what was configured with what was reported, step by step.

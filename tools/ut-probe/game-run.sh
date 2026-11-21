@@ -37,6 +37,21 @@ if [ -f $W/defaults.env ]; then
         esac
     done < $W/defaults.env
 fi
+# UTDeck's app (stage 4.1): while it runs, the game's windows carry its app id (Wine patch 0016) so
+# that Lomiri shows them as part of the app (its orientation, one card, its icon), and the game's
+# processes join the app (DESKTOP_FILE_HINT) so that Lomiri keeps the app while its library window
+# is hidden. The id comes from the running app's own APP_ID (package_app_version; the short form
+# package_app is enough). Without the app running nothing is set: a game started from its app drawer
+# entry stays a window of its own, as before.
+if [ -z "${UTDECK_APP_ID+x}" ]; then
+    for p in $(pgrep -x utdeck); do
+        id=$(tr '\0' '\n' < /proc/$p/environ 2>/dev/null | sed -n 's/^APP_ID=\([^_]*_[^_]*\).*/\1/p')
+        if [ -n "$id" ]; then
+            export UTDECK_APP_ID=$id DESKTOP_FILE_HINT=${DESKTOP_FILE_HINT:-$id}
+            break
+        fi
+    done
+fi
 # DXVK and VKD3D-Proton as native DLLs (not a choice: our runtime's Direct3D), then the defaults'
 # DLL choices (UTDECK_DLL_DEFAULTS: Gecko and winemenubuilder off), then the game's own.
 export WINEDLLOVERRIDES="d3d11,dxgi,d3d10core,d3d9,d3d8=n;d3d12,d3d12core=n${UTDECK_DLL_DEFAULTS:+;$UTDECK_DLL_DEFAULTS}${GAME_OVERRIDES:+;$GAME_OVERRIDES}"
@@ -51,7 +66,8 @@ if [ ! -d "$WINEPREFIX/drive_c" ]; then
     wineboot -i > /dev/null 2>&1; wineserver -w; $W/prefix-dlls.sh > /dev/null
 fi
 { printf 'game: %s, in %s: %s %s\n' "$LABEL" "$DIR" "$EXE" "$*"; echo "runtime: $(command -v wine), prefix $WINEPREFIX";
-  echo "overrides: $WINEDLLOVERRIDES"; echo "extra: ${GAME_ENV:-}"; echo "defaults:$DEFAULTS"; } > $B.log
+  echo "overrides: $WINEDLLOVERRIDES"; echo "extra: ${GAME_ENV:-}"; echo "defaults:$DEFAULTS";
+  echo "app: ${UTDECK_APP_ID:-none (UTDeck not running)}"; } > $B.log
 # GStreamer's plugin list (env.sh: GST_REGISTRY_1_0) is brought up to date here, outside Wine. Wine
 # starts GStreamer with --gst-disable-registry-fork, so a Wine process loads every new or changed
 # plugin into itself to list it; the phone's hybris plugin (Android's hardware decoders) cannot load
@@ -82,6 +98,14 @@ S=$!
 cd "$DIR"
 WINEDEBUG=${WINEDEBUG_GAME:--all} wine "$EXE" "$@" >> $B.log 2>&1 &
 G=$!
+# For UTDeck's app (stage 4.1): which game runs, this script's pid and its focus file, in
+# $XDG_RUNTIME_DIR/utdeck/game. The app hides its library window while the game's window is in
+# front (one card in Lomiri's app switcher, a fullscreen game) and shows it again the moment the
+# file goes, right after the game's own process ends: before Wine's leftovers are stopped below,
+# so that Lomiri does not close the app for having no window.
+STATE=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/utdeck
+mkdir -p "$STATE" && printf '%s %s %s\n' "$LABEL" "$$" "$UTDECK_FOCUS_FILE" > "$STATE/game.tmp" \
+    && mv -f "$STATE/game.tmp" "$STATE/game"
 # CPU boost (stage 3.5): UTDECK_BOOST=N (0-1024) sets uclamp_min on the game's threads, so the
 # frequency governor picks higher clocks from the CPU's own table; off unless set.
 case "${UTDECK_BOOST:-0}" in
@@ -93,6 +117,8 @@ esac
 [ "${UTDECK_PAUSE:-0}" = 1 ] && { python3 "$W/utdeck-pause.py" "$G" "$B.log" & PP=$!; }
 wait $G
 rc=$?
+# The game's process has ended: the app's library comes back (only if the file is still this run's).
+read -r _ pid _ < "$STATE/game" 2>/dev/null && [ "$pid" = $$ ] && rm -f "$STATE/game"
 [ -n "${BP:-}" ] && wait $BP   # its summary line, within 2 s of the game's end
 [ -n "${PP:-}" ] && wait $PP
 echo "exit $rc" >> $B.log

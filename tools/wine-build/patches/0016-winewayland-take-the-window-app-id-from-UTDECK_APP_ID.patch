@@ -1,0 +1,38 @@
+From: UTDeck
+Subject: [PATCH] winewayland: take the window app id from UTDECK_APP_ID
+
+Lomiri (qtmir 0.7.2, ApplicationManager::findApplicationWithSurface) ties a Wayland window to the
+app whose id equals the window's xdg_toplevel app id. Wine names every window after its program
+("deskjob.exe"), so a game started by a background service (hidden Steam) never belongs to UTDeck's
+app: Lomiri gives it a launcher icon of its own, the orientation of an unknown app (portrait when
+started sideways) and none of the app's lifecycle (UTDeck stages 3.6 and 4.1).
+
+When UTDECK_APP_ID is set, use it as the app id of this process's windows (and the name of its
+Wayland event queue). Nothing changes when the variable is not set.
+
+--- a/dlls/winewayland.drv/waylanddrv_main.c
++++ b/dlls/winewayland.drv/waylanddrv_main.c
+@@ -25,6 +25,7 @@
+ #include "config.h"
+ 
+ #include <stdlib.h>
++#include <string.h>
+ 
+ #include "ntstatus.h"
+ 
+@@ -67,6 +68,15 @@
+     DWORD appnamez_size;
+     DWORD utf8_size;
+     int i;
++    const char *app_id = getenv("UTDECK_APP_ID");
++
++    /* UTDeck: the Lomiri app this process's windows belong to. Lomiri ties a window to the
++     * app whose id equals the window's app id; the program's name is no Lomiri app. */
++    if (app_id && *app_id)
++    {
++        process_name = strdup(app_id);
++        return;
++    }
+ 
+     appname = RtlGetCurrentPeb()->ProcessParameters->ImagePathName.Buffer;
+     if ((p = wcsrchr(appname, '/'))) appname = p + 1;

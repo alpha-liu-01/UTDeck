@@ -1,0 +1,9 @@
+{
+    "policy_groups": [
+        "audio",
+        "keep-display-on",
+        "networking"
+    ],
+    "template": "unconfined",
+    "policy_version": 2404.2
+}

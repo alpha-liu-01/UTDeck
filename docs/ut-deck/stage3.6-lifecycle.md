@@ -217,6 +217,13 @@ from an app that's not in the Launcher model, creating icon": Lomiri does not ti
 the app, so it has nothing to pause. Changing that would mean changing Lomiri (a system component,
 off limits). **B does not work.**
 
+*Corrected in stage 4.1 (2026-11-21):* Lomiri does tie a window to an app, by the window's own
+app id (`findApplicationWithAppId` in qtmir 0.7.2); Wine named the window after its program
+(`vktest.exe`), which no app is called, hence the stray icon. With Wine patch 0016
+(`UTDECK_APP_ID`) the game's window belongs to UTDeck's app: landscape, one card, UTDeck's icon
+([stage4.1-app-shell.md](stage4.1-app-shell.md)). Lomiri still does not pause a game started by
+hidden Steam (its processes are not in the app's unit), so A below stays.
+
 **So A** (C's lock risk is real; A freezes the whole process, so nothing is left half-held): a Wine
 patch on both bases writes `1` or `0` to `UTDECK_FOCUS_FILE` when the window gains or loses the
 keyboard focus (`keyboard_handle_enter`/`_leave`, which is how Celceta learns it); `utdeck-pause.py`

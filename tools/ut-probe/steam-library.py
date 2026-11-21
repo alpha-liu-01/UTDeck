@@ -54,10 +54,18 @@ def installed_games():
 
 
 def icon_for(appid):
+    # As UTDeck's app (app/src/Library.cpp): newer Steam clients keep each picture in a folder named
+    # after its hash (librarycache/<id>/<hash>/...), and the portrait cover there is
+    # library_capsule.jpg. Portrait first, then the wide header, then the logo; the newest copy wins.
     cache = os.path.join(STEAM, "appcache/librarycache", appid)
-    for pic in ("library_600x900.jpg", "header.jpg", "logo.png"):
-        if os.path.isfile(os.path.join(cache, pic)):
-            return os.path.join(cache, pic)
+    if os.path.isdir(cache):
+        folders = [cache] + [e.path for e in os.scandir(cache) if e.is_dir()]
+        for names in (("library_600x900.jpg", "library_capsule.jpg"),
+                      ("header.jpg", "library_header.jpg"), ("logo.png",)):
+            found = [os.path.join(d, n) for d in folders for n in names
+                     if os.path.isfile(os.path.join(d, n))]
+            if found:
+                return max(found, key=os.path.getmtime)
     return os.path.join(STEAM, "public/steam_tray.ico")
 
 

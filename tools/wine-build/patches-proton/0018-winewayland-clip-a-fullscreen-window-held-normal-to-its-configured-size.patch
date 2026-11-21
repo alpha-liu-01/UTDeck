@@ -1,0 +1,36 @@
+From: UTDeck
+Subject: [PATCH] winewayland: clip a fullscreen window held in the normal state to its configured size
+
+Lomiri (Ubuntu Touch) holds a game's fullscreen window in the normal state at 2400x1017 (the
+screen less its top panel) until it grants fullscreen, and Wine reported the whole 2400x1080
+Win32 window as the window geometry meanwhile. Once fullscreen was granted, Lomiri sent 2400x1017
+and never the full 2400x1080 (stage 4.1, Ys: Memories of Celceta: the picture 63 px short, the
+wallpaper below it, until a trip through the app switcher); qtmir skips a resize to the size it
+believes the window already has, which this probably was. A window that wants fullscreen and is
+held in the normal state at a known size is now clipped to that size, as a maximized one is.
+---
+
+--- a/dlls/winewayland.drv/wayland_surface.c
++++ b/dlls/winewayland.drv/wayland_surface.c
+@@ -566,11 +566,19 @@
+                                                  int width, int height)
+ {
+     RECT rect;
++    /* UTDeck: a window that wants fullscreen but is held in the normal state at a given size
++     * (Lomiri, before it grants fullscreen or after it took it away) is clipped to that size too,
++     * like a maximized one. Reporting the whole fullscreen-sized window instead probably let Lomiri
++     * (qtmir) believe the window already had the full screen size, so it skipped the resize to it
++     * once fullscreen was granted: the picture stayed 63 px short under a hidden top panel. */
++    BOOL held_normal = (surface->window.state & WAYLAND_SURFACE_CONFIG_STATE_FULLSCREEN) &&
++                       !(surface->current.state & WAYLAND_SURFACE_CONFIG_STATE_FULLSCREEN) &&
++                       surface->current.width && surface->current.height;
+ 
+     /* If the window size is bigger than the current state accepts, use the
+      * largest visible (from Windows' perspective) subregion of the window. */
+-    if ((surface->current.state & (WAYLAND_SURFACE_CONFIG_STATE_MAXIMIZED |
+-                                   WAYLAND_SURFACE_CONFIG_STATE_FULLSCREEN)) &&
++    if (((surface->current.state & (WAYLAND_SURFACE_CONFIG_STATE_MAXIMIZED |
++                                    WAYLAND_SURFACE_CONFIG_STATE_FULLSCREEN)) || held_normal) &&
+         (width > surface->current.width || height > surface->current.height))
+     {
+         wayland_surface_get_rect_in_monitor(surface, &rect);

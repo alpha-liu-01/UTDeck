@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=UTDeck
+Comment=Play your Steam games
+Exec=launcher.sh
+Icon=utdeck.svg
+Terminal=false
+X-Lomiri-Touch=true
+X-Lomiri-Supported-Orientations=landscape
