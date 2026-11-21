@@ -51,14 +51,25 @@ From [stage3-roadmap.md](stage3-roadmap.md), "Stage 3 wrapped up":
 | Substage | Goal | Exit |
 | --- | --- | --- |
 | **4.1 The app shell, and the game's window as part of it** | A Qt 6 QML app with Lomiri Components, built in our own cross container, installed as a click on stone: it lists the installed Steam games and starts one through hidden Steam. The question first: how a game started by hidden Steam is shown by Lomiri as part of the app (orientation, fullscreen, one icon, Lomiri's lifecycle) | The app opens with the native look and starts a game; the window question answered on the screen with a decision; the 24.04-1.x click builds |
-| 4.2 The launch flow | A starting screen with what is happening (Steam starting, signing in, install scripts, Wine Mono); hidden Steam's dialogs shown in the app, accepted only by the user; errors shown; back to the library when the game ends | A first start and a normal start of two games, each step visible; a publisher's agreement and Steam's Steam Input notice shown and answered in the app |
-| 4.3 Per-game settings | A page per game: the Wine base (with the download of the second one), launch options, boost, pause, logs; the Windows build forced for games with a Linux build, before the download | Each setting changes what the game gets (checked in its logs); a game with a Linux build installs its Windows build from the app |
-| 4.4 Steam without its interface | Sign-in (the user types name, password and Steam Guard code into the app, which hands them to hidden Steam and keeps nothing), installing and uninstalling games, free space | A game installed and removed from the app with no PC and no Steam phone app |
-| 4.5 The game round | Three or more new games through the app, bringing the table to ten; stage 3's leftovers for a game round | The stage 3 table at ten games, and stage 4's exit run by the maintainer |
+| **4.2 First-time setup from the app** | On a phone with nothing but the click: the app installs UTDeck's pieces (its scripts and compatibility tools, carried in the click) and the Wine runtime (`get-runtime.sh`, a published release), with progress shown: the mandatory part. Then **Steam, optional**: "Set up Steam" or "Skip" (it can be added later from the settings): the hidden screen (Xvfb) and Valve's client, then the sign-in **by QR code** (the app reads the QR code from hidden Steam's own sign-in window and shows it natively, the user scans it with the Steam phone app, Steam signs itself in; no password, code or token passes through UTDeck), with fallback B (hidden Steam's sign-in window inside the app). A Steam switch in the settings: off stops hidden Steam (1.3-1.4 GB of memory) and keeps it from starting with the app; a Steam game's Play starts it on demand | On the Nothing Phone (1), from the click alone, no PC: the mandatory part installed; once with Steam skipped (no Steam running), once with Steam set up and signed in by QR code; the fallback seen working once; the Steam switch off and on |
+| **4.3 Your own games** | Games without Steam: added from a folder (name, the `.exe`, optional cover art), each with its own Wine prefix, started through `game-run.sh` like Steam's, listed in the library with Steam's; edited and removed from the app. (Another store may come later.) | Two games added and played from the app with Steam off or not set up; one removed |
+| 4.4 The launch flow | A starting screen with what is happening (Steam starting, signing in, install scripts, Wine Mono); hidden Steam's dialogs shown in the app, accepted only by the user; errors shown; back to the library when the game ends | A first start and a normal start of two games, each step visible; a publisher's agreement and Steam's Steam Input notice shown and answered in the app |
+| 4.5 Per-game settings | A page per game: the Wine base (with the download of the second one), launch options, boost, pause, logs; the Windows build forced for Steam games with a Linux build, before the download | Each setting changes what the game gets (checked in its logs); a game with a Linux build installs its Windows build from the app |
+| 4.6 Steam without its interface | Installing and uninstalling games, free space, signing in again (the QR code, when Steam's token runs out) | A game installed and removed from the app with no PC and no Steam phone app |
+| 4.7 The game round | Three or more new games through the app, bringing the table to ten; stage 3's leftovers for a game round | The stage 3 table at ten games, and stage 4's exit run by the maintainer |
 
 Order and why: 4.1 first, because every later page lives in the app and the window question decides
-how games are started. 4.2 before 4.3: a game that seems not to start (3.9's first start) is the
-most visible problem. 4.4 can move earlier if signing in becomes the blocker. Prefix management and
+how games are started. **4.2, the setup, moved first (2026-11-21, the maintainer):** every later
+substage needs a phone where Steam works, and on a fresh phone that took a PC, adb and six scripts;
+the Nothing Phone (1), with UTDeck's click and nothing else, is where it is tested, so nothing from
+stone's hand setup can hide a gap. The sign-in is a QR code because UTDeck then never handles a
+password, and to keep Steam's own interface (no GPU acceleration for its web view, little memory)
+away from the user as far as possible. **Steam optional (2026-11-21, the maintainer):** the Wine
+runtime runs games without Steam, so Steam is offered, not required, and can be switched off to save
+memory; another store may come later, and the user can always bring their own games. Making Steam
+optional is part of the setup (4.2, before its exit run); the user's own games are their own
+substage, 4.3, right after, so that a library without Steam is not empty for long. 4.4 before 4.5:
+a game that seems not to start (3.9's first start) is the most visible problem. Prefix management and
 a Turnip driver manager (the original stage 4 list) wait until a game needs them; controllers are
 stage 5.
 
@@ -80,3 +91,7 @@ stage 5.
   1.x click builds. Open: Proton's base gets 0016-0018 with its next release; a game on a 1.x
   phone (the app itself checked on the Nothing Phone (1)); the first second of fullscreen is 63 px short; Lomiri's lifecycle still does not reach
   the game (`utdeck-pause.py` stays). Next: 4.2.
+- Reordered 2026-11-21: first-time setup became 4.2 (with the QR sign-in); the launch flow is
+  4.3, per-game settings 4.4, Steam without its interface 4.5, the game round 4.6.
+- Reordered again 2026-11-21: Steam optional (in 4.2), the user's own games as 4.3; the launch flow
+  is 4.4, per-game settings 4.5, Steam without its interface 4.6, the game round 4.7.

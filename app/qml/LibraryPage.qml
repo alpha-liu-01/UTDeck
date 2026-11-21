@@ -15,6 +15,11 @@ Page {
         title: "UTDeck"
         trailingActionBar.actions: [
             Action {
+                iconName: "settings"
+                text: i18n.tr("Settings")
+                onTriggered: page.pageStack.push(Qt.resolvedUrl("SettingsPage.qml"))
+            },
+            Action {
                 iconName: "reload"
                 text: i18n.tr("Refresh")
                 onTriggered: library.refresh()

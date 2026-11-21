@@ -3,19 +3,22 @@
 # runtime (Hangover's Wine 11.16 base) is always there; Proton 11's Wine base, which only some games
 # need (the second compatibility tool, "UTDeck runtime (Proton 11)"), is not shipped by default.
 #
-#   get-runtime.sh proton           download the version named in runtimes.list, check it, install it
-#   get-runtime.sh proton FILE      install from a file already on the phone (runtime-push.sh proton
+#   get-runtime.sh KIND             download the version named in runtimes.list, check it, install it
+#   get-runtime.sh KIND FILE        install from a file already on the phone (runtime-push.sh proton
 #                                   pushes one from the PC); checked against FILE.sha256 if present,
 #                                   else against runtimes.list
 #
+# KIND: proton (Proton 11's base, on request), or default (the default runtime; stage 4.2: the
+# app's first-time setup installs it this way, with no PC).
 # runtimes.list (next to this script), one line per runtime: KIND VERSION SHA256 URL.
-# Installs into wine/runtime-proton-<version>/ and points wine/runtime-proton at it; older versions
-# stay, for going back (ln -sfn runtime-proton-<old> runtime-proton). Touches no prefix.
+# Installs into wine/runtime-<version>/ and points wine/runtime (default) or wine/runtime-proton
+# (proton) at it; older versions stay, for going back (ln -sfn runtime-<old> runtime). Touches no
+# prefix.
 set -eu
 W=/home/phablet/utdeck-probe/wine
 HERE=$(cd "$(dirname "$0")" && pwd)
 KIND=${1:-}
-[ "$KIND" = proton ] || { echo "usage: $0 proton [FILE]" >&2; exit 2; }
+case "$KIND" in proton) LINK=runtime-proton ;; default) LINK=runtime ;; *) echo "usage: $0 default|proton [FILE]" >&2; exit 2 ;; esac
 FILE=${2:-}
 LIST=$HERE/runtimes.list
 
@@ -50,11 +53,11 @@ have=$(sha256sum "$FILE" | cut -d' ' -f1)
 
 VER=$(basename "$FILE" .tar.xz | sed 's/^utdeck-runtime-//')   # e.g. proton11.0-20261120
 D=runtime-$VER
-case "$VER" in proton*) ;; *) echo "not a Proton runtime: $VER" >&2; exit 1 ;; esac
+case "$KIND:$VER" in proton:proton*|default:[0-9]*) ;; *) echo "not a $KIND runtime: $VER" >&2; exit 1 ;; esac
 cd "$W"
 rm -rf "$D.new"; mkdir "$D.new"
 tar -C "$D.new" -xJf "$FILE"
 rm -rf "$D"; mv "$D.new/utdeck-runtime" "$D"; rmdir "$D.new"
-ln -sfn "$D" runtime-proton
-case "$FILE" in "$W"/dl/*) rm -f "$FILE" ;; esac   # a download is not kept; a pushed file is removed by runtime-push.sh
-echo "installed: $(head -1 runtime-proton/BUILD-INFO), $(du -sh "$D" | cut -f1)"
+ln -sfn "$D" "$LINK"
+case "$FILE" in "$W"/dl/*) rm -f "$FILE" "$FILE.sha256" ;; esac   # a download or a file left there is not kept; a pushed file is removed by runtime-push.sh
+echo "installed: $(head -1 "$LINK/BUILD-INFO"), $(du -sh "$D" | cut -f1)"

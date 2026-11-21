@@ -1239,3 +1239,9 @@ Problems met while building UTDeck on the Redmi Note 12 5G (stone). Details in `
   size, and Lomiri then sends the full size. Lesson: a client whose reported size disagrees with
   the compositor's can make the compositor's own bookkeeping skip later changes; when a size
   "never arrives", compare what was configured with what was reported, step by step.
+- **`pgrep -f` in an adb shell matches the shell itself (stage 4.2).** A wait loop ran
+  `adb shell 'pgrep -f "steam-install.sh 1"'` until the script ended; the pattern is also in the
+  command line of the shell adb starts for it, so pgrep always found "a match" and the loop waited
+  on for twelve minutes after the one-minute download had finished. Lesson: wait on something the
+  job leaves behind (a pid file, the last line of its log, a done marker), or use a pattern that
+  cannot match itself (`pgrep -f "[s]team-install.sh"`).

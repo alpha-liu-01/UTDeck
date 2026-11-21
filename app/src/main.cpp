@@ -16,6 +16,7 @@
 #include <cstdlib>
 
 #include "Library.h"
+#include "Setup.h"
 
 namespace
 {
@@ -83,9 +84,15 @@ int main(int argc, char** argv)
   quit_check.start(200);
 
   Library library;
+  // The first-time setup and its sign-in by QR code (stage 4.2); before the engine, whose image
+  // provider uses it.
+  Setup setup;
 
   QQmlApplicationEngine engine;
   engine.rootContext()->setContextProperty(QStringLiteral("library"), &library);
+  engine.rootContext()->setContextProperty(QStringLiteral("setup"), &setup);
+  engine.addImageProvider(QStringLiteral("qr"), new QrImageProvider(&setup));
+  engine.addImageProvider(QStringLiteral("steamscreen"), new ScreenImageProvider(&setup));
   QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed, &app,
                    [] { QCoreApplication::exit(1); }, Qt::QueuedConnection);
   engine.loadFromModule("UTDeck", "Main");

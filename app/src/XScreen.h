@@ -1,0 +1,29 @@
+#pragma once
+
+#include <cstdint>
+#include <string>
+#include <vector>
+
+// A capture of an X11 screen, and taps and key presses sent to it (stage 4.2: hidden Steam's screen,
+// Xvfb :50). Kept apart from Qt and ZXing: X11's headers define macros (None, Bool, Status, ...)
+// that clash with their names.
+struct XScreenImage
+{
+  std::vector<uint8_t> pixels;  // 4 bytes per pixel, B G R X
+  int width = 0;
+  int height = 0;
+  int stride = 0;  // bytes per row
+};
+
+// The whole screen of DISPLAY (":50"); false when the display cannot be opened or read.
+bool CaptureXScreen(const char* display, XScreenImage* image);
+
+// Stage 4.2, fallback B (hidden Steam's sign-in window inside the app), through X11's test extension
+// (XTest), as a real mouse and keyboard would:
+// a left click at X,Y of the screen;
+bool XClick(const char* display, int x, int y);
+// the characters of TEXT typed (a character missing from the screen's keyboard map gets a spare key
+// for the moment); nothing of the text is kept;
+bool XTypeText(const char* display, const std::u32string& text);
+// one named key pressed and released ("BackSpace", "Return", "Tab").
+bool XPressKey(const char* display, const char* keysym_name);

@@ -45,10 +45,19 @@ docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$root:/src" -w /src utde
   mkdir -p '$stage/lib/aarch64-linux-gnu/qt6/plugins/wayland-shell-integration'
   aarch64-linux-gnu-strip -o '$stage/utdeck' build/app/utdeck
   cp app/click/launcher.sh app/click/utdeck.desktop app/click/utdeck.apparmor app/click/utdeck.svg '$stage/'
+  # The first-time setup (stage 4.2): its script, and every UTDeck file a home folder needs, at its
+  # place (tools/ut-probe/home-files.sh), with the version they came with.
+  mkdir -p '$stage/setup'
+  cp tools/ut-probe/utdeck-setup.sh '$stage/setup/'
+  chmod 755 '$stage/setup/utdeck-setup.sh'
+  sh tools/ut-probe/home-files.sh '$stage/setup/home'
+  echo '$version' > '$stage/setup/home/VERSION'
   chmod 755 '$stage/launcher.sh' '$stage/utdeck'
   sed -i 's/\"policy_version\": .*/\"policy_version\": $policy/' '$stage/utdeck.apparmor'
   q=/opt/ut-bundle/usr/lib/aarch64-linux-gnu
   cp -L \$q/libQt6WlShellIntegration.so.6 '$stage/lib/aarch64-linux-gnu/'
+  # ZXing-C++, for the sign-in's QR code (stage 4.2); libX11 and XTest are on every 24.04 phone.
+  cp -L /usr/lib/aarch64-linux-gnu/libZXing.so.3 '$stage/lib/aarch64-linux-gnu/'
   cp \$q/qt6/plugins/wayland-shell-integration/libxdg-shell.so \
      '$stage/lib/aarch64-linux-gnu/qt6/plugins/wayland-shell-integration/'
   if [ '$bundle' = 1 ]; then

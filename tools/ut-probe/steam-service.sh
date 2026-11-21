@@ -3,6 +3,7 @@
 #
 #   steam-service.sh start      start Xvfb (:50) and the Steam client on it, with no window
 #   steam-service.sh stop       ask Steam to shut down, then stop Xvfb
+#   steam-service.sh xvfb       start only Xvfb (:50), for the client's first update (stage 4.2)
 #   steam-service.sh status     processes, memory (PSS) and CPU of Steam
 #   steam-service.sh launch ID  start the game with that app id, then close any Steam window that
 #                               shows up on the hidden screen
@@ -38,14 +39,23 @@ signed_in() {
     [ "$(state)" = "Logged On" ]
 }
 
-case "${1:-}" in
-start)
+# xvfb: the hidden screen, unless it runs already.
+xvfb() {
     if ! pgrep -u "$(id -u)" -f "[X]vfb $D " > /dev/null; then
         systemd-run --user --unit=utdeck-xvfb --collect \
             --setenv=LD_LIBRARY_PATH="$X/usr/lib/aarch64-linux-gnu" \
             "$X/usr/bin/Xvfb" "$D" -screen 0 "${SIZE}x24" -nolisten tcp > /dev/null
         for i in 1 2 3 4 5 6 7 8 9 10; do [ -e "/tmp/.X11-unix/X${D#:}" ] && break; sleep 0.5; done
     fi
+}
+
+case "${1:-}" in
+xvfb)
+    # Only the hidden screen (stage 4.2: the client's first update runs on it, with no window).
+    xvfb
+    ;;
+start)
+    xvfb
     # UTDECK_STEAM_EXTRA: more client options, for measuring them (stage 3.4, item 7).
     systemd-run --user --unit=utdeck-steam --collect --setenv=DISPLAY="$D" \
         "$W/steam/steam-run.sh" -silent -cef-disable-breakpad ${UTDECK_STEAM_EXTRA:-} > /dev/null

@@ -59,7 +59,26 @@ Window {
         PageStack {
             id: pageStack
 
-            Component.onCompleted: push(Qt.resolvedUrl("LibraryPage.qml"))
+            // A phone not set up yet starts with the setup (stage 4.2), the library once it is done.
+            Component.onCompleted: push(Qt.resolvedUrl(setup.needed ? "SetupPage.qml" : "LibraryPage.qml"))
+        }
+
+        // A game ended: with Steam's switch off, Steam (started for the game) stops again.
+        Connections {
+            target: library
+            function onRunningGameChanged() {
+                if (library.runningGame === "")
+                    setup.gameEnded()
+            }
+        }
+
+        Connections {
+            target: setup
+            function onFinished() {
+                pageStack.clear()
+                pageStack.push(Qt.resolvedUrl("LibraryPage.qml"))
+                library.refresh()
+            }
         }
     }
 }

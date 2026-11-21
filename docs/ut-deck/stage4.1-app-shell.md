@@ -354,9 +354,9 @@ Still open, and where each goes:
 - **Lomiri's first fullscreen is 63 px short** for about a second (0004 fixes it on its next try).
 - **Lomiri's lifecycle does not reach the game** (not in the app's unit): `utdeck-pause.py` stays.
 - **The library's look while a game starts** (it stays as it is until the game's window is in
-  front; Celceta's own launcher dialog is a window of the app too): 4.2's starting screen.
-- **`install-click.sh` stopping a running copy** has run through a full install (on the Nothing
-  Phone), but with no copy running; stopping an open one is not yet seen.
+  front; Celceta's own launcher dialog is a window of the app too): 4.4's starting screen.
+- **`install-click.sh` stopping a running copy**: seen working on 2026-11-21 (4.2, the Nothing
+  Phone: the open 0.2.2 stopped, 0.2.3 installed).
 
 ## Events
 

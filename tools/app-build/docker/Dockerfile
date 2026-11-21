@@ -46,6 +46,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       libegl-dev:arm64 libgles-dev:arm64 libwayland-dev:arm64 libxkbcommon-dev:arm64 \
  && rm -rf /var/lib/apt/lists/*
 
+# Stage 4.2, the sign-in: libX11 and XTest to capture hidden Steam's screen and pass taps and key
+# presses to it (both on every 24.04 phone), ZXing-C++ to read and draw the QR code (its library is
+# bundled in the click).
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      libx11-dev:arm64 libxtst-dev:arm64 libzxing-dev:arm64 \
+ && rm -rf /var/lib/apt/lists/*
+
 # Click packaging: `click build`, and the Qt 6 Wayland shell integration the phone lacks (Dolphin
 # port, stage 0), unpacked from UBports' arm64 packages into /opt/ut-bundle to be copied into the
 # click: the xdg-shell plugin and libQt6WlShellIntegration.
