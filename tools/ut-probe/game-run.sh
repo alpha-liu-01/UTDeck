@@ -44,6 +44,9 @@ unset DISPLAY   # Lomiri gives legacy apps Xwayland; Wine must use its Wayland d
 mkdir -p $W/games
 B=$W/games/$LABEL-$(date +%H%M%S)
 export UTDECK_FRAMESTATS=$B.frames
+# Wine (patch 0015) writes the window's keyboard focus here, 1 or 0: "in front or not" for the
+# pause helper (stage 3.6).
+export UTDECK_FOCUS_FILE=$B.focus
 if [ ! -d "$WINEPREFIX/drive_c" ]; then
     wineboot -i > /dev/null 2>&1; wineserver -w; $W/prefix-dlls.sh > /dev/null
 fi
@@ -85,9 +88,13 @@ case "${UTDECK_BOOST:-0}" in
 0|'') ;;
 *) python3 "$W/utdeck-boost.py" "$G" "$UTDECK_BOOST" "$B.log" & BP=$! ;;
 esac
+# Pause (stage 3.6): UTDECK_PAUSE=1 freezes the game's Windows processes while Lomiri's lock screen
+# is up, the screen is off or another app is in front, and wakes them on return; off unless set.
+[ "${UTDECK_PAUSE:-0}" = 1 ] && { python3 "$W/utdeck-pause.py" "$G" "$B.log" & PP=$!; }
 wait $G
 rc=$?
 [ -n "${BP:-}" ] && wait $BP   # its summary line, within 2 s of the game's end
+[ -n "${PP:-}" ] && wait $PP
 echo "exit $rc" >> $B.log
 kill $S
 # End Wine's background processes too: Lomiri considers the app running until they are gone.

@@ -1162,3 +1162,15 @@ Problems met while building UTDeck on the Redmi Note 12 5G (stone). Details in `
   threads that wait a lot on slow cores, and a game's threads that wait for each other look like
   that. With `uclamp_min` on the game's threads it ran at 14.1 fps. Lesson: when neither the GPU
   nor one core is full, look at which cores the game's threads run on before blaming the game.
+- **Find a game's process by more than a name in its command line (stage 3.6).** Freezing "the
+  process whose command line names ys9.exe" hit Steam's launch helper, a shell that carries the
+  game's path; and taking the first word of the game's own command line failed on a folder with
+  spaces ("Ys IX Monstrum Nox"), so the pause froze nothing. Lesson: the program is everything up to
+  ".exe", Linux programs that merely name one are not it, and the result is checked on the target
+  (its state `T`, its frames at 0) before trusting the tool.
+- **Mask every line that can hold account data, not only the ones you expect (stage 3.6).** A
+  check of Steam's sign-in printed the response line with the account's number in it: the filter
+  masked numbers of six digits or more in some lines and not in the one picked out afterwards.
+  Nothing reached a file or a commit. Lesson: apply the mask as the very last step of any command
+  that reads Steam's logs, after every selection, so a later `grep -o` cannot bring an unmasked
+  field back.

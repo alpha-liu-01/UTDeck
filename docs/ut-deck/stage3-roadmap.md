@@ -69,7 +69,7 @@ Each substage needs the one before it.
 | **3.3 Two Wine bases** (done) | Proton 11's Wine built in our container next to Hangover's 11.16, our patches carried over, both measured on the stage 2 tests and the table's games; the cost of `wineserver` waits on this kernel measured (no esync port). Both bases are kept, as Steam keeps several Proton versions: one is the default, the other a second compatibility tool chosen per game | Two compatibility tools in Steam, each with its own prefixes; the default fully supported, the second best-effort and downloaded on request; a per-game list of which base a game needs, with numbers |
 | **3.4 Defaults that remove losses** (items 0-7 done, 8-11 open) | Each default measured on the phone and kept in one place (the list below) | Each default kept or dropped with a measurement; one place where the defaults live |
 | **3.5 CPU boost, heat and memory** (done) | `uclamp_min` for the game's threads as in the Dolphin port; long runs with CPU and GPU load together; memory under hidden Steam (1.3 GB) plus a game (up to 2.5 GB) on an 8 GB phone; the vendor's thermal service stays in charge, no limit is raised | Frame rate, temperature and free memory over 30 minutes with and without the boost |
-| 3.6 Lifecycle | What Wine and the game do when the screen locks or another app comes to the front: games started by hidden Steam are not Lomiri apps, so Lomiri may not pause them (SIGSTOP) as it pauses apps; sound, timers, the gamepad, the GPU | Pause and resume work in two games, or the problems are written down with a plan |
+| **3.6 Lifecycle** (done) | What Wine and the game do when the screen locks or another app comes to the front: games started by hidden Steam are not Lomiri apps, so Lomiri may not pause them (SIGSTOP) as it pauses apps; sound, timers, the gamepad, the GPU | Pause and resume work in two games, or the problems are written down with a plan |
 | 3.7 Linux x86 games | Games with a native Linux build (Goat Simulator's) through FEX in Steam's Linux runtime, against the same games' Windows builds through our runtime | Two games measured both ways; a rule for which build UTDeck installs |
 | **3.8 Starting games from the phone** (done; asked by the maintainer, 2026-11-20; before stage 4) | Today a game starts only from the PC (`steam-service.sh launch APPID` over adb), because hidden Steam has no window. The maintainer starts, plays and quits an installed Steam game on the phone alone, without the Steam window: at least one entry per game in Lomiri's app list, or one small launcher, that sends `-applaunch` to hidden Steam (and starts it when it is not running). Stage 4's library builds on it | Two games started and quit from the phone with no PC attached |
 
@@ -160,6 +160,17 @@ game list and table from Steam). See [plan-change-steam-early.md](plan-change-st
   (`utdeck-compat`), see-through pictures (Mesa patch 0005), `mscoree` no longer turned off. The Visual C++ runtime mix-up after
   Steam's installers is repaired before every game start (`utdeck-compat`). Open: Goat Simulator's
   hang, portrait for landscape-only games, the on-screen keyboard.
+- **3.6 (2026-11-20): done.** Notes: [stage3.6-lifecycle.md](stage3.6-lifecycle.md). Games
+  started by hidden Steam are not Lomiri apps, so Lomiri never froze them: behind another app and
+  behind the lock screen they ran on (Ys IX at 3 cores and the whole GPU, music on); coming back
+  always worked (picture, sound, controller). `utdeck-pause.py` (default `UTDECK_PAUSE=1`) freezes
+  the game's Windows processes while locked and wakes them on unlock: checked in Ys IX and Celceta
+  (nothing used meanwhile, the sound pauses by itself, everything comes back). Behind another app
+  too: Wine patch 0015 (both bases) writes the window's focus to a file; the helper freezes and
+  mutes the game and wakes it for 0.3 s every 1.5 s so that it can see it is back (Lomiri could not
+  be used: it does not tie Wine's window to the app that started it). Checked in Celceta: a tenth
+  of its CPU behind another app, nothing while locked. Open: a long freeze and Steam's view of it;
+  a new release of Proton's runtime with 0015.
 - **3.5 (2026-11-20): done.** Notes: [stage3.5-boost-heat-memory.md](stage3.5-boost-heat-memory.md).
   `utdeck-boost.py` sets `uclamp_min` on the game's threads (threads they start inherit it); now
   the default (`UTDECK_BOOST=1024`). ATRI, 30 minutes each way, plugged in: 61.7 fps with the boost

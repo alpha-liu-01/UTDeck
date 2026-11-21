@@ -1,0 +1,77 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: UTDeck <utdeck@invalid>
+Date: Fri, 20 Nov 2026 23:17:36 -0500
+Subject: [PATCH] winewayland: report the keyboard focus to UTDECK_FOCUS_FILE
+
+On a phone the keyboard focus is "in front or not": Lomiri moves it away when another app comes to
+the front. A game started by a background service (hidden Steam) is not one of Lomiri's apps, so
+Lomiri never pauses it, and it ran at full speed behind other apps (Ys IX: 3 cores and the whole
+GPU, music playing; UTDeck stage 3.6). Lomiri cannot be asked either: its isPidFocused only knows
+its own apps, and it does not tie Wine's window to the app that started it.
+
+When UTDECK_FOCUS_FILE is set, write "1" to it when a window of this process gets the keyboard
+focus and "0" when it loses it, so that UTDeck's launcher can pause the game while it is not in
+front. Nothing changes when the variable is not set.
+
+On Proton 11.0 as on Hangover 11.16 (the same functions, 45 lines earlier).
+---
+ dlls/winewayland.drv/wayland_keyboard.c | 25 +++++++++++++++++++++++++
+ 1 file changed, 25 insertions(+)
+
+diff --git a/dlls/winewayland.drv/wayland_keyboard.c b/dlls/winewayland.drv/wayland_keyboard.c
+index 648b7f9..a982bfb 100644
+--- a/dlls/winewayland.drv/wayland_keyboard.c
++++ b/dlls/winewayland.drv/wayland_keyboard.c
+@@ -28,6 +28,7 @@
+ 
+ #include <linux/input.h>
+ #undef SW_MAX /* Also defined in winuser.rh */
++#include <fcntl.h>
+ #include <sys/mman.h>
+ #include <unistd.h>
+ 
+@@ -737,6 +738,28 @@ static void keyboard_handle_keymap(void *data, struct wl_keyboard *wl_keyboard,
+     xkb_keymap_unref(xkb_keymap);
+ }
+ 
++/* UTDeck: tell the launcher whether a window of this process has the keyboard focus, by writing
++ * "1" or "0" to the file named in UTDECK_FOCUS_FILE. On a phone this is "in front or not": the
++ * compositor (Lomiri) moves the keyboard focus away when another app comes to the front. A game
++ * started by a background service is not one of Lomiri's apps, so Lomiri never pauses it; UTDeck's
++ * launcher pauses it instead, and needs to know when. */
++static void utdeck_report_focus(BOOL focused)
++{
++    static const char *path;
++    static BOOL init;
++    int fd;
++
++    if (!init)
++    {
++        path = getenv("UTDECK_FOCUS_FILE");
++        init = TRUE;
++    }
++    if (!path || !*path) return;
++    if ((fd = open(path, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644)) < 0) return;
++    if (write(fd, focused ? "1\n" : "0\n", 2) != 2) WARN("could not write %s\n", path);
++    close(fd);
++}
++
+ static void keyboard_handle_enter(void *private, struct wl_keyboard *wl_keyboard,
+                                   uint32_t serial, struct wl_surface *wl_surface,
+                                   struct wl_array *keys)
+@@ -758,6 +781,7 @@ static void keyboard_handle_enter(void *private, struct wl_keyboard *wl_keyboard
+     pthread_mutex_lock(&keyboard->mutex);
+     keyboard->focused_hwnd = hwnd;
+     pthread_mutex_unlock(&keyboard->mutex);
++    utdeck_report_focus(TRUE);
+ 
+     NtUserPostMessage(keyboard->focused_hwnd, WM_INPUTLANGCHANGEREQUEST, 0 /*FIXME*/,
+                       (LPARAM)keyboard_hkl);
+@@ -796,6 +820,7 @@ static void keyboard_handle_leave(void *data, struct wl_keyboard *wl_keyboard,
+     if (keyboard->focused_hwnd == hwnd)
+         keyboard->focused_hwnd = NULL;
+     pthread_mutex_unlock(&keyboard->mutex);
++    utdeck_report_focus(FALSE);
+ 
+     /* The spec for the leave event tells us to treat all keys as released,
+      * and for any key repetition to stop. */

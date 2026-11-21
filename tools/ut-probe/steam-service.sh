@@ -32,9 +32,10 @@ notify() {
 }
 # signed_in: Steam runs and the last state in its connection log is "Logged On". The log's lines
 # also hold the account's number; only the state word is read.
+state() { grep -o '^\[[^]]*\] \[[A-Za-z ]*,' "$CONN" 2>/dev/null | tail -1 | sed 's/.*\[//; s/,$//'; }
 signed_in() {
     pgrep -x -u "$(id -u)" steam > /dev/null || return 1
-    [ "$(grep -o '^\[[^]]*\] \[[A-Za-z ]*,' "$CONN" 2>/dev/null | tail -1 | sed 's/.*\[//; s/,$//')" = "Logged On" ]
+    [ "$(state)" = "Logged On" ]
 }
 
 case "${1:-}" in
@@ -61,8 +62,15 @@ play)
             n0=$(wc -l < "$CONN" 2>/dev/null || echo 0)
             "$0" start > /dev/null
         fi
-        i=0; until signed_in && [ "$(wc -l < "$CONN")" -gt "$n0" ]; do
+        i=0; restarted=; until signed_in && [ "$(wc -l < "$CONN")" -gt "$n0" ]; do
             i=$((i + 1)); [ $i -le 90 ] || { notify "Steam did not sign in, the game was not started"; exit 1; }
+            # A running client that its server signed out ("Try another CM", then "Logged Off")
+            # may schedule its next try minutes later (stage 3.6: 582 s, attempt 15): after 20 s
+            # still signed out, restart it once; a fresh start signed in within 10 s.
+            if [ $i -eq 10 ] && [ -z "$restarted" ] && [ "$(state)" = "Logged Off" ]; then
+                restarted=1; n0=$(wc -l < "$CONN")
+                "$0" stop > /dev/null; "$0" start > /dev/null
+            fi
             sleep 2
         done
         sleep 3   # the client takes commands a moment after signing in

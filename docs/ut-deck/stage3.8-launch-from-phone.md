@@ -99,9 +99,22 @@ app with a window and can show its own "starting" screen.
 Still open: K1 (a game started sideways comes up portrait; start upright, then turn), since the
 game is Steam's process, not the entry's.
 
+## Found later: a signed-out Steam (2026-11-20, 23:28)
+
+The maintainer: Celceta "won't even launch any more". The start job had been waiting (23:28:41)
+for a sign-in that did not come: hidden Steam was running but signed out. Its connection log:
+at 23:27:12 Steam's server answered the sign-in with "Try another CM" / "Failure" and dropped the
+connection, and the client scheduled its next try 582 s later ("attempt 15"); the job gave up
+after its 3 minutes, and its notification does not show (Lomiri does not draw it, above). A
+second tap failed because the job still existed. Restarting hidden Steam signed it in within 10 s.
+**Fixed** in `steam-service.sh play`: when Steam is running but still "Logged Off" after 20 s of
+waiting, the job restarts it once and waits for the fresh sign-in.
+
 ## Events
 
 - 2026-11-20: 3.8 started (3.3 closed); plan written.
 - 2026-11-20: entries, `steam-library.py` and `play` made; first tries with the PC attached (three
   games); notifications accepted but not shown (parked); the check without the PC: two games
   started and quit. **3.8 done.**
+- 2026-11-20: a signed-out Steam stalled a start (its server dropped the sign-in, next try in
+  582 s); `play` now restarts a client that stays signed out.
