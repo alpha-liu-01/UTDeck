@@ -1174,3 +1174,29 @@ Problems met while building UTDeck on the Redmi Note 12 5G (stone). Details in `
   Nothing reached a file or a commit. Lesson: apply the mask as the very last step of any command
   that reads Steam's logs, after every selection, so a later `grep -o` cannot bring an unmasked
   field back.
+- **Adding a game in Steam starts the download at once, with its Linux build if it has one
+  (stage 3.9).** Aperture Desk Job was added and Steam began fetching its Linux program files before
+  UTDeck's tool was forced for it. Forcing it mid-download (Steam stopped, `set-default.py --app`,
+  Steam started) was enough: Steam swapped only the program-files depot and kept the shared data
+  already downloaded. Lesson: for a game that may have a Linux build, force the tool right after
+  adding it; stage 4's library should do this before the first download.
+- **A helper that acts on "the game" must know when it is not running a game (stage 3.9).** The
+  pause helper (3.6) froze every Windows program of the prefix while the phone was locked, and
+  Steam's install script is one: it froze Aperture Desk Job's first set-up halfway, and the broken
+  set-up then hung the next install. Lesson: setup steps (install scripts, prefix creation) are
+  never paused; a feature for games is switched off explicitly for everything else.
+- **"Failed to launch" through hidden Steam can be a dialog nobody sees (stage 3.9).** Steam stopped
+  before the game at "ShowInterstitials", a notice drawn on its invisible Xvfb screen. Lesson: when
+  a launch stalls, read the `GameAction` lines in `console_log.txt` for the last step, and look at
+  the hidden screen (`xwin.py :50 --shot`) before suspecting the game.
+- **Wine's debugger cannot look into an emulated game, and attaching can end it (stage 3.9).**
+  `winedbg "bt all"` on a hung Aperture Desk Job listed only Wine's native processes and skipped the
+  x86-64 game (run through FEX); the failed attach ended the game. Lesson: on this runtime, read a
+  hang from outside (thread states and `wchan` in `/proc`, the sensor log, the kernel log) and
+  collect everything wanted before trying the debugger.
+- **Read the game's own log before the driver's (stage 3.9).** "Failed to initialize Vulkan" from
+  Aperture Desk Job looked like a gap in Wine or Turnip; Source 2's console log (`-condebug`) named
+  the exact missing capability in one line (subgroup operations in drawing shaders), and Mesa's
+  device list showed it is missing in the Adreno 619's hardware. Lesson: most engines can write a
+  log of their own (`-condebug` for Source, `Player.log` for Unity, `Launch.log` for Unreal 3); turn
+  it on first.

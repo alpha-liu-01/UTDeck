@@ -5,6 +5,9 @@ Written 2026-11-18, after [stage 2](stage2-roadmap.md). Goal (from
 phones. Exit of the whole stage: the runtime builds from a script, and the compatibility table has
 ten or more games.
 
+**Wrapped up for now on 2026-11-21**: see [Stage 3 wrapped up](#stage-3-wrapped-up-2026-11-21)
+below for the exit check, the game table and every item still open.
+
 Terms used here:
 - *runtime* = everything between the game and our GPU driver: Wine, the x86 translators (FEX,
   Box64), DXVK, VKD3D-Proton, Wine Mono.
@@ -70,8 +73,9 @@ Each substage needs the one before it.
 | **3.4 Defaults that remove losses** (items 0-7 done, 8-11 open) | Each default measured on the phone and kept in one place (the list below) | Each default kept or dropped with a measurement; one place where the defaults live |
 | **3.5 CPU boost, heat and memory** (done) | `uclamp_min` for the game's threads as in the Dolphin port; long runs with CPU and GPU load together; memory under hidden Steam (1.3 GB) plus a game (up to 2.5 GB) on an 8 GB phone; the vendor's thermal service stays in charge, no limit is raised | Frame rate, temperature and free memory over 30 minutes with and without the boost |
 | **3.6 Lifecycle** (done) | What Wine and the game do when the screen locks or another app comes to the front: games started by hidden Steam are not Lomiri apps, so Lomiri may not pause them (SIGSTOP) as it pauses apps; sound, timers, the gamepad, the GPU | Pause and resume work in two games, or the problems are written down with a plan |
-| 3.7 Linux x86 games | Games with a native Linux build (Goat Simulator's) through FEX in Steam's Linux runtime, against the same games' Windows builds through our runtime | Two games measured both ways; a rule for which build UTDeck installs |
+| **3.7 Linux x86 games** (closed with a rule) | Games with a native Linux build (Goat Simulator's) through FEX in Steam's Linux runtime, against the same games' Windows builds through our runtime | Two games measured both ways; a rule for which build UTDeck installs |
 | **3.8 Starting games from the phone** (done; asked by the maintainer, 2026-11-20; before stage 4) | Today a game starts only from the PC (`steam-service.sh launch APPID` over adb), because hidden Steam has no window. The maintainer starts, plays and quits an installed Steam game on the phone alone, without the Steam window: at least one entry per game in Lomiri's app list, or one small launcher, that sends `-applaunch` to hidden Steam (and starts it when it is not running). Stage 4's library builds on it | Two games started and quit from the phone with no PC attached |
+| **3.9 Games drawing with Vulkan** (closed for now: back with a stronger device; asked by the maintainer, 2026-11-21; after 3.7) | Windows games that draw with Vulkan themselves, so no DXVK: Unity games switched with `-force-vulkan` (PvZ Replanted), UE4 games that ship a Vulkan renderer (`-vulkan`), games with Vulkan as their own option | Two games measured with Vulkan against their Direct3D path; a default per engine if Vulkan is faster |
 
 The defaults for 3.4, collected from ARMDeck, DroidDeck, 3.S and 3.2b:
 - From before: `DOTNET_EnableWriteXorExecute=0`, FEX TSO and its other options per game, DXVK's
@@ -127,6 +131,11 @@ DirectX 9 game with movies in a plain window (DirectShow, K10), another visual n
 Unity game (Slime Rancher, INSIDE, Firewatch). Games with a Linux build need the Windows build
 forced (`set-default.py --app`) or wait for 3.7.
 
+Kept for later (the maintainer's list, 2026-11-21): **Linux ARM64 games**, native code with no
+emulator, once a game is found (Valve's ARM64 Steam Frame should bring builds; 3.7's Wayland finding
+and Steam's ARM64 runtime apply); **Windows on ARM games**, very rare on Steam (our runtime already
+runs ARM64 Windows programs).
+
 ## Status
 
 **Plan change (2026-11-19):** Steam comes forward from stage 7, so the table can use the
@@ -160,6 +169,21 @@ game list and table from Steam). See [plan-change-steam-early.md](plan-change-st
   (`utdeck-compat`), see-through pictures (Mesa patch 0005), `mscoree` no longer turned off. The Visual C++ runtime mix-up after
   Steam's installers is repaired before every game start (`utdeck-compat`). Open: Goat Simulator's
   hang, portrait for landscape-only games, the on-screen keyboard.
+- **3.9 (2026-11-21): closed for now**, until a more powerful device runs Ubuntu Touch. Notes:
+  [stage3.9-vulkan-games.md](stage3.9-vulkan-games.md). Neither game reached a Vulkan run: PvZ
+  Replanted's build has no Vulkan renderer; Aperture Desk Job's (Source 2) requires subgroup
+  operations in drawing shaders, which the Adreno 619 and 650 lack in hardware (Adreno 6xx has them
+  from its fourth generation, 7xx in full). **Direct3D 12 through VKD3D-Proton was a third faster
+  than Direct3D 11 through DXVK in PvZ** (16.9 against 12.7 fps): a candidate Unity default, to be
+  checked on a second Unity game. Desk Job's Direct3D 11 locks up at its menu (open). Fixed on the
+  way: install scripts are never paused; `GAME_ARGS` for launch options.
+- **3.7 (2026-11-21): closed with a rule.** Notes: [stage3.7-linux-games.md](stage3.7-linux-games.md).
+  Steam's path for an x86 Linux game is its FEX tool over Steam Linux Runtime's container, wanting
+  an x86 system with Mesa; FEX's Ubuntu 24.04 root filesystem was put in UTDeck's folder. Goat
+  Simulator's Linux build draws with OpenGL through SDL2, which has no GPU route here (GLX means
+  Xwayland, software only; FEX's EGL bridge is not in its list); and FEX did not start x86 programs
+  with the folder root filesystem (file opens not redirected). **Rule: a game with both builds runs
+  its Windows build through UTDeck.** Later: a Vulkan Linux build, once FEX's redirection works.
 - **3.6 (2026-11-20): done.** Notes: [stage3.6-lifecycle.md](stage3.6-lifecycle.md). Games
   started by hidden Steam are not Lomiri apps, so Lomiri never froze them: behind another app and
   behind the lock screen they ran on (Ys IX at 3 cores and the whole GPU, music on); coming back
@@ -169,8 +193,8 @@ game list and table from Steam). See [plan-change-steam-early.md](plan-change-st
   too: Wine patch 0015 (both bases) writes the window's focus to a file; the helper freezes and
   mutes the game and wakes it for 0.3 s every 1.5 s so that it can see it is back (Lomiri could not
   be used: it does not tie Wine's window to the app that started it). Checked in Celceta: a tenth
-  of its CPU behind another app, nothing while locked. Open: a long freeze and Steam's view of it;
-  a new release of Proton's runtime with 0015.
+  of its CPU behind another app, nothing while locked. Proton's runtime with 0015 released as
+  `runtime-proton11.0-20261121`. Open: a long freeze and Steam's view of it.
 - **3.5 (2026-11-20): done.** Notes: [stage3.5-boost-heat-memory.md](stage3.5-boost-heat-memory.md).
   `utdeck-boost.py` sets `uclamp_min` on the game's threads (threads they start inherit it); now
   the default (`UTDECK_BOOST=1024`). ATRI, 30 minutes each way, plugged in: 61.7 fps with the boost
@@ -208,6 +232,81 @@ game list and table from Steam). See [plan-change-steam-early.md](plan-change-st
   blue), our 0012/0013 ported, its OpenGL video path off; checked on the screen with Ys IX
   fullscreen 1600x720, phone sideways. Left out: fill mode on Proton's base. Open: Lomiri drops the
   fullscreen state of Proton's window when upright; the Ys IX crash on ours; K10.
+
+## Stage 3 wrapped up (2026-11-21)
+
+The maintainer wrapped stage 3 up on 2026-11-21 to move on with the roadmap; what is still open is
+listed below with the stage it now belongs to.
+
+### The exit
+
+| Exit | Result |
+| --- | --- |
+| The runtime builds from a script | **Met.** `build-runtime.sh` builds both bases (`WINE_FLAVOR`), pinned and byte-identical between builds; Mesa from `tools/mesa-build/` |
+| Ten or more games in the table | **Not met: seven games, six of them run.** The three missing ones come with the next game round (kinds still missing: an XNA or .NET game, a GameMaker game, an OpenGL game, a second Unity game, a DirectShow movie game) |
+
+### The table at the end of stage 3
+
+All on stone (Adreno 619), through hidden Steam and UTDeck's compatibility tool, every folder
+checked for DRM bypasses first. Frame rates from different days and settings: read the notes before
+comparing.
+
+| Game | Engine, binary | Graphics | Base | Result | Performance |
+| --- | --- | --- | --- | --- | --- |
+| Ys: Memories of Celceta | Falcom, 32-bit (Box64) | Direct3D 11 | ours (11.16) | plays; pause checked (3.6) | 30 fps (its cap), 16-25 fps in busy dungeons (CPU-bound, measured without the boost) |
+| Ys IX: Monstrum Nox | Falcom, 64-bit (FEX) | Direct3D 11 | ours | plays; a crash on our base seen in 3.3 (open) | 15-16 fps at its test spot, 1600x720, Sampling 50 % (GPU-bound) |
+| ATRI -My Dear Moments- | KiriKiri Z, 32-bit (Box64) | Direct3D 9 | ours | plays (its full-screen option) | 61.7 fps average over 30 minutes with the boost (57.7 without) |
+| Plants vs. Zombies: Replanted | Unity 6, 64-bit (FEX) | Direct3D 11; 12 with `-force-d3d12` | ours | plays; landscape-only, portrait wrong (K1, stage 4) | 2400x1080: 12.7 fps (D3D11), **16.9 fps (D3D12)**; 22.8-23 fps at 1600x720 (D3D11, no boost) |
+| Stray | Unreal 4.27, 64-bit (FEX) | Direct3D 11 and 12 | ours | runs, not playable here | 8.3-8.4 fps at 1280x720, Sampling 50 % (GPU-bound) |
+| Goat Simulator | Unreal 3, 32-bit (Box64) | Direct3D 9 | **Proton 11** | plays on Proton's base; fails at its first level on ours (open) | 14.1 fps with the boost, 5.9 without |
+| Aperture Desk Job | Source 2, 64-bit (FEX) | Direct3D 11 (its Vulkan renderer needs newer hardware) | ours | **locks up at its start menu** after 50 s (open) | GPU 89-99 % on the menu |
+
+### Still open, and where each item goes
+
+**A game round on stone** (stage 3 leftovers, done when games are added to reach ten):
+- 3.4 items 8-11: Box64 or FEX for 32-bit games (K9); shader stutter in new areas (Celceta,
+  150-700 ms; DXVK's state cache, Steam's fossilize, K8); DirectShow's window renderer (K10, the
+  `renderer=no3d`/`vulkan` test); Stray on Direct3D 12 with Mesa patch 0006 instead of its own
+  `tu_dont_reserve_descriptor_set` setting.
+- Crashes and hangs: the Ys IX crash on our base (3.3); Goat Simulator's level load on our base
+  (3.3, 3.5); Aperture Desk Job's Direct3D 11 lock-up (3.9); a finished Visual C++ uninstaller that
+  did not exit (3.9).
+- Measured again with the boost: the CPU-bound games and the 3.3 base comparison (3.5).
+- `-force-d3d12` as a default for Unity games, on a second Unity game (3.9).
+- Battery drain, and 30 minutes of the heavier games (3.5); a long freeze (an hour in a pocket) and
+  Steam's view of it (3.6).
+- Proton's base: fill mode (0010 not ported); Lomiri drops its window's fullscreen state upright (3.3).
+- Smaller prefixes (K5, 3.4 item 5: Wine writes through links, two Wine changes needed first);
+  Steam runs the install script at every start (K4, about 3 s).
+- Lomiri: it crashed once with a stream of `wl_subsurface` requests it does not implement (3.3) and
+  hung once during an automated run (3.4). Watched; a program must not crash the compositor.
+
+**Stage 4, the frontend** (each found in stage 3, each needs UTDeck to be a real app):
+- Games started as a Lomiri app with a landscape desktop file: K1 (started sideways, a game comes
+  up portrait), landscape-only games reshaped to portrait (PvZ), Lomiri's top bar on a maximized
+  window (ATRI).
+- Hidden Steam's dialogs shown to the user: publishers' agreements (EA's), Steam's notices before a
+  launch (the Steam Input page, 3.9). UTDeck never accepts an agreement.
+- A "starting" screen: a first start can take minutes with nothing on screen (Wine Mono, install
+  scripts), and Lomiri shows none of our notifications (3.8, 3.9).
+- Games with a Linux build: UTDeck's tool forced right after the game is added, before the first
+  download (3.7's rule; `set-default.py --app` by hand now).
+- Per-game settings written to `utdeck-env`: the base (`utdeck` or `utdeck-proton`), `GAME_ARGS`,
+  boost and pause, `WINEDEBUG_GAME`.
+- Steam's own interface (K2): sign-in, install and uninstall without the PC or the Steam phone app.
+
+**Stage 5, input**: a controller connected while a game runs (K3); Steam Input without `uinput`
+(the real controller is passed through for now); no on-screen keyboard in Windows programs (Lomiri
+offers no text-input protocol); touch beyond "the first finger is the mouse".
+
+**Stage 7**: Steam's overlay (K8); the other stores.
+
+**Stage 8, more devices**: the Nothing Phone (1) (runtime check, the GPU-bound games); 3.9's Vulkan
+comparison on a device with Adreno 6xx fourth generation or 7xx.
+
+**Kept for later**: Linux ARM64 games; Windows on ARM games; Linux x86 builds that draw with Vulkan,
+once FEX redirects file opens into a folder root filesystem (3.7; FEX's Ubuntu 24.04 root
+filesystem and Steam Linux Runtime 2.0 stay on the phone for it).
 
 ## Done: 3.3, two Wine bases (plan 2026-11-19, changed 2026-11-20)
 

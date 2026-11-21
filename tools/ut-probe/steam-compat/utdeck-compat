@@ -43,7 +43,7 @@ APPID=${STEAM_COMPAT_APP_ID:-${SteamAppId:-0}}
 } >> "$LOG"
 
 # Per-game settings: compatdata/<appid>/utdeck-env, one NAME=value per line (for example
-# WINEDEBUG_GAME=+loaddll or GAME_OVERRIDES=d3dx9_43=n), since Steam starts us with its own
+# WINEDEBUG_GAME=+loaddll, GAME_OVERRIDES=d3dx9_43=n or GAME_ARGS=-force-vulkan), since Steam starts us with its own
 # environment. Lines starting with # are skipped.
 if [ -f "$DATA/utdeck-env" ]; then
     while IFS= read -r line; do
@@ -228,8 +228,11 @@ run|waitforexitandrun)
     # installers) run their 32-bit code under FEX, not Box64: Box64 0.4.4 spins forever in the
     # Visual C++ 2015 installer (its WiX "burn" engine, 100 % of a core, no progress in 10 min); under
     # FEX it finishes in 8 s. Games keep the runtime's default until 32-bit emulators are measured.
+    # Install scripts are never paused (stage 3.9): the pause helper froze Aperture Desk Job's first
+    # one while the phone was locked, in the middle of the new prefix's start-up ("boot event wait
+    # timed out"), and it ended with exit 29 and a half-installed Visual C++ runtime.
     case "$1" in
-    */iscriptevaluator.exe) export HODLL=libwow64fex.dll ;;
+    */iscriptevaluator.exe) export HODLL=libwow64fex.dll UTDECK_PAUSE=0 ;;
     esac
     prepare_prefix
     case "$1" in */iscriptevaluator.exe) ;; *) fix_vc_runtime ;; esac
@@ -238,6 +241,16 @@ run|waitforexitandrun)
     # sets it to the game's folder for games, and gives paths relative to it for its install
     # scripts (legacycompat\evaluatorscript_<appid>.vdf, from Steam's own folder). steam.exe is
     # Proton's builtin one ("b"), never the Valve SteamService.exe copied as Steam\steam.exe.
+    # GAME_ARGS in utdeck-env (stage 3.9): more arguments for the game itself, as Steam's launch
+    # options would add (for example -force-vulkan for a Unity game), not for install scripts.
+    case "$1" in
+    */iscriptevaluator.exe) ;;
+    *) if [ -n "${GAME_ARGS:-}" ]; then
+           # shellcheck disable=SC2086 # words on purpose: "-force-vulkan -screen-width 1600"
+           set -- "$@" $GAME_ARGS
+           echo "  game arguments added: $GAME_ARGS" >> "$LOG"
+       fi ;;
+    esac
     GAME_OVERRIDES="steam.exe=b${GAME_OVERRIDES:+;$GAME_OVERRIDES}" \
         "$W/game-run.sh" "steam-$APPID" "$PWD" 'C:\windows\system32\steam.exe' "$@"
     rc=$?

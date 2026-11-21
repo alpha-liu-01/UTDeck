@@ -2,6 +2,7 @@
 """UTDeck stage 3.S: make a compatibility tool Steam's default for Windows games, without its window.
 
     set-default.py [TOOL]               default TOOL: utdeck; "--show" prints the current mappings
+    set-default.py --app APPID --remove the game back to Steam's own choice (its Linux build, if any)
     set-default.py --app APPID [TOOL]   force TOOL for one game, as its properties page does
                                         ("Force the use of a specific Steam Play compatibility
                                         tool"); for games that also have a Linux build, which the
@@ -59,6 +60,23 @@ m = find_block(lo, hi, 4, "CompatToolMapping")
 
 if arg == "--show":
     print("\n".join(lines[m[0]:m[1] + 1]) if m else "no CompatToolMapping block")
+    sys.exit(0)
+if arg == "--remove":
+    # --app APPID --remove: the game goes back to Steam's own choice (its Linux build, if it has
+    # one; stage 3.7).
+    if app == "0":
+        sys.exit("--remove is for one game: set-default.py --app APPID --remove")
+    old = find_block(m[0] + 2, m[1], 5, app) if m else None
+    if not old:
+        sys.exit(f"no entry for {app}; nothing to remove")
+    del lines[old[0]:old[1] + 1]
+    shutil.copy2(CFG, CFG + ".utdeck-bak")
+    tmp = CFG + ".utdeck-tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+    os.replace(tmp, CFG)
+    m = find_block(lo, len(lines), 4, "CompatToolMapping")
+    print("\n".join(lines[m[0]:m[1] + 1]))
     sys.exit(0)
 if not re.fullmatch(r"[A-Za-z0-9_.-]+", arg):
     sys.exit("tool name: letters, digits, _ . - only")

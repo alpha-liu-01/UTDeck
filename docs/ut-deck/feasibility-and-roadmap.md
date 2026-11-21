@@ -1,6 +1,7 @@
 # UTDeck: feasibility, prior art and roadmap
 
-Written 2026-11-17. Sources: this repository (an unmodified copy of ARMDeck `main` at `d2585a6`),
+Written 2026-11-17; updated 2026-11-21 after stage 3 (see "Where UTDeck stands" and the status
+under each stage; the original plan text is kept as written). Sources: this repository (an unmodified copy of ARMDeck `main` at `d2585a6`),
 the Dolphin port's notes (`../dolphin-ut/docs/ut-port/`), the stone-ut notes
 (`../stone-ut/docs/`), the upstream projects listed in "Sources", and Wine's source tree
 (`dlls/winewayland.drv`, master, read on 2026-11-17). Nothing was built, installed or changed on
@@ -52,6 +53,42 @@ them blocks upstream Wine on Lomiri outright.
   on Android (Winlator's Bionic forks, GameNative's Bionic launcher), so "no proot" alone is not
   the pitch. The pitch is: **a real glibc Linux on a phone that is still a phone**, with stock
   upstream Wine, FEX, Box64 and Mesa, and no Android in the way.
+
+## Where UTDeck stands (2026-11-21)
+
+Stages 0-3 are done (stage 3 wrapped up with items open, see its status below). On stone, a Windows
+game from the maintainer's Steam library is started from Lomiri's app drawer, runs through Wine,
+FEX or Box64, DXVK or VKD3D-Proton and our own Turnip, draws on Lomiri with the GPU, plays sound,
+takes a Bluetooth gamepad and touch, pauses while the phone is locked or another app is in front,
+and quits cleanly. Six of seven games tried run.
+
+What turned out differently from the plan above:
+
+| Plan (2026-11-17) | What happened |
+| --- | --- |
+| Route B (native Turnip) preferred, route A as fallback | **Route B** (stage 1): our Mesa with the Droidian `android_wlegl` presentation and our own patches (games below the compositor's GPU priority, one submission per command buffer, opaque pictures, a Direct3D 12 option built in). Route A hung at swapchain re-creation |
+| A patch to make `wp_viewporter` optional; subsurfaces risky | Both worked (stage 2), plus touch as a mouse (the first finger). Lomiri logs Wine's subsurface requests as not implemented and crashed once (3.3): watched |
+| Proton for esync | **Proton 11 has no esync** (only fsync and NTSYNC, which kernel 5.4 lacks). A wait through `wineserver` costs 17-24 µs, a few percent of a frame: no port. **Two Wine bases kept** as two Steam compatibility tools: Hangover's 11.16 (default) and Proton 11's (per game, downloaded on request) |
+| Steam in stage 7 | **Steam moved into stage 3**: Valve's ARM64 client runs hidden as a service on an invisible X screen; UTDeck's runtime is its compatibility tool; one app drawer entry per installed game (3.8). Steam's own interface is too slow to use (software drawing) |
+| Touch and controllers through `/dev/uinput` | `/dev/uinput` belongs to an Android system user (stage 0): no virtual devices, so Steam Input's virtual controller cannot exist; the real controller is passed to games |
+| Lifecycle: survive Lomiri's SIGSTOP | Games started by hidden Steam are not Lomiri apps and were never paused: our own pause helper, with a Wine patch reporting the window's focus (3.6) |
+| CPU boost as in Dolphin | Done and on by default (3.5): ATRI +7 %, Goat Simulator 2.4x; heat stayed low (skin 42 °C at most), the vendor's thermal service in charge |
+| Linux builds of games (not planned) | A Linux x86 build has no GPU route here (GLX means Xwayland, software only): **UTDeck runs the Windows build** of games that have both (3.7) |
+| Vulkan games (not planned) | Limited by the GPU, not the runtime: games made for the Steam Deck need features Adreno 6xx has only from its fourth generation (3.9). Direct3D 12 through VKD3D-Proton runs, and was a third faster than Direct3D 11 in one Unity game |
+| Memory | Tight with heavy games: hidden Steam 1.1-1.3 GB, a game 1.5-1.7 GB, 0.6-0.9 GB left on the 8 GB phone |
+
+**Recommended next steps:**
+1. **Stage 4, the frontend, next.** Most of what stage 3 left open needs UTDeck to be a real app:
+   games coming up portrait when started sideways (K1), Steam's dialogs and publishers' agreements
+   waiting on an invisible screen, no feedback during a first start that takes minutes, the Windows
+   build forced for games with a Linux build. The first question to answer in it: how a game
+   started by hidden Steam gets the library app's identity in Lomiri (orientation, fullscreen), since
+   Lomiri did not tie Wine's windows to an app in 3.6.
+2. **The next game round inside stage 4**, not before it: adding three or more games through the
+   new library brings the table to ten (stage 3's exit) and is stage 4's own test. Stage 3's
+   leftovers for a game round (32-bit emulator choice, shader stutter, the open crashes) go with it.
+3. Stage 5 (input) after 4; then packaging (6). Stage 8's stronger device brings back 3.9 (Vulkan
+   games) and the GPU-bound games.
 
 ## Terms used in this document
 
@@ -422,6 +459,21 @@ Goal: a reproducible runtime, tuned for Halium phones.
 
 Exit: the runtime builds from a script, and the table has ten or more games.
 
+#### Status (2026-11-21): wrapped up, with items open
+
+Notes and the full list of open items: [stage3-roadmap.md](stage3-roadmap.md), "Stage 3 wrapped up".
+The runtime builds from one script (both Wine bases, pinned, byte-identical): met. The table has
+seven games, six of which run (Direct3D 9, 11 and 12; 32- and 64-bit; Box64 and FEX; five engines):
+three short of ten, to be added in stage 4's game round. Substages: 3.1 runtime build, 3.S Steam
+hidden as a service, 3.2b the table, 3.3 two Wine bases, 3.4 defaults in one file
+(`defaults.env`; items 8-11 open), 3.5 CPU boost on by default, 3.6 pause on lock and on focus loss,
+3.7 Linux builds (rule: the Windows build), 3.8 games in Lomiri's app drawer, 3.9 Vulkan games
+(closed until a stronger device). Two runtime releases are on GitHub (Proton's base, downloaded on
+request). Open items go to a game round (crashes in Ys IX, Goat Simulator on our base, Aperture Desk
+Job's lock-up, 32-bit emulator choice, shader stutter, DirectShow movies), to stage 4 (orientation,
+hidden Steam's dialogs, a starting screen, Linux-build forcing), stage 5 (controller hot-plug, the
+on-screen keyboard) and stage 8 (Vulkan games, the Nothing Phone).
+
 #### Status (2026-11-18): 3.1 done
 
 Split into six substages: [stage3-roadmap.md](stage3-roadmap.md). Checked first: Proton 11's Wine
@@ -455,6 +507,27 @@ per-game settings). Pages:
 
 Exit: from a fresh install, add a game, start it, play with a gamepad, quit back to the library.
 
+Added after stage 3 (2026-11-21). The library starts from what exists: `steam-library.py` (installed
+Steam games and their covers), `steam-service.sh play` (hidden Steam started, its sign-in awaited,
+the game launched), per-game `utdeck-env` and `defaults.env`. What stage 3 left for it:
+1. **The game's window as part of the library app**: started sideways, a game comes up portrait
+   (K1); landscape-only games are reshaped to portrait; a maximized window keeps Lomiri's top bar.
+   Stage 2.3 showed that a game started as a landscape Lomiri app keeps the whole screen, but a game
+   started by hidden Steam is Steam's child, and Lomiri did not tie Wine's windows to an app (3.6).
+   This is the first thing to find out.
+2. **Hidden Steam's dialogs shown to the user**: publishers' agreements and Steam's notices before a
+   launch wait on its invisible screen (3.2b, 3.9). UTDeck shows them; only the user accepts an
+   agreement.
+3. **A starting screen**: a first start can take minutes (Wine Mono, Steam's install scripts) with
+   nothing on screen, and Lomiri does not show our notifications (3.8).
+4. **Games with a Linux build**: UTDeck's tool forced right after the game is added, before the
+   first download (3.7's rule, 3.9).
+5. **Per-game settings** map to `utdeck-env`: the Wine base, launch options (`GAME_ARGS`), boost,
+   pause, logs.
+6. **Steam's own tasks** without its interface (K2): sign-in, install, uninstall, free space.
+7. **The next game round** through the new library: three or more games bring stage 3's table to
+   ten, with stage 3's leftovers for a game round (see its notes).
+
 ### Stage 5. Touch controls, in-game menu, overlay
 
 Goal: games are playable with touch only, and the menu works during a game.
@@ -466,6 +539,13 @@ Goal: games are playable with touch only, and the menu works during a game.
 4. Haptics through hfd-service, as Dolphin does.
 
 Exit: a game that needs a mouse launcher and a gamepad in game is playable with touch only.
+
+Added after stage 3 (2026-11-21): `/dev/uinput` is not open to apps (stage 0), so step 1's virtual
+controller has to come from inside Wine (for example a source in its `winebus` driver) rather than
+from the kernel. Steam Input's own virtual controller is made by the Steam client through
+`uinput`, so it stays unavailable; games get the real controller (3.2b). Also here: a controller
+connected while a game runs (K3), the on-screen keyboard (Lomiri offers Wine no text-input
+protocol), and touch beyond our patch's "the first finger is the mouse".
 
 ### Stage 6. Packaging and release
 
@@ -479,6 +559,11 @@ Exit: a game that needs a mouse launcher and a gamepad in game is playable with 
 
 Exit: the click installs on a clean user account on two devices and games run with no manual
 setup.
+
+Added after stage 3 (2026-11-21): downloading a runtime at first use already works for the second
+Wine base (`get-runtime.sh`: GitHub releases, SHA-256 checked, `runtimes.list`); the same path can
+carry the default runtime and Mesa. Hidden Steam, its Xvfb and the per-game helpers run as systemd
+user services today: how they fit a click is part of this stage.
 
 ### Stage 7. Stores and Steam
 
@@ -499,6 +584,9 @@ Plan change (2026-11-19): the part of step 3 that lets Steam games start through
 moves into stage 3 (stage 3.S), so the compatibility table can use the maintainer's Steam library:
 [plan-change-steam-early.md](plan-change-steam-early.md). The rest of this stage stays here.
 
+Status after stage 3 (2026-11-21): step 3 is done the first way (Valve's ARM64 client, hidden). Left
+here: GOG, itch.io and Epic; Steam's overlay (K8) and pipeline cache.
+
 ### Stage 8. More devices
 
 1. A device profile file: GPU family, Turnip support, the DXVK pin, known quirks, thermal notes.
@@ -506,6 +594,15 @@ moves into stage 3 (stage 3.S), so the compatibility table can use the maintaine
 3. Mali phones (most MediaTek Ubuntu Touch devices, for example Volla and FuriLabs): no Turnip and
    no open driver on Android kernels, so only the vendor's Vulkan through libhybris. DXVK 2.x needs
    that blob to be Vulkan 1.3. Check per device, later.
+
+Added after stage 3 (2026-11-21):
+- The device profile also records what the GPU generation can do: subgroup operations in drawing
+  shaders (Adreno 6xx from its fourth generation: 660, 690, the A635 family including the 642L;
+  all of 7xx), which games made for the Steam Deck require (3.9); descriptor sets for
+  VKD3D-Proton (Mesa patch 0006 on 6xx).
+- **A more powerful device running Ubuntu Touch** brings back 3.9 (Vulkan games measured against
+  their Direct3D path) and the GPU-bound games (Ys IX, Stray). The maintainer judges the Nothing
+  Phone (1) not capable enough for that; it stays the second device for the runtime check.
 
 ## Risks
 
@@ -525,6 +622,19 @@ moves into stage 3 (stage 3.S), so the compatibility table can use the maintaine
 | 11 | Lomiri's window handling of Wine's extra windows (launchers, dialogs, splash screens) | Medium | Medium | Dolphin's fullscreen rules; a per-game "single window" option |
 | 12 | Licence mix: reusing DroidDeck code (GPL-3.0) in an MIT repository | Certain if code is reused | Low | Decide the licence before the first copied line (below) |
 | 13 | Heat in long sessions on a phone without a fan | Medium | Medium | Vendor thermal control stays in charge; HUD shows temperature; no limit is ever raised |
+
+What stages 0-3 showed about these risks (2026-11-21):
+- 1 and 1b: handled by our patches; Lomiri crashed once while logging Wine's subsurface requests
+  as not implemented (3.3), and hung once during an automated run (3.4). Still watched.
+- 2 and 3: gone with route B.
+- 4: confirmed, `/dev/uinput` is not open to apps; Steam Input's virtual controller is lost too.
+- 5: confirmed and sharper: GPU-bound games run at 8-23 fps, and games made for the Steam Deck can
+  need GPU features first-generation Adreno 6xx lacks (3.9).
+- 6: Proton has no esync either; the measured cost of `wineserver` waits is a few percent.
+- 8: higher than "Low": with hidden Steam and a heavy game, 0.6-0.9 GB stays free of 8 GB.
+- 13: low on stone so far (skin 42 °C at most over 30 minutes, plugged in); battery drain not
+  measured.
+- New: games that wait on hidden Steam's invisible dialogs (agreements, notices), until stage 4.
 
 ## What carries over from ARMDeck
 
@@ -554,6 +664,11 @@ This repository is ARMDeck. Most of it does not apply to a Halium product:
 7. **Upstream contacts.** Whether to contact fredldotme (Winebox), UBports (Wine games need
    `wp_viewporter`, which Mir 2 brings; the timeline of the Mir 2 Android platform), varmd (licence
    of wine-wayland, in case we reuse its code) and the Droidian WSI patch's author before stage 1.
+
+Where these stand after stage 3 (2026-11-21): 3 (devices): stone is the development device, as
+recommended. 4 (runtime base): both, as two Steam compatibility tools (3.3). 5 (runtime delivery):
+downloading from GitHub releases works for the second base; the choice for the click is stage 6's.
+6 (Steam scope): Steam came first, in stage 3. 1, 2 and 7 are not recorded here as decided.
 
 ## Sources
 

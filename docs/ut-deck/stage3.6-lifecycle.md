@@ -252,8 +252,11 @@ The maintainer: the music stopped in the other app and while locked, everything 
 Behind another app the game now uses about a tenth of its CPU (the peeks, silent), behind the lock
 screen nothing.
 
-**3.6 done.** Still open: a long freeze (an hour in a pocket) and Steam's view of it; a new
-release of Proton's runtime with 0015 (the maintainer's decision).
+**3.6 done.** Proton's runtime with 0015 published (the maintainer's decision) as the
+pre-release [`runtime-proton11.0-20261121`](https://github.com/alpha-liu-01/UTDeck/releases/tag/runtime-proton11.0-20261121),
+tagged on commit 51c3be5 (the patches it is built from); `runtimes.list` points at it, and the
+download was checked against its SHA-256. Still open: a long freeze (an hour in a pocket) and
+Steam's view of it.
 
 ## Events
 
