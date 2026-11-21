@@ -16,7 +16,8 @@ esac
 export WINEPREFIX=${WINEPREFIX:-$W/prefix}
 export WINEDEBUG=${WINEDEBUG:--all}
 # No Gecko (mshtml); Mono (mscoree) stays off unless a program needs .NET (then WINEDLLOVERRIDES=mshtml=).
-export WINEDLLOVERRIDES=${WINEDLLOVERRIDES:-mscoree,mshtml=}
+# No winemenubuilder (Linux menu entries for Windows programs; stage 3.4).
+export WINEDLLOVERRIDES=${WINEDLLOVERRIDES:-mscoree,mshtml=;winemenubuilder.exe=d}
 # Our driver, never the system's libhybris one: the Khronos loader and our Turnip for Vulkan,
 # our Mesa (zink) as the EGL vendor.
 export LD_LIBRARY_PATH=$P/zink/lib:$P/vk/lib

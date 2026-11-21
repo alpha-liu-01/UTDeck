@@ -1,0 +1,29 @@
+From: UTDeck
+Subject: [PATCH] tu: no reserved descriptor set for VKD3D-Proton
+
+VKD3D-Proton's root signatures need 5 descriptor sets. The A6xx GPUs have 5, and Turnip keeps one
+for dynamic buffer descriptors (UNIFORM_BUFFER_DYNAMIC, STORAGE_BUFFER_DYNAMIC), leaving 4: Direct3D
+12 games hung before their first frame (Stray, UTDeck stage 3.2b), and the environment variable
+tu_dont_reserve_descriptor_set=true fixed it. As a default for every program that variable would
+also reach zink in the same process, which uses dynamic uniform buffers, while Turnip still
+reports them as supported. VKD3D-Proton never uses dynamic buffer descriptors (neither does
+DXVK), so turn the option on for the vkd3d engine only, next to Turnip's other vkd3d default.
+
+diff --git a/src/freedreno/vulkan/00-turnip-defaults.conf b/src/freedreno/vulkan/00-turnip-defaults.conf
+index 0596f6c..6d13509 100644
+--- a/src/freedreno/vulkan/00-turnip-defaults.conf
++++ b/src/freedreno/vulkan/00-turnip-defaults.conf
+@@ -41,6 +41,13 @@
+         </engine>
+ 	<engine engine_name_match="vkd3d">
+ 	    <option name="tu_enable_softfloat32" value="true" />
++	    <!--
++	        VKD3D-Proton's root signatures need 5 descriptor sets, and A6xx has 5, of which
++	        Turnip keeps one for dynamic buffer descriptors, which VKD3D-Proton never uses:
++	        without the 5th, Direct3D 12 games hang before their first frame (Stray). Only
++	        for vkd3d: zink and other Vulkan programs use dynamic buffers.
++	    -->
++	    <option name="tu_dont_reserve_descriptor_set" value="true" />
+ 	</engine>
+         <engine engine_name_match="ANGLE">
+             <!--

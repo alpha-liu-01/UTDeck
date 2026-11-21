@@ -76,6 +76,32 @@ sign-in, launched the game (its prefix's start 17:34:49); played and quit, `exit
   it); the wait is silent for now, and stage 4's library, a real app with a window, can show its
   own "starting" screen.
 
+## The check: two games with no PC attached (2026-11-20, 17:47-17:50)
+
+Hidden Steam stopped and the keep-screen-on request ended beforehand, so the phone behaved as in
+normal use. The maintainer unplugged the phone and, from the app drawer:
+
+| game | tapped | game process started | quit |
+| --- | --- | --- | --- |
+| Ys: Memories of Celceta (Steam started by the job) | 17:47:32 | 17:47:49 | `exit 0`, 17:49:09 |
+| ATRI (Steam running) | 17:49:21 | 17:49:24 | `exit 0`, 17:49:53 |
+
+Both started, played and quit fine; neither job ended "failed" (the `launch` fix). **3.8's exit is
+met.**
+
+Notifications, followed one step further: the maintainer's volume bubble and an incoming text
+message show, so Lomiri draws notifications in general; ours come from a background job that
+Lomiri links to no app. A test entry whose only command sends a notification ("Test D", started by
+Lomiri as an app) did not show either, and Lomiri logged nothing for it, so it may not have run as
+written (the `Exec` line's quoting); not followed further. Parked for stage 4: its library is a real
+app with a window and can show its own "starting" screen.
+
+Still open: K1 (a game started sideways comes up portrait; start upright, then turn), since the
+game is Steam's process, not the entry's.
+
 ## Events
 
 - 2026-11-20: 3.8 started (3.3 closed); plan written.
+- 2026-11-20: entries, `steam-library.py` and `play` made; first tries with the PC attached (three
+  games); notifications accepted but not shown (parked); the check without the PC: two games
+  started and quit. **3.8 done.**

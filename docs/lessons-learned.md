@@ -1144,3 +1144,21 @@ Problems met while building UTDeck on the Redmi Note 12 5G (stone). Details in `
   Lomiri's own log showed its notification QML failing (`TypeError ... of null`) at each one.
   Lesson: for anything meant for the eyes, ask the maintainer, and read the compositor's log at the
   same moment.
+- **The compositor can hang and the numbers keep coming (stage 3.4).** Lomiri stopped drawing
+  (its render threads waiting on locks) in the middle of an automated run, while still accepting
+  new windows; every later test "ran" at up to twice its real rate, because nothing took its
+  frames. The screen kept its backlight, so the backlight check did not catch it. Lesson: before
+  each round, check that Lomiri itself is alive (its CPU time moves, it answers on D-Bus), not
+  only that the screen is on.
+- **Count what a setting reached, not what a tool touched (stage 3.5).** The CPU boost's summary
+  said 6 threads, which looked like it had missed the game; in fact all 51 of ATRI's threads had
+  it, inherited from the boosted `steam.exe` that started it (the kernel copies `uclamp_min` on
+  clone), while Steam's `reaper` had adopted the game so that it no longer looked like a child of
+  ours. Lesson: check the effect on the target itself (`sched_getattr` per thread), and know who
+  ends up as a process's parent under Steam.
+- **A half-busy GPU can be a CPU problem (stage 3.5).** Goat Simulator ran at 5.9 fps with the GPU
+  only 45 % busy and clocked down to the 300s, which looked like the game or Wine. The thread
+  sample showed the render thread on the little cores: the scheduler saves power by putting
+  threads that wait a lot on slow cores, and a game's threads that wait for each other look like
+  that. With `uclamp_min` on the game's threads it ran at 14.1 fps. Lesson: when neither the GPU
+  nor one core is full, look at which cores the game's threads run on before blaming the game.

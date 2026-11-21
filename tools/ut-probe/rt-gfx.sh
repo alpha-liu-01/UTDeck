@@ -19,7 +19,8 @@ export WINEPREFIX=$W/prefix-$1-gfx
 . $W/env.sh
 [ -n "${2:-}" ] && export PATH=$W/$2/bin:$PATH
 export WAYLAND_DISPLAY=wayland-0 MESA_VK_WSI_PRESENT_MODE=mailbox
-export DXVK_LOG_LEVEL=none VKD3D_DEBUG=none VKD3D_SHADER_DEBUG=none   # their logs crowd out the results
+# Their logs crowd out the results; stage 3.4 measures them on (ab-env.sh), so a caller's value wins.
+export DXVK_LOG_LEVEL=${DXVK_LOG_LEVEL:-none} VKD3D_DEBUG=${VKD3D_DEBUG:-none} VKD3D_SHADER_DEBUG=${VKD3D_SHADER_DEBUG:-none}
 unset DISPLAY
 T=$W/test
 LOG=$W/rt-gfx-$1-$(date +%H%M%S).log
@@ -38,10 +39,12 @@ DXVK="d3d11,dxgi,d3d10core,d3d9,d3d8=n;mscoree,mshtml="
 run() {   # run LABEL OVERRIDES PROGRAM ARGS...
     l=$1 o=$2; shift 2
     echo "--- $l"
-    WINEDLLOVERRIDES="$o" WINEDEBUG=err+all,fixme-all timeout 60 wine "$@" > /tmp/rt-gfx.out 2>&1
+    WINEDLLOVERRIDES="$o" WINEDEBUG=${RT_WINEDEBUG:-err+all,fixme-all} timeout 60 wine "$@" > /tmp/rt-gfx.out 2>&1
     rc=$?
-    # Wine's start-up notes about optional Wayland protocols Lomiri lacks are left out (stage 2.2).
-    grep -v -E "err:(waylanddrv|cursor):|err:system:NtUserChangeDisplaySettings|err:explorer:initialize_display_settings|err:wgl:internal_context_create|^ *$" \
+    # Wine's start-up notes about optional Wayland protocols Lomiri lacks are left out (stage 2.2),
+    # and so are DXVK's and VKD3D-Proton's own log lines: with their logs on (stage 3.4) they filled
+    # the 25 lines and pushed the results out.
+    grep -v -E "err:(waylanddrv|cursor):|err:system:NtUserChangeDisplaySettings|err:explorer:initialize_display_settings|err:wgl:internal_context_create|^(info|warn|err|fixme): |:(info|warn|err|fixme|trace):vkd3d|^ *$" \
         /tmp/rt-gfx.out | head -25
     echo "exit: $rc"
     wineserver -w

@@ -6,7 +6,7 @@
 #
 # Default: unpacks build/runtime/utdeck-runtime-<version>.tar.xz into wine/runtime-<version>/ on the
 # phone and points wine/runtime at it (older versions stay, for going back); installs env.sh (from
-# wine-env.sh), prefix-dlls.sh and get-runtime.sh. Proton's: pushes
+# wine-env.sh), prefix-dlls.sh, get-runtime.sh, game-run.sh and defaults.env (stage 3.4). Proton's: pushes
 # build/runtime-proton/utdeck-runtime-proton<version>.tar.xz with its checksum and installs it with
 # get-runtime.sh, the same script that downloads it on request (stage 3.3, step 5.5). Does not
 # touch any prefix.
@@ -15,8 +15,8 @@ REPO_DIR=$(cd "$(dirname "$0")/../.." && pwd)
 W=/home/phablet/utdeck-probe/wine
 adb push -q "$REPO_DIR/tools/ut-probe/wine-env.sh" "$W/env.sh" > /dev/null
 adb push -q "$REPO_DIR/tools/ut-probe/prefix-dlls.sh" "$W/prefix-dlls.sh" > /dev/null
-adb push -q "$REPO_DIR/tools/ut-probe/get-runtime.sh" "$REPO_DIR/tools/ut-probe/runtimes.list" "$W/" > /dev/null
-adb shell "chmod +x $W/prefix-dlls.sh $W/get-runtime.sh"
+adb push -q "$REPO_DIR/tools/ut-probe/get-runtime.sh" "$REPO_DIR/tools/ut-probe/runtimes.list" "$REPO_DIR/tools/ut-probe/defaults.env" "$REPO_DIR/tools/ut-probe/game-run.sh" "$REPO_DIR/tools/ut-probe/utdeck-boost.py" "$REPO_DIR/tools/ut-probe/uclamp-show.py" "$W/" > /dev/null
+adb shell "chmod +x $W/prefix-dlls.sh $W/get-runtime.sh $W/game-run.sh"
 
 if [ "${1:-}" = proton ]; then
     TAR=$(ls "$REPO_DIR"/build/runtime-proton/utdeck-runtime-proton*.tar.xz | tail -1)

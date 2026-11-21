@@ -45,8 +45,9 @@ start)
             "$X/usr/bin/Xvfb" "$D" -screen 0 "${SIZE}x24" -nolisten tcp > /dev/null
         for i in 1 2 3 4 5 6 7 8 9 10; do [ -e "/tmp/.X11-unix/X${D#:}" ] && break; sleep 0.5; done
     fi
+    # UTDECK_STEAM_EXTRA: more client options, for measuring them (stage 3.4, item 7).
     systemd-run --user --unit=utdeck-steam --collect --setenv=DISPLAY="$D" \
-        "$W/steam/steam-run.sh" -silent -cef-disable-breakpad > /dev/null
+        "$W/steam/steam-run.sh" -silent -cef-disable-breakpad ${UTDECK_STEAM_EXTRA:-} > /dev/null
     echo "started: Xvfb $D ($SIZE), Steam hidden (unit utdeck-steam)"
     python3 "$W/steam/steam-library.py" > /dev/null 2>&1 || true   # the app drawer entries (3.8)
     ;;
@@ -69,7 +70,12 @@ play)
     "$0" launch "$2"
     ;;
 stop)
-    cd "$HOME/.local/share/Steam/steamrtarm64" && DISPLAY=$D LD_LIBRARY_PATH=$PWD timeout 30 ./steam -shutdown > /dev/null 2>&1
+    # Only to a running client: with none, "steam -shutdown" starts a new one, which without the
+    # hidden screen shows "Unable to open a connection to X" in a box Lomiri cannot draw (an
+    # endless spinner on the phone, stage 3.4).
+    if pgrep -x -u "$(id -u)" steam > /dev/null; then
+        cd "$HOME/.local/share/Steam/steamrtarm64" && DISPLAY=$D LD_LIBRARY_PATH=$PWD timeout 30 ./steam -shutdown > /dev/null 2>&1
+    fi
     for i in $(seq 1 30); do pgrep -u "$(id -u)" -f '[s]teamrtarm64/' > /dev/null || break; sleep 1; done
     systemctl --user stop utdeck-steam utdeck-xvfb 2>/dev/null
     echo "stopped; Steam processes left: $(pgrep -c -u "$(id -u)" -f '[s]teamrtarm64/')"

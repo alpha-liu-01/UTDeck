@@ -67,11 +67,11 @@ Each substage needs the one before it.
 | **3.S Steam far enough to test games** (done) | Valve's ARM64 client hidden as a service; UTDeck's runtime as its compatibility tool; Steam's API for games; videos, sound volume, fill mode | A Steam game starts, plays and quits through our runtime |
 | **3.2b The table from the Steam library** (exit met) | Five or more of the maintainer's Steam games, checked for DRM bypasses, measured | Five games: Direct3D 9, 11, 12; 32- and 64-bit; Box64 and FEX; five engines |
 | **3.3 Two Wine bases** (done) | Proton 11's Wine built in our container next to Hangover's 11.16, our patches carried over, both measured on the stage 2 tests and the table's games; the cost of `wineserver` waits on this kernel measured (no esync port). Both bases are kept, as Steam keeps several Proton versions: one is the default, the other a second compatibility tool chosen per game | Two compatibility tools in Steam, each with its own prefixes; the default fully supported, the second best-effort and downloaded on request; a per-game list of which base a game needs, with numbers |
-| 3.4 Defaults that remove losses | Each default measured on the phone and kept in one place (the list below) | Each default kept or dropped with a measurement; one place where the defaults live |
-| 3.5 CPU boost, heat and memory | `uclamp_min` for the game's threads as in the Dolphin port; long runs with CPU and GPU load together; memory under hidden Steam (1.3 GB) plus a game (up to 2.5 GB) on an 8 GB phone; the vendor's thermal service stays in charge, no limit is raised | Frame rate, temperature and free memory over 30 minutes with and without the boost |
+| **3.4 Defaults that remove losses** (items 0-7 done, 8-11 open) | Each default measured on the phone and kept in one place (the list below) | Each default kept or dropped with a measurement; one place where the defaults live |
+| **3.5 CPU boost, heat and memory** (done) | `uclamp_min` for the game's threads as in the Dolphin port; long runs with CPU and GPU load together; memory under hidden Steam (1.3 GB) plus a game (up to 2.5 GB) on an 8 GB phone; the vendor's thermal service stays in charge, no limit is raised | Frame rate, temperature and free memory over 30 minutes with and without the boost |
 | 3.6 Lifecycle | What Wine and the game do when the screen locks or another app comes to the front: games started by hidden Steam are not Lomiri apps, so Lomiri may not pause them (SIGSTOP) as it pauses apps; sound, timers, the gamepad, the GPU | Pause and resume work in two games, or the problems are written down with a plan |
 | 3.7 Linux x86 games | Games with a native Linux build (Goat Simulator's) through FEX in Steam's Linux runtime, against the same games' Windows builds through our runtime | Two games measured both ways; a rule for which build UTDeck installs |
-| 3.8 Starting games from the phone (asked by the maintainer, 2026-11-20; before stage 4) | Today a game starts only from the PC (`steam-service.sh launch APPID` over adb), because hidden Steam has no window. The maintainer starts, plays and quits an installed Steam game on the phone alone, without the Steam window: at least one entry per game in Lomiri's app list, or one small launcher, that sends `-applaunch` to hidden Steam (and starts it when it is not running). Stage 4's library builds on it | Two games started and quit from the phone with no PC attached |
+| **3.8 Starting games from the phone** (done; asked by the maintainer, 2026-11-20; before stage 4) | Today a game starts only from the PC (`steam-service.sh launch APPID` over adb), because hidden Steam has no window. The maintainer starts, plays and quits an installed Steam game on the phone alone, without the Steam window: at least one entry per game in Lomiri's app list, or one small launcher, that sends `-applaunch` to hidden Steam (and starts it when it is not running). Stage 4's library builds on it | Two games started and quit from the phone with no PC attached |
 
 The defaults for 3.4, collected from ARMDeck, DroidDeck, 3.S and 3.2b:
 - From before: `DOTNET_EnableWriteXorExecute=0`, FEX TSO and its other options per game, DXVK's
@@ -160,6 +160,31 @@ game list and table from Steam). See [plan-change-steam-early.md](plan-change-st
   (`utdeck-compat`), see-through pictures (Mesa patch 0005), `mscoree` no longer turned off. The Visual C++ runtime mix-up after
   Steam's installers is repaired before every game start (`utdeck-compat`). Open: Goat Simulator's
   hang, portrait for landscape-only games, the on-screen keyboard.
+- **3.5 (2026-11-20): done.** Notes: [stage3.5-boost-heat-memory.md](stage3.5-boost-heat-memory.md).
+  `utdeck-boost.py` sets `uclamp_min` on the game's threads (threads they start inherit it); now
+  the default (`UTDECK_BOOST=1024`). ATRI, 30 minutes each way, plugged in: 61.7 fps with the boost
+  against 57.7 without, slow moments unchanged, about 2 °C warmer, skin 42 °C at most;
+  `mi_thermald` (Xiaomi's thermal service) took one step off the little cores both times. At least
+  2.8 GB stayed available with hidden Steam and ATRI. **Goat Simulator: 14.1 fps with the boost
+  against 5.9 without** (same evening, same spot): without it, the scheduler kept UE3's render
+  thread on the little cores and the GPU clocked down to the 300s. The table's CPU-bound games and
+  the 3.3 base comparison were measured without the boost and are to be measured again. Not
+  measured: battery drain; 30 minutes of the heavier games.
+- **3.4 (2026-11-20): items 0-7 done, 8-11 open.** Notes: [stage3.4-defaults.md](stage3.4-defaults.md).
+  One place for the defaults (`defaults.env`, read by `game-run.sh`; a game's `utdeck-env` wins).
+  The default runtime now has 0012/0013; log levels kept (no cost); `tu_dont_reserve_descriptor_set`
+  only for VKD3D-Proton, built into Turnip (Mesa patch 0006: as an environment variable it would
+  also reach zink, which uses the reserved set); FEX's Turnip cache option and Steam's options kept
+  (no difference); `winemenubuilder` off; Wine Mono in every prefix on both bases; smaller prefixes
+  parked (Wine writes through links). Open, for a game round: Box64 or FEX for 32-bit games, shader
+  stutter, DirectShow's renderer (K10), Stray on Direct3D 12 with the built-in default. Found on the
+  way: Lomiri can hang during automated runs (the numbers keep coming); runs now check it first.
+- **3.8 (2026-11-20): done** (out of order, before 3.4, at the maintainer's request). Notes:
+  [stage3.8-launch-from-phone.md](stage3.8-launch-from-phone.md). One app drawer entry per
+  installed game (`steam-library.py`, the cover as its icon), which hands off to
+  `steam-service.sh play`: hidden Steam started if needed, its sign-in awaited, the game launched.
+  Two games started and quit with no PC attached. Open: no notification while Steam starts
+  (Lomiri does not show ours; stage 4's library), K1.
 - **3.3 (2026-11-20): done.** Notes: [stage3.3-wine-base.md](stage3.3-wine-base.md). No esync
   port (a server request costs about 17-24 µs, a few percent of a frame). Where both bases put the
   same picture on the screen, Proton's is 0-10 % faster; every larger gap measured was a picture

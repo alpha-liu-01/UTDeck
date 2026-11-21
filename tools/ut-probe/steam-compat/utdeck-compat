@@ -80,6 +80,20 @@ prepare_prefix() {
             wineboot -i > /dev/null 2>&1; wineserver -w; $W/prefix-dlls.sh > /dev/null
             echo "  prefix made" >> "$LOG"
         fi
+        # Wine Mono in every prefix, as Proton does (stage 3.4, item 6): Goat Simulator runs .NET
+        # code and stopped with "Wine Mono is not installed" without it. On our base Wine's own
+        # prefix update already installed it at a game's first start (mscoree on); Proton's base
+        # did not. 241 MB and about 35 s, once per prefix.
+        if [ ! -d "$WINEPREFIX/drive_c/windows/mono" ]; then
+            M=$(ls "$(dirname "$(command -v wine)")"/../share/wine/mono/wine-mono-*.msi 2>/dev/null | tail -1)
+            if [ -n "$M" ]; then
+                t=$(date +%s)
+                WINEDLLOVERRIDES="mshtml=;winemenubuilder.exe=d" wine msiexec /i "$(winepath -w "$M" 2>/dev/null)" /qn > /dev/null 2>&1
+                wineserver -w
+                [ -d "$WINEPREFIX/drive_c/windows/mono" ] && echo "  Wine Mono installed ($(( $(date +%s) - t )) s)" >> "$LOG" \
+                    || echo "  Wine Mono install failed" >> "$LOG"
+            fi
+        fi
         S="$WINEPREFIX/drive_c/Program Files (x86)/Steam"
         mkdir -p "$S"
         for f in steamclient.dll steamclient64.dll GameOverlayRenderer64.dll Steam.dll; do
