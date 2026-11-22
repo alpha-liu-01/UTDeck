@@ -8,12 +8,19 @@
  *   gltest ... --interval N   swap interval for the window (default 1; 0 = do not wait for vsync)
  *   gltest ... --flush        glFlush before each swap (starts the GPU work before EGL waits)
  *   gltest ... --limit FPS    sleep to a fixed frame rate before each swap (a game's frame limiter)
+ *   gltest ... --windowed     (wayland) do not ask for fullscreen
+ *   gltest ... --subsurface   (wayland, stage 4.3) draw as Wine does: the window's own surface gets a
+ *                             plain grey shared-memory buffer, and the GL picture goes into a
+ *                             subsurface on top of it (desync, at 0,0, the window's size). Grey on
+ *                             screen means the compositor does not show the subsurface.
  *   The window mode prints the distribution of the time between frames at the end.
  *
  * Uses the system's glvnd libEGL.so.1 / libOpenGL.so.0 / libGLESv2.so.2; which EGL vendor answers
  * is chosen by the environment (__EGL_VENDOR_LIBRARY_FILENAMES). Exit 0 = all checks passed.
  */
 #define _GNU_SOURCE
+#include <sys/mman.h>
+#include <unistd.h>
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 #include <GLES3/gl32.h>
@@ -36,6 +43,8 @@ static int gles;
 static int swap_interval = 1;
 static int flush_first;     /* --flush: glFlush before eglSwapBuffers */
 static double limit_fps;     /* --limit FPS: app-side frame limiter */
+static int windowed;         /* --windowed: no xdg_toplevel_set_fullscreen */
+static int use_subsurface;   /* --subsurface: GL into a subsurface over a grey shm buffer */
 
 /* GL entry points are fetched through EGL, so the same code drives desktop GL and GLES. */
 #define GLF(ret, name, args) static ret (*p_##name) args
@@ -226,12 +235,16 @@ static int headless(void)
 /* ---- Wayland window ---- */
 static struct wl_compositor *compositor;
 static struct xdg_wm_base *wm;
+static struct wl_subcompositor *subcompositor;
+static struct wl_shm *shm;
 static int cfg_w, cfg_h, configured;
 
 static void reg_global(void *d, struct wl_registry *r, uint32_t name, const char *iface, uint32_t ver)
 {
     if (!strcmp(iface, "wl_compositor")) compositor = wl_registry_bind(r, name, &wl_compositor_interface, 4);
     else if (!strcmp(iface, "xdg_wm_base")) wm = wl_registry_bind(r, name, &xdg_wm_base_interface, 1);
+    else if (!strcmp(iface, "wl_subcompositor")) subcompositor = wl_registry_bind(r, name, &wl_subcompositor_interface, 1);
+    else if (!strcmp(iface, "wl_shm")) shm = wl_registry_bind(r, name, &wl_shm_interface, 1);
 }
 static void reg_remove(void *d, struct wl_registry *r, uint32_t name) {}
 static const struct wl_registry_listener reg_l = { reg_global, reg_remove };
@@ -242,6 +255,23 @@ static const struct xdg_surface_listener xs_l = { xs_configure };
 static void tl_configure(void *d, struct xdg_toplevel *t, int32_t w, int32_t h, struct wl_array *st) { if (w > 0 && h > 0) { cfg_w = w; cfg_h = h; } }
 static void tl_close(void *d, struct xdg_toplevel *t) {}
 static const struct xdg_toplevel_listener tl_l = { tl_configure, tl_close };
+
+/* A plain grey WxH shared-memory buffer for the window's own surface (--subsurface). */
+static struct wl_buffer *grey_buffer(int w, int h)
+{
+    const int stride = w * 4, size = stride * h;
+    int fd = memfd_create("gltest-grey", MFD_CLOEXEC);
+    if (fd < 0 || ftruncate(fd, size) < 0) return NULL;
+    void *p = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    if (p == MAP_FAILED) { close(fd); return NULL; }
+    memset(p, 0x80, size);
+    munmap(p, size);
+    struct wl_shm_pool *pool = wl_shm_create_pool(shm, fd, size);
+    struct wl_buffer *b = wl_shm_pool_create_buffer(pool, 0, w, h, stride, WL_SHM_FORMAT_XRGB8888);
+    wl_shm_pool_destroy(pool);
+    close(fd);
+    return b;
+}
 
 static int window(int frames)
 {
@@ -258,11 +288,28 @@ static int window(int frames)
     struct xdg_toplevel *tl = xdg_surface_get_toplevel(xs);
     xdg_toplevel_add_listener(tl, &tl_l, NULL);
     xdg_toplevel_set_title(tl, "UTDeck gltest");
-    xdg_toplevel_set_fullscreen(tl, NULL);
+    if (!windowed) xdg_toplevel_set_fullscreen(tl, NULL);
     wl_surface_commit(surf);
     while (!configured && wl_display_dispatch(wd) >= 0) {}
     int w = cfg_w ? cfg_w : 1080, h = cfg_h ? cfg_h : 2400;
-    struct wl_egl_window *ew = wl_egl_window_create(surf, w, h);
+    /* --subsurface: the GL picture goes into a child surface, the window's own gets grey. */
+    struct wl_surface *gl_surf = surf, *child = NULL;
+    struct wl_subsurface *sub = NULL;
+    struct wl_buffer *grey = NULL;
+    if (use_subsurface) {
+        if (!subcompositor || !shm) { fprintf(stderr, "missing wl_subcompositor or wl_shm\n"); return 2; }
+        child = wl_compositor_create_surface(compositor);
+        sub = wl_subcompositor_get_subsurface(subcompositor, child, surf);
+        wl_subsurface_set_position(sub, 0, 0);
+        wl_subsurface_set_desync(sub);
+        grey = grey_buffer(w, h);
+        wl_surface_attach(surf, grey, 0, 0);
+        wl_surface_damage(surf, 0, 0, w, h);
+        wl_surface_commit(surf);
+        gl_surf = child;
+        printf("subsurface: GL into a child surface, a grey %dx%d buffer under it\n", w, h);
+    }
+    struct wl_egl_window *ew = wl_egl_window_create(gl_surf, w, h);
 
     EGLDisplay dpy = eglGetPlatformDisplay(EGL_PLATFORM_WAYLAND_KHR, wd, NULL);
     EGLint maj, min;
@@ -292,7 +339,17 @@ static int window(int frames)
     GLint tu = p_glGetUniformLocation(prog, "t");
     for (int f = 0; f < frames; f++) {
         wl_display_dispatch_pending(wd);
-        if (cfg_w && (cfg_w != w || cfg_h != h)) { w = cfg_w; h = cfg_h; wl_egl_window_resize(ew, w, h, 0, 0); }
+        if (cfg_w && (cfg_w != w || cfg_h != h)) {
+            w = cfg_w; h = cfg_h; wl_egl_window_resize(ew, w, h, 0, 0);
+            if (use_subsurface) {
+                if (grey) wl_buffer_destroy(grey);
+                grey = grey_buffer(w, h);
+                wl_surface_attach(surf, grey, 0, 0);
+                wl_surface_damage(surf, 0, 0, w, h);
+                wl_surface_commit(surf);
+            }
+            printf("resized: %dx%d\n", w, h);
+        }
         p_glViewport(0, 0, w, h);
         p_glUseProgram(prog);
         p_glUniform1f(tu, (f % 120) / 119.0f);
@@ -338,10 +395,12 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--interval") && i + 1 < argc) swap_interval = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--flush")) flush_first = 1;
         else if (!strcmp(argv[i], "--limit") && i + 1 < argc) limit_fps = atof(argv[++i]);
+        else if (!strcmp(argv[i], "--windowed")) windowed = 1;
+        else if (!strcmp(argv[i], "--subsurface")) use_subsurface = 1;
         else frames = atoi(argv[i]);
     }
     if (!strcmp(mode, "headless")) return headless();
     if (!strcmp(mode, "wayland")) return window(frames);
-    fprintf(stderr, "usage: gltest headless|wayland [FRAMES] [--gles] [--interval N] [--flush] [--limit FPS]\n");
+    fprintf(stderr, "usage: gltest headless|wayland [FRAMES] [--gles] [--interval N] [--flush] [--limit FPS] [--windowed] [--subsurface]\n");
     return 2;
 }

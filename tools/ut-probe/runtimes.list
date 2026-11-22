@@ -1,4 +1,6 @@
-# UTDeck stage 3.3 (step 5.5): runtimes that get-runtime.sh downloads on request. One line each:
+# UTDeck stage 3.3 (step 5.5) and 4.2: runtimes that get-runtime.sh downloads (the default one during
+# the app's first-time setup, Proton's on request). One line each:
 # KIND VERSION SHA256 URL. The URL is a release asset of this repository; the checksum is the
 # file's from build-runtime.sh, written here when a release is made.
-proton proton11.0-20261121 a25e156136db13841a7b852a5837eeccc0bd46f3f917417f86c82c130e477483 https://github.com/alpha-liu-01/UTDeck/releases/download/runtime-proton11.0-20261121/utdeck-runtime-proton11.0-20261121.tar.xz
+proton proton11.0-20261122 92f0acc8f727eabdb661e983d35ab328655b1c88777c54486326f71fbf192eae https://github.com/alpha-liu-01/UTDeck/releases/download/runtime-proton11.0-20261122/utdeck-runtime-proton11.0-20261122.tar.xz
+default 11.16-20261121 7cd03165339c109e4a66831fab5186eae381a958cee03479a37ae67c02e879fd https://github.com/alpha-liu-01/UTDeck/releases/download/runtime-11.16-20261121/utdeck-runtime-11.16-20261121.tar.xz

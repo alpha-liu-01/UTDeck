@@ -247,6 +247,118 @@ the QR code shown but not scanned, "Can't scan the code?": **signed in with acco
 password typed through UTDeck into hidden Steam's own window**, Steam Guard answered the same
 way; the app went back to the library. **S4 passed: both sign-in paths work.**
 
+## The default runtime published (2026-11-21)
+
+The maintainer committed the patches (9c5d9a9, pushed) and agreed to the release. Its
+`BUILD-INFO` lists patches 0001-0013 and 0015-0018 (0014 is Proton's own); every patch file
+predates the build and matches the commit. Published as a pre-release, like Proton's:
+`runtime-11.16-20261121` (target 9c5d9a9ca276f97a5175db9c871a7121f482d148), asset
+`utdeck-runtime-11.16-20261121.tar.xz`, SHA256 `7cd03165...02e879fd` (downloaded back and checked).
+`runtimes.list` gets its `default` line, so the setup's runtime step downloads it; the click
+(0.2.6) carries the new list.
+
+## 5. From scratch on the Nothing Phone
+
+Before (the maintainer's OK): 0.2.6 installed, hidden Steam and Xvfb stopped, then
+`~/.local/share/Steam` (5.5 GB, with S4's sign-in), `~/.steam`, `~/utdeck-probe` (1.2 GB) and
+`~/.config/utdeck.alphaliu01` deleted; `check`: all six steps todo; only the click left.
+
+**Run 1, Steam skipped (the maintainer):** "Set up", the runtime downloaded from the release and
+unpacked, "Skip" at the Steam card; the library empty ("No installed Steam games found"); Settings:
+"Steam is not set up", with "Set up Steam". Over adb: `check` files and runtime done, every Steam
+step todo; the choice `skip`; the runtime log "downloading utdeck-runtime-11.16-20261121.tar.xz ...
+installed: 1.2G", nothing left in `wine/dl`; `wine --version` answers; no Xvfb, no `~/.steam`, no
+Steam process; 5.2 GB of memory available (4.3 GB with hidden Steam running, the same phone). The
+only thing in `~/.local/share/Steam` is UTDeck's own 3.9 MB (its two compatibility tools and SDL3,
+put there by the files step for when Steam is set up). **Passed: the setup works from the click
+alone, with no PC and no Steam.**
+
+**Run 2, Steam set up later from Settings (the maintainer):** "Set up Steam" in Settings; the four
+Steam steps ran; signed in by scanning the QR code; back to the library; the switch off (Steam
+stopped) and on (Steam started and signed itself in, no "Sign in" button). Over adb: `check` all
+done, the choice `use`, the switch on, Steam's last state "Logged On". **Passed.**
+
+## Done (2026-11-21)
+
+| Exit criterion ([stage4-roadmap.md](stage4-roadmap.md)) | Result |
+|---|---|
+| On the Nothing Phone (1), from the click alone, no PC: the mandatory part installed | yes (step 5, run 1): UTDeck's files from the click, the runtime from the new GitHub release |
+| Once with Steam skipped | yes (run 1): no Steam downloaded or running, the library empty, Settings offers "Set up Steam" |
+| Once with Steam set up and signed in by QR code | yes (run 2, set up from Settings; and S2) |
+| The fallback seen working once | yes (S4: name, password and Steam Guard through hidden Steam's own window in the app) |
+| The Steam switch off and on | yes (S3 with 0.2.3, run 2) |
+
+Still open, and where each goes:
+- **The 24.04-2.x click with the setup** is not built or checked on stone (stone was not
+  connected); the next time it is.
+- ~~Xvfb's package pinned~~, ~~no free-space check before Steam~~, ~~Proton's base without
+  0016-0018~~: finished right after (below).
+- **Signing in again** when Steam's token runs out: Settings' "Sign in" covers it (S4); 4.6 looks
+  at it again.
+- **Games on the Nothing Phone** (Adreno 642L, a different GPU family): not tried; with stage 7's
+  device work, or the game round.
+
+## Open items 2-4 finished (2026-11-21, after 4.2)
+
+- **Xvfb through Ubuntu's signed index** (`utdeck-setup.sh`, `xvfb_in`): for `noble-updates`,
+  `noble-security`, then `noble`: the suite's `InRelease` checked with `gpgv` and Ubuntu's archive
+  key (`/usr/share/keyrings/ubuntu-archive-keyring.gpg`, gpgv 2.4.4, both on every 24.04 phone),
+  and only the text the signature covers read (`--output`); from it the SHA256 of
+  `universe/binary-arm64/Packages.gz`; that list downloaded and checked; from it xvfb's file and
+  SHA256; the package downloaded and checked. The probe's package stays only as the last resort when
+  no index can be read. Checked on the Nothing Phone in a throwaway folder: "Good signature from
+  Ubuntu Archive Automatic Signing Key (2018)", `noble-updates` gives
+  `xvfb_21.1.12-1ubuntu1.9` (the same file and SHA256 as the pinned one), `noble` the original;
+  the whole step (download, checks, unpack) passed.
+- **Free space before Steam**: the Steam step needs 7000 MB free in the home folder (the download and
+  first update, 3.7 GB, and what Steam adds soon after: 5.5 GB on the Nothing Phone within hours);
+  less, and it fails with "not enough space for Steam: N MB free, 7000 MB needed" before
+  downloading anything.
+- **Updates of the app** (0.2.8): every new click carries a new files version, so `files` was "todo"
+  after each update and the app opened on the setup page. Now, when only the files are out of date
+  and the runtime is installed, the app copies them at start without the setup page (the mandatory
+  part only: Steam is not started against its switch). Checked on the Nothing Phone with 0.2.9
+  (files stamped 0.2.6): the app opened straight on the library, and at 19:09:49 the files were
+  copied (stamp `0.2.9.1x`, the new `runtimes.list` in place), every step checks done, Steam ran on.
+- **Proton's runtime with 0016-0018**: rebuilt after midnight UTC (`WINE_FLAVOR=proton PARTS=wine`,
+  started 00:00:15 UTC by a job that waited for the date to change), so that it is
+  `proton11.0-20261122`, not the published `proton11.0-20261121`. Its `BUILD-INFO` lists 0001-0009
+  and 0012-0018, and its `winewayland.so` holds 0016's and 0017's code. Published as a pre-release
+  (the maintainer's request to finish this item), `runtime-proton11.0-20261122`, target 9c5d9a9
+  (which has the Proton patches unchanged), SHA256 `92f0acc8...6fbf192eae`, downloaded back and
+  checked; `runtimes.list`'s `proton` line points at it (the 20261121 release stays, for going
+  back). The clicks 0.2.9 carry the new list; 0.2.9.1x installed on the Nothing Phone.
+- The 2.x click (0.2.8.2x, 2.5 MB) is built with all of this; checking it on stone waits until stone
+  is connected.
+
+## Found on the first game: UTDeck's tool was not Steam's choice (2026-11-21)
+
+The maintainer started Ys IX: Monstrum Nox on the Nothing Phone after the setup. Steam's
+`console_log.txt` (`GameAction` lines, numbers masked): the launch went through to "Completed" at
+19:40:25 and the game's process was removed at 19:40:27. No game log of ours: Ys IX's
+`compatdata/1351630` had a `pfx` and an `fex-emu` folder but no `utdeck-compat.log`, and Steam had
+installed Proton Experimental (1493710), Steam Linux Runtime 4.0 (4183110) and FEX (3127680) by
+itself. **On a fresh Steam, UTDeck's tool is not the default** (`set-default.py --show`: "no
+CompatToolMapping block"): stone's was set by hand in stage 3.S, so 4.2's setup never did it, and
+Steam ran the game through its own Proton under FEX, which ended after 2 s.
+
+Two more findings on hidden Steam's screen:
+- **Steam's main window was open** (1280x800, the Store page; a capture, deleted at once since it
+  shows the account name): Steam opens it after a first sign-in, and the web view drew it in
+  software all along. Closed with `xwin.py --close` (Steam hides it).
+- A UTDeck game file `steam-0` from 18:42:57 was left over: Steam itself had run
+  `d3ddriverquery64.exe -d3d12` through UTDeck's tool (app id 0) right after the first sign-in, and
+  that run ended without `game-run.sh`'s clean-up. The app ignored the file (its pid was no
+  `game-run.sh`); `game-run.sh` now also removes it when stopped by a signal (HUP, INT, TERM).
+
+**The new step `tool`** (`utdeck-setup.sh`, after `signin`; 0.2.10-0.2.11): hidden Steam stopped,
+UTDeck's tool made the default (`set-default.py`: app "0", as Steam's settings page writes it), Steam
+started again with `-silent`. After the sign-in, since only a signed-in Steam has written its
+`config.vdf`; the restart also closes the main window of the first sign-in. Done when the mapping
+says `utdeck` (`--show` reads it while Steam runs). The app counts Steam as ready only with it
+(`steamReady`), so a phone like this one gets the setup page with "Set up" for that one step.
+0.2.11.1x installed on the Nothing Phone: `check` shows `files` (the update) and `tool` todo.
+
 ## Events
 
 - 2026-11-21: 4.2 planned (the substages reordered: setup first, sign-in by QR code).
@@ -265,3 +377,13 @@ way; the app went back to the library. **S4 passed: both sign-in paths work.**
 - 2026-11-21: S3 passed with 0.2.3.
 - 2026-11-21: fallback B built (0.2.4-0.2.5); S4: signed in with name and password through hidden
   Steam's own window inside UTDeck.
+- 2026-11-21: the default runtime published as a GitHub pre-release; the Nothing Phone wiped for
+  step 5.
+- 2026-11-21: step 5, run 1 (Steam skipped) passed on the Nothing Phone: the runtime from the
+  release, no Steam.
+- 2026-11-21: step 5, run 2 passed (Steam set up from Settings, QR sign-in, the switch). 4.2 done.
+- 2026-11-22 (UTC): open items 2-4 finished: Xvfb through Ubuntu's signed index, a free-space check
+  before Steam, quiet file updates after an app update, Proton's runtime `proton11.0-20261122`
+  published with 0016-0018.
+- 2026-11-21: the first game on the Nothing Phone ran through Steam's own Proton: the setup gets a
+  `tool` step (UTDeck's tool as Steam's default, after the sign-in); 0.2.11 installed.

@@ -19,9 +19,21 @@ Window {
     property int normalRequests: 0
 
     function follow() {
+        // Steam waits for the user (a dialog before a game starts, stage 4.3): the app shows it.
+        if (steamLaunch.waitingForUser && !visible) {
+            normalRequests = 0
+            show()
+            raise()
+            requestActivate()
+            return
+        }
         if (library.runningGame !== "" && library.gameInFront) {
             if (visible)
                 hide()
+        } else if (library.runningGame === "" && library.gameClosedFromOutside) {
+            // The user swiped the game's card (UTDeck's) away: Lomiri is closing this app, so it
+            // quits instead of showing its library again as a stray window (stage 4.3, stone).
+            Qt.quit()
         } else if (library.runningGame === "" && !visible) {
             normalRequests = 0
             show()
@@ -61,6 +73,20 @@ Window {
 
             // A phone not set up yet starts with the setup (stage 4.2), the library once it is done.
             Component.onCompleted: push(Qt.resolvedUrl(setup.needed ? "SetupPage.qml" : "LibraryPage.qml"))
+        }
+
+        // Steam waits for an answer before starting a game: its dialog, on a page of its own.
+        Connections {
+            target: steamLaunch
+            function onChanged() {
+                const onTop = pageStack.currentPage && pageStack.currentPage.objectName === "dialogPage"
+                if (steamLaunch.waitingForUser && !onTop) {
+                    pageStack.push(Qt.resolvedUrl("DialogPage.qml"), {objectName: "dialogPage"})
+                    window.follow()
+                } else if (!steamLaunch.waitingForUser && onTop) {
+                    pageStack.pop()
+                }
+            }
         }
 
         // A game ended: with Steam's switch off, Steam (started for the game) stops again.

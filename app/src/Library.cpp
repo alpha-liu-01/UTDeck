@@ -215,6 +215,8 @@ void Library::readGameState()
         game = game.mid(6);
       QFile focus(parts.size() >= 3 ? parts[2] : QString());
       in_front = focus.open(QIODevice::ReadOnly) && focus.read(1) == "1";
+      if (parts.size() >= 3)
+        m_focus_file = parts[2];
     }
   }
 
@@ -224,6 +226,14 @@ void Library::readGameState()
     m_focus_poll.start();
   if (game != m_running_game)
   {
+    // A game ended: closed from outside if Wine marked its window as asked to close (patch 0019).
+    if (game.isEmpty())
+      m_game_closed_from_outside =
+          !m_focus_file.isEmpty() && QFileInfo::exists(m_focus_file + QStringLiteral(".closed"));
+    else
+      m_game_closed_from_outside = false;
+    if (game.isEmpty())
+      m_focus_file.clear();
     m_running_game = game;
     emit runningGameChanged();
   }

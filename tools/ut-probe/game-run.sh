@@ -104,8 +104,13 @@ G=$!
 # file goes, right after the game's own process ends: before Wine's leftovers are stopped below,
 # so that Lomiri does not close the app for having no window.
 STATE=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/utdeck
-mkdir -p "$STATE" && printf '%s %s %s\n' "$LABEL" "$$" "$UTDECK_FOCUS_FILE" > "$STATE/game.tmp" \
+# An install script (UTDECK_SETUP_RUN, set by utdeck-compat) is not the game: no file for it.
+[ "${UTDECK_SETUP_RUN:-0}" = 1 ] && STATE=/nonexistent
+[ "$STATE" != /nonexistent ] && mkdir -p "$STATE" && printf '%s %s %s\n' "$LABEL" "$$" "$UTDECK_FOCUS_FILE" > "$STATE/game.tmp" \
     && mv -f "$STATE/game.tmp" "$STATE/game"
+# Stopped by a signal (stage 4.2: Steam's d3ddriverquery64.exe run, label steam-0, left its file
+# behind), the file goes too; the app also ignores a file whose pid is not a running game-run.sh.
+trap 'read -r _ pid _ < "$STATE/game" 2>/dev/null && [ "$pid" = $$ ] && rm -f "$STATE/game"; exit 143' HUP INT TERM
 # CPU boost (stage 3.5): UTDECK_BOOST=N (0-1024) sets uclamp_min on the game's threads, so the
 # frequency governor picks higher clocks from the CPU's own table; off unless set.
 case "${UTDECK_BOOST:-0}" in

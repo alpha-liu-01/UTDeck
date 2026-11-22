@@ -1245,3 +1245,33 @@ Problems met while building UTDeck on the Redmi Note 12 5G (stone). Details in `
   on for twelve minutes after the one-minute download had finished. Lesson: wait on something the
   job leaves behind (a pid file, the last line of its log, a done marker), or use a pattern that
   cannot match itself (`pgrep -f "[s]team-install.sh"`).
+- **A 24.04-1.x phone has no apt package lists (stage 4.2).** `apt-get download xvfb` worked on stone
+  only because its lists had been filled earlier; on the Nothing Phone (1) `/var/lib/apt/lists` is
+  empty, and filling it writes to the system. Lesson: a setup that needs a package from Ubuntu fetches
+  the `.deb` from the archive by its path and checks its SHA256 (as for Steam's files), and never
+  relies on the phone's apt state.
+- **Steam takes about a minute to sign itself in on a phone (stage 4.2).** After a start, the
+  Nothing Phone (1) spent some 50 s "Connecting" before Steam reached Valve, and was signed in after
+  59-66 s; the app checked once at 30 s and kept offering a needless "Sign in". Lesson: when waiting
+  for another program's state, watch it (here every 5 s, up to 3 minutes, and look for the sign-in
+  window to tell "still starting" from "needs a sign-in") instead of checking once after a guess.
+- **A setup is only checked when the first game runs (stage 4.2).** Every setup check passed on the
+  Nothing Phone (1), and the first game still ran through Steam's own Proton: UTDeck's tool was never
+  made Steam's default there. On stone that had been done by hand in stage 3.S and forgotten as a
+  step; a fresh device showed it at once. Lesson: a setup's exit run includes starting one real
+  thing through it (here a game), and every hand step done on the development phone is listed
+  when its stage ends.
+- **Closing "every window" also closes the question (stage 4.3).** `steam-service.sh play` ended
+  with `xwin.py --close` on every mapped window, meant for Steam's main window; it also closed a
+  dialog Steam was waiting on, which dismissed it without an answer, and the launch waited on with
+  nothing on screen. Lesson: a clean-up acts on what it means (here windows the size of the screen),
+  never on "everything".
+- **A step that only runs on creation misses what someone else created (stage 4.3).** Our tool put
+  DXVK into a prefix only when it made the prefix; Steam's own Proton had made Ys IX's first, so the
+  game had no Direct3D. Lesson: check for the result (the right DLLs, from this runtime), not for
+  having done the action.
+- **Wait on what adb prints, cleaned, never on its exit code (stage 4.3).** Two wait loops over
+  `adb shell` ended at once: the phone's adb shell always exits 0 (`runtime-push.sh` already said so),
+  and its output carries a carriage return, so `[ "$s" = active ]` never matched. A second test then
+  started on top of the first. Lesson: compare adb's output after `tr -d '\r\n '`, and test a wait
+  loop once on something known to be running.

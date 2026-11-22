@@ -27,3 +27,18 @@ bool XClick(const char* display, int x, int y);
 bool XTypeText(const char* display, const std::u32string& text);
 // one named key pressed and released ("BackSpace", "Return", "Tab").
 bool XPressKey(const char* display, const char* keysym_name);
+
+// Stage 4.3, hidden Steam's dialogs: the screen's mapped top-level windows, bottom to top (the
+// last one is in front).
+struct XWindowRect
+{
+  unsigned long id = 0;
+  int x = 0;
+  int y = 0;
+  int width = 0;
+  int height = 0;
+};
+std::vector<XWindowRect> ListXWindows(const char* display);
+// Every mapped top-level window at least WIDTH x HEIGHT asked to close, as its close button would
+// (WM_DELETE_WINDOW): Steam then hides its main window. The number asked.
+int CloseLargeXWindows(const char* display, int width, int height);

@@ -1,0 +1,29 @@
+From: UTDeck
+Subject: [PATCH] winewayland: TEST: UTDECK_NO_FULLSCREEN asks for maximized instead of fullscreen
+
+A test for the Nothing Phone (1) on Ubuntu Touch 24.04-1.x (stage 4.3), not part of the release series.
+---
+--- a/dlls/winewayland.drv/window.c
++++ b/dlls/winewayland.drv/window.c
+@@ -161,6 +161,21 @@
+     if (data->fill_on && !(style & WS_MINIMIZE))
+         window_state = WAYLAND_SURFACE_CONFIG_STATE_FULLSCREEN;
+ 
++    /* UTDeck test (stage 4.3): with UTDECK_NO_FULLSCREEN=1 a window that would be fullscreen asks for
++     * a maximized one (landscape below Lomiri's top bar). On the Nothing Phone (1), 24.04-1.x, Lomiri
++     * keeps showing its splash over a fullscreen landscape window, while a maximized one shows. */
++    if (window_state & WAYLAND_SURFACE_CONFIG_STATE_FULLSCREEN)
++    {
++        static int no_fullscreen = -1;
++        if (no_fullscreen < 0)
++        {
++            const char *e = getenv("UTDECK_NO_FULLSCREEN");
++            no_fullscreen = e && *e == '1';
++        }
++        if (no_fullscreen)
++            window_state = WAYLAND_SURFACE_CONFIG_STATE_MAXIMIZED;
++    }
++
+     conf->resizeable = data->resizeable;
+     conf->state = window_state;
+     conf->visible = (style & WS_VISIBLE) == WS_VISIBLE;

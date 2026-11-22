@@ -3,7 +3,8 @@
 
     xwin.py [DISPLAY]                 list top-level windows: id, mapped or not, size, position, title
     xwin.py [DISPLAY] --shot OUT.ppm  also save the whole screen as a PPM picture
-    xwin.py [DISPLAY] --close         ask every mapped top-level window to close, as its close
+    xwin.py [DISPLAY] --close         ask every mapped top-level window at least 1000x500 (Steam's main
+                                      window, never a dialog) to close, as its close
                                       button would (WM_DELETE_WINDOW); Steam then hides it
     xwin.py [DISPLAY] --fit           move and resize every mapped top-level window to the screen
                                       (Steam opens its window at the phone's size, larger than :50)
@@ -110,7 +111,10 @@ for i in range(n.value):
     X.XFetchName(d, w, ctypes.byref(name))
     title = name.value.decode(errors="replace") if name.value else ""
     print(f"{w:#010x} {state.get(a.map_state, a.map_state):10} {a.width}x{a.height}+{a.x}+{a.y} {title!r}")
-    if close and a.map_state == 2:
+    # Only Steam's main window (as large as the screen or more), never a dialog: closing a dialog
+    # dismisses it without an answer and the launch waits on with nothing shown (stage 4.3, Ys IX's
+    # "Controller using Steam Input" notice on the Nothing Phone, closed by steam-service.sh play).
+    if close and a.map_state == 2 and a.width >= 1000 and a.height >= 500:
         close_window(d, w)
         print(f"  close requested for {w:#010x}")
 if close:

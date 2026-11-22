@@ -11,7 +11,7 @@ Page {
     readonly property bool showSteamSteps: setup.steamChoice === "use"
 
     function isSteamStep(name) {
-        return name === "xvfb" || name === "steam" || name === "service" || name === "signin"
+        return name === "xvfb" || name === "steam" || name === "service" || name === "signin" || name === "tool"
     }
 
     function stepTitle(name) {
@@ -22,6 +22,7 @@ Page {
         case "steam": return i18n.tr("Steam")
         case "service": return i18n.tr("Starting Steam in the background")
         case "signin": return i18n.tr("Signing in to Steam")
+        case "tool": return i18n.tr("UTDeck's runtime for Steam's Windows games")
         }
         return name
     }
@@ -132,7 +133,7 @@ Page {
 
                 Button {
                     visible: !setup.running && (!setup.baseDone || setup.failed
-                                                || (page.showSteamSteps && !setup.steamInstalled))
+                                                || (page.showSteamSteps && !setup.steamReady))
                     text: setup.failed ? i18n.tr("Try again") : i18n.tr("Set up")
                     color: theme.palette.normal.positive
                     onClicked: setup.start(page.showSteamSteps)

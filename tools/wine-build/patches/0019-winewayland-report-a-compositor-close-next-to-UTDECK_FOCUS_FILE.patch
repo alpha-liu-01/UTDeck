@@ -1,0 +1,47 @@
+From: UTDeck
+Subject: [PATCH] winewayland: report a close asked by the compositor next to UTDECK_FOCUS_FILE
+
+When the compositor asks a toplevel to close (xdg_toplevel.close: on a phone, the user swiped the
+app's card away in Lomiri's app switcher), create "<UTDECK_FOCUS_FILE>.closed" before posting
+SC_CLOSE as before. UTDeck's launcher shows its library again when a game ends; after a swipe the
+game's card was UTDeck's own, Lomiri was closing that app, and the library came back as a stray
+window outside the switcher (stage 4.3, stone). With the marker the launcher quits instead.
+Nothing changes without the variable.
+---
+--- a/dlls/winewayland.drv/wayland_surface.c
++++ b/dlls/winewayland.drv/wayland_surface.c
+@@ -25,6 +25,8 @@
+ #include "config.h"
+ 
+ #include <assert.h>
++#include <fcntl.h>
++#include <stdio.h>
+ #include <stdlib.h>
+ #include <unistd.h>
+ 
+@@ -126,8 +128,25 @@
+     wayland_win_data_release(data);
+ }
+ 
++/* UTDeck: the compositor asked this window to close (on a phone, the user swiped its app's card
++ * away in Lomiri's app switcher). Created next to UTDECK_FOCUS_FILE (patch 0015) as
++ * "<focus file>.closed", so that UTDeck's launcher knows, when the game then ends, that the user
++ * closed it from outside: the launcher then quits too, instead of showing its library again in an
++ * app that Lomiri is closing. */
++static void utdeck_report_close(void)
++{
++    const char *path = getenv("UTDECK_FOCUS_FILE");
++    char name[4096];
++    int fd;
++
++    if (!path || !*path) return;
++    if (snprintf(name, sizeof(name), "%s.closed", path) >= (int)sizeof(name)) return;
++    if ((fd = open(name, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644)) >= 0) close(fd);
++}
++
+ static void xdg_toplevel_handle_close(void *data, struct xdg_toplevel *xdg_toplevel)
+ {
++    utdeck_report_close();
+     NtUserPostMessage((HWND)data, WM_SYSCOMMAND, SC_CLOSE, 0);
+ }
+ 

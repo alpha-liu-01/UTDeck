@@ -36,6 +36,7 @@ class Setup : public QObject
   Q_PROPERTY(QVariantList steps READ steps NOTIFY stepsChanged)
   Q_PROPERTY(bool baseDone READ baseDone NOTIFY stepsChanged)
   Q_PROPERTY(bool steamInstalled READ steamInstalled NOTIFY stepsChanged)
+  Q_PROPERTY(bool steamReady READ steamReady NOTIFY stepsChanged)
   Q_PROPERTY(bool steamRunning READ steamRunning NOTIFY stepsChanged)
   Q_PROPERTY(bool steamSignedIn READ steamSignedIn NOTIFY stepsChanged)
   Q_PROPERTY(bool signingIn READ signingIn NOTIFY stepsChanged)
@@ -60,6 +61,9 @@ public:
   QVariantList steps() const { return m_steps; }
   bool baseDone() const { return stepDone("files") && stepDone("runtime"); }
   bool steamInstalled() const { return stepDone("xvfb") && stepDone("steam"); }
+  // Installed and UTDeck's runtime Steam's choice for Windows games (the "tool" step, after the
+  // first sign-in).
+  bool steamReady() const { return steamInstalled() && stepDone("tool"); }
   bool steamRunning() const { return stepDone("service"); }
   bool steamSignedIn() const { return stepDone("signin"); }
   bool signingIn() const { return stepState("signin") == QLatin1String("running"); }
@@ -142,6 +146,9 @@ private:
   QHash<QString, QString> m_checked;  // step -> "done" or "todo", from the last check
   QVariantList m_steps;
   bool m_was_running = false;
+  // After an update of the app only UTDeck's files are out of date: they are copied without the
+  // setup page (the mandatory part only, so Steam is not started against its switch).
+  bool m_quiet_update = false;
   bool m_needed = false;
   QString m_choice;
   bool m_steam_enabled = true;

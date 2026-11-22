@@ -77,8 +77,18 @@ prepare_prefix() {
     (
         . $W/env.sh
         if [ ! -d "$WINEPREFIX/drive_c" ]; then
-            wineboot -i > /dev/null 2>&1; wineserver -w; $W/prefix-dlls.sh > /dev/null
+            wineboot -i > /dev/null 2>&1; wineserver -w
             echo "  prefix made" >> "$LOG"
+        fi
+        # The runtime's DXVK and VKD3D-Proton, whenever the prefix has not got them from this very
+        # runtime (stage 4.3): not only into a prefix made here. On the Nothing Phone (1) Ys IX's
+        # first launch ran through Steam's own Proton (before UTDeck's tool was Steam's default) and
+        # made the prefix; ours then found it and never added DXVK, and the game stopped at once
+        # ("d3d11.dll ... not found", exit 53). Also brings a prefix up to date after a runtime update.
+        rt=$(head -1 "$(dirname "$(command -v wine)")/../BUILD-INFO" 2>/dev/null)
+        if [ "$(cat "$DATA/utdeck-prefix-dlls" 2>/dev/null)" != "$rt" ]; then
+            $W/prefix-dlls.sh > /dev/null && echo "$rt" > "$DATA/utdeck-prefix-dlls" &&
+                echo "  DXVK and VKD3D-Proton put in ($rt)" >> "$LOG"
         fi
         # Wine Mono in every prefix, as Proton does (stage 3.4, item 6): Goat Simulator runs .NET
         # code and stopped with "Wine Mono is not installed" without it. On our base Wine's own
@@ -231,8 +241,11 @@ run|waitforexitandrun)
     # Install scripts are never paused (stage 3.9): the pause helper froze Aperture Desk Job's first
     # one while the phone was locked, in the middle of the new prefix's start-up ("boot event wait
     # timed out"), and it ended with exit 29 and a half-installed Visual C++ runtime.
+    # UTDECK_SETUP_RUN (stage 4.3): game-run.sh does not mark an install script as "the running game",
+    # so UTDeck's library does not hide for it (it hid for Ys IX's installers on the Nothing Phone,
+    # and with nothing of the app on screen Lomiri paused the app).
     case "$1" in
-    */iscriptevaluator.exe) export HODLL=libwow64fex.dll UTDECK_PAUSE=0 ;;
+    */iscriptevaluator.exe) export HODLL=libwow64fex.dll UTDECK_PAUSE=0 UTDECK_SETUP_RUN=1 ;;
     esac
     prepare_prefix
     case "$1" in */iscriptevaluator.exe) ;; *) fix_vc_runtime ;; esac

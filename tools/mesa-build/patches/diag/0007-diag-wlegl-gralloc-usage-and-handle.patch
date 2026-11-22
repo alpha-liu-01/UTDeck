@@ -1,0 +1,49 @@
+diff --git a/src/vulkan/wsi/wsi_common_wayland.c b/src/vulkan/wsi/wsi_common_wayland.c
+index 270128f..4e69b8c 100644
+--- a/src/vulkan/wsi/wsi_common_wayland.c
++++ b/src/vulkan/wsi/wsi_common_wayland.c
+@@ -3627,6 +3627,14 @@ static void
+ wlegl_buffer_ints(void *data, struct android_wlegl_server_buffer_handle *handle,
+                   struct wl_array *ints)
+ {
++   /* UTDeck diagnostic: the gralloc handle's ints (private flags, format, sizes). */
++   if (getenv("UTDECK_WLEGL_DEBUG")) {
++      const int32_t *v = ints->data;
++      fprintf(stderr, "utdeck-wlegl: %zu ints:", ints->size / sizeof(int32_t));
++      for (size_t i = 0; i < ints->size / sizeof(int32_t); i++)
++         fprintf(stderr, " %#x", (unsigned)v[i]);
++      fprintf(stderr, "\n");
++   }
+ }
+ 
+ static void
+@@ -3667,13 +3675,16 @@ wsi_wl_wlegl_alloc(struct wsi_wl_swapchain *chain, struct wsi_wl_image *image,
+ 
+    struct wsi_wl_wlegl_alloc alloc = { .image = image };
+    image->wlegl_num_fds = 0;
++   /* UTDeck diagnostic: UTDECK_WLEGL_USAGE overrides the gralloc usage (default 0x300). */
++   const char *usage_env = getenv("UTDECK_WLEGL_USAGE");
++   const int32_t usage = usage_env ? (int32_t)strtol(usage_env, NULL, 0) : 0x300;
+ 
+    struct android_wlegl_server_buffer_handle *handle =
+       android_wlegl_get_server_buffer_handle(display->android_wlegl,
+                                              chain->extent.width,
+                                              chain->extent.height,
+                                              hal_format,
+-                                             0x300 /* GRALLOC_USAGE_HW_TEXTURE |
++                                             usage /* GRALLOC_USAGE_HW_TEXTURE |
+                                                       GRALLOC_USAGE_HW_RENDER */);
+    android_wlegl_server_buffer_handle_add_listener(handle, &wlegl_buffer_listener,
+                                                    &alloc);
+@@ -3685,6 +3696,11 @@ wsi_wl_wlegl_alloc(struct wsi_wl_swapchain *chain, struct wsi_wl_image *image,
+    off_t size = image->wlegl_num_fds ? lseek(image->wlegl_fds[0], 0, SEEK_END) : -1;
+    const uint32_t cpp = vk_format_get_blocksize(chain->vk_format);
+    const uint64_t row_pitch = (uint64_t)alloc.stride * cpp;
++   if (getenv("UTDECK_WLEGL_DEBUG"))
++      fprintf(stderr, "utdeck-wlegl: %ux%u hal %d usage %#x: stride %d px, %u fds, size %lld, need %llu\n",
++              chain->extent.width, chain->extent.height, hal_format, (unsigned)usage, alloc.stride,
++              image->wlegl_num_fds, (long long)size,
++              (unsigned long long)(row_pitch * chain->extent.height));
+    if (!alloc.buffer || size < 0 || alloc.stride < (int32_t)chain->extent.width ||
+        (uint64_t)size < row_pitch * chain->extent.height) {
+       if (alloc.buffer)

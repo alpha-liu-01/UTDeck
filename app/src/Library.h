@@ -29,6 +29,9 @@ class Library : public QAbstractListModel
   Q_PROPERTY(QString lastError READ lastError NOTIFY lastErrorChanged)
   Q_PROPERTY(QString runningGame READ runningGame NOTIFY runningGameChanged)
   Q_PROPERTY(bool gameInFront READ gameInFront NOTIFY gameInFrontChanged)
+  // The last game ended after Lomiri asked its window to close (the user swiped its card, which is
+  // UTDeck's, away): Wine patch 0019 creates "<focus file>.closed". The app then quits too.
+  Q_PROPERTY(bool gameClosedFromOutside READ gameClosedFromOutside NOTIFY runningGameChanged)
 
 public:
   enum Role
@@ -49,6 +52,7 @@ public:
   QString lastError() const { return m_last_error; }
   QString runningGame() const { return m_running_game; }
   bool gameInFront() const { return m_game_in_front; }
+  bool gameClosedFromOutside() const { return m_game_closed_from_outside; }
 
   Q_INVOKABLE void refresh();
   Q_INVOKABLE bool play(const QString& app_id);
@@ -80,4 +84,6 @@ private:
   QTimer m_focus_poll;
   QString m_running_game;
   bool m_game_in_front = false;
+  QString m_focus_file;  // the running game's focus file (game-run.sh), for the .closed marker
+  bool m_game_closed_from_outside = false;
 };

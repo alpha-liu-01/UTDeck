@@ -52,8 +52,8 @@ From [stage3-roadmap.md](stage3-roadmap.md), "Stage 3 wrapped up":
 | --- | --- | --- |
 | **4.1 The app shell, and the game's window as part of it** | A Qt 6 QML app with Lomiri Components, built in our own cross container, installed as a click on stone: it lists the installed Steam games and starts one through hidden Steam. The question first: how a game started by hidden Steam is shown by Lomiri as part of the app (orientation, fullscreen, one icon, Lomiri's lifecycle) | The app opens with the native look and starts a game; the window question answered on the screen with a decision; the 24.04-1.x click builds |
 | **4.2 First-time setup from the app** | On a phone with nothing but the click: the app installs UTDeck's pieces (its scripts and compatibility tools, carried in the click) and the Wine runtime (`get-runtime.sh`, a published release), with progress shown: the mandatory part. Then **Steam, optional**: "Set up Steam" or "Skip" (it can be added later from the settings): the hidden screen (Xvfb) and Valve's client, then the sign-in **by QR code** (the app reads the QR code from hidden Steam's own sign-in window and shows it natively, the user scans it with the Steam phone app, Steam signs itself in; no password, code or token passes through UTDeck), with fallback B (hidden Steam's sign-in window inside the app). A Steam switch in the settings: off stops hidden Steam (1.3-1.4 GB of memory) and keeps it from starting with the app; a Steam game's Play starts it on demand | On the Nothing Phone (1), from the click alone, no PC: the mandatory part installed; once with Steam skipped (no Steam running), once with Steam set up and signed in by QR code; the fallback seen working once; the Steam switch off and on |
-| **4.3 Your own games** | Games without Steam: added from a folder (name, the `.exe`, optional cover art), each with its own Wine prefix, started through `game-run.sh` like Steam's, listed in the library with Steam's; edited and removed from the app. (Another store may come later.) | Two games added and played from the app with Steam off or not set up; one removed |
-| 4.4 The launch flow | A starting screen with what is happening (Steam starting, signing in, install scripts, Wine Mono); hidden Steam's dialogs shown in the app, accepted only by the user; errors shown; back to the library when the game ends | A first start and a normal start of two games, each step visible; a publisher's agreement and Steam's Steam Input notice shown and answered in the app |
+| **4.3 The launch flow** | A starting screen with what is happening (Steam starting, signing in, install scripts, Wine Mono); hidden Steam's dialogs shown in the app, accepted only by the user; errors shown; back to the library when the game ends | A first start and a normal start of two games, each step visible; a publisher's agreement and Steam's Steam Input notice shown and answered in the app |
+| 4.4 Your own games | Games without Steam: added from a folder (name, the `.exe`, optional cover art), each with its own Wine prefix, started through `game-run.sh` like Steam's, listed in the library with Steam's; edited and removed from the app. (Another store may come later.) | Two games added and played from the app with Steam off or not set up; one removed |
 | 4.5 Per-game settings | A page per game: the Wine base (with the download of the second one), launch options, boost, pause, logs; the Windows build forced for Steam games with a Linux build, before the download | Each setting changes what the game gets (checked in its logs); a game with a Linux build installs its Windows build from the app |
 | 4.6 Steam without its interface | Installing and uninstalling games, free space, signing in again (the QR code, when Steam's token runs out) | A game installed and removed from the app with no PC and no Steam phone app |
 | 4.7 The game round | Three or more new games through the app, bringing the table to ten; stage 3's leftovers for a game round | The stage 3 table at ten games, and stage 4's exit run by the maintainer |
@@ -68,8 +68,9 @@ away from the user as far as possible. **Steam optional (2026-11-21, the maintai
 runtime runs games without Steam, so Steam is offered, not required, and can be switched off to save
 memory; another store may come later, and the user can always bring their own games. Making Steam
 optional is part of the setup (4.2, before its exit run); the user's own games are their own
-substage, 4.3, right after, so that a library without Steam is not empty for long. 4.4 before 4.5:
-a game that seems not to start (3.9's first start) is the most visible problem. Prefix management and
+substage (4.4). The launch flow (4.3) comes first: a game that seems not to start (3.9's first
+start) is the most visible problem, and the Nothing Phone's fresh Steam shows every first-launch
+dialog now. Prefix management and
 a Turnip driver manager (the original stage 4 list) wait until a game needs them; controllers are
 stage 5.
 
@@ -95,3 +96,14 @@ stage 5.
   4.3, per-game settings 4.4, Steam without its interface 4.5, the game round 4.6.
 - Reordered again 2026-11-21: Steam optional (in 4.2), the user's own games as 4.3; the launch flow
   is 4.4, per-game settings 4.5, Steam without its interface 4.6, the game round 4.7.
+- 4.2 started and done 2026-11-21. Notes: [stage4.2-setup.md](stage4.2-setup.md). On the Nothing
+  Phone (1), 24.04-1.x, from the click alone: UTDeck's files and the default runtime (published as
+  a GitHub release, `runtime-11.16-20261121`), Steam optional (skip, or set up later from
+  Settings), sign-in by the QR code read from hidden Steam's own window and drawn by the app, with
+  fallback B (that window inside the app), Steam's switch. Open: the 2.x click with the setup on
+  stone (built, 0.2.9.2x). Finished right after: Xvfb through Ubuntu's signed index, a free-space
+  check before Steam, Proton's runtime `proton11.0-20261122` with 0016-0018. Next: 4.3.
+- Reordered again 2026-11-21 (evening): **the launch flow becomes 4.3**, the user's own games 4.4.
+  Hidden Steam's dialogs come on a game's first launch (install scripts, publishers' agreements,
+  Steam's Steam Input notice); stone's games are past theirs, while every game on the Nothing Phone's
+  fresh Steam still has its first launch ahead: the chance to see the real dialogs is now.

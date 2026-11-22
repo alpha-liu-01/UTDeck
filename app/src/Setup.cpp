@@ -26,7 +26,7 @@
 namespace
 {
 // The steps of utdeck-setup.sh, in its order: the mandatory part, then Steam's.
-const char* const kSteps[] = {"files", "runtime", "xvfb", "steam", "service", "signin"};
+const char* const kSteps[] = {"files", "runtime", "xvfb", "steam", "service", "signin", "tool"};
 // Hidden Steam's screen (steam-service.sh).
 const char* const kSteamDisplay = ":50";
 }  // namespace
@@ -61,6 +61,13 @@ Setup::Setup(QObject* parent) : QObject(parent)
   m_steam_watch.setInterval(5000);
   connect(&m_steam_watch, &QTimer::timeout, this, &Setup::watchSteam);
   check();
+
+  // Updated app, set-up phone: the new files are copied quietly.
+  if (!stepDone("files") && stepDone("runtime") && !running())
+  {
+    m_quiet_update = true;
+    start(false);
+  }
 
   // Steam's switch on: hidden Steam runs while the app does.
   if (m_steam_enabled && steamChoice() == QLatin1String("use") && steamInstalled() && !steamRunning() &&
@@ -308,6 +315,7 @@ void Setup::readSteps()
   {
     // A run ended: the check tells what is installed and running now.
     m_was_running = false;
+    m_quiet_update = false;
     QTimer::singleShot(0, this, &Setup::check);
   }
   m_was_running = m_was_running || now_running;
@@ -318,8 +326,9 @@ void Setup::readSteps()
 void Setup::updateNeeded()
 {
   const QString choice = steamChoice();
-  const bool needed = running() || !baseDone() || choice.isEmpty() ||
-                      (choice == QLatin1String("use") && !steamInstalled());
+  const bool needed = (running() && !m_quiet_update) ||
+                      (!baseDone() && !m_quiet_update) || choice.isEmpty() ||
+                      (choice == QLatin1String("use") && !steamReady());
   if (needed == m_needed)
     return;
   const bool was_needed = m_needed;

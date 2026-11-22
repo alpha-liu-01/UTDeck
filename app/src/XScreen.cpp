@@ -161,3 +161,67 @@ bool XTypeText(const char* display_name, const std::u32string& text)
   XCloseDisplay(display);
   return ok;
 }
+
+std::vector<XWindowRect> ListXWindows(const char* display_name)
+{
+  std::vector<XWindowRect> list;
+  XSetErrorHandler(IgnoreXError);
+  Display* display = XOpenDisplay(display_name);
+  if (!display)
+    return list;
+  Window root_return, parent_return;
+  Window* children = nullptr;
+  unsigned int count = 0;
+  if (XQueryTree(display, DefaultRootWindow(display), &root_return, &parent_return, &children, &count))
+  {
+    for (unsigned int i = 0; i < count; ++i)
+    {
+      XWindowAttributes attributes;
+      if (!XGetWindowAttributes(display, children[i], &attributes) || attributes.map_state != IsViewable)
+        continue;
+      list.push_back({children[i], attributes.x, attributes.y, attributes.width, attributes.height});
+    }
+    if (children)
+      XFree(children);
+  }
+  XCloseDisplay(display);
+  return list;
+}
+
+int CloseLargeXWindows(const char* display_name, int width, int height)
+{
+  XSetErrorHandler(IgnoreXError);
+  Display* display = XOpenDisplay(display_name);
+  if (!display)
+    return 0;
+  const Atom protocols = XInternAtom(display, "WM_PROTOCOLS", False);
+  const Atom delete_window = XInternAtom(display, "WM_DELETE_WINDOW", False);
+  int asked = 0;
+  Window root_return, parent_return;
+  Window* children = nullptr;
+  unsigned int count = 0;
+  if (XQueryTree(display, DefaultRootWindow(display), &root_return, &parent_return, &children, &count))
+  {
+    for (unsigned int i = 0; i < count; ++i)
+    {
+      XWindowAttributes attributes;
+      if (!XGetWindowAttributes(display, children[i], &attributes) || attributes.map_state != IsViewable ||
+          attributes.width < width || attributes.height < height)
+        continue;
+      XEvent event = {};
+      event.xclient.type = ClientMessage;
+      event.xclient.window = children[i];
+      event.xclient.message_type = protocols;
+      event.xclient.format = 32;
+      event.xclient.data.l[0] = static_cast<long>(delete_window);
+      event.xclient.data.l[1] = CurrentTime;
+      XSendEvent(display, children[i], False, NoEventMask, &event);
+      ++asked;
+    }
+    if (children)
+      XFree(children);
+  }
+  XSync(display, False);
+  XCloseDisplay(display);
+  return asked;
+}

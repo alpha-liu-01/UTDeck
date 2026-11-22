@@ -10,7 +10,7 @@
 set -eu
 
 REPO_DIR=$(cd "$(dirname "$0")/../.." && pwd)
-OUT="$REPO_DIR/build/zink"
+OUT=${OUT:-"$REPO_DIR/build/zink"}   # OUT=...: another output folder (a diagnostic build)
 SRC="$REPO_DIR/build/mesa-src"
 IMAGE=utdeck-mesa-cross
 MESA_COMMIT=adb4b85e82
