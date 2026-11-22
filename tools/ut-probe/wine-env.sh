@@ -19,10 +19,19 @@ export WINEDEBUG=${WINEDEBUG:--all}
 # No winemenubuilder (Linux menu entries for Windows programs; stage 3.4).
 export WINEDLLOVERRIDES=${WINEDLLOVERRIDES:-mscoree,mshtml=;winemenubuilder.exe=d}
 # Our driver, never the system's libhybris one: the Khronos loader and our Turnip for Vulkan,
-# our Mesa (zink) as the EGL vendor.
-export LD_LIBRARY_PATH=$P/zink/lib:$P/vk/lib
-export VK_DRIVER_FILES=$P/zink/turnip_icd.json
-export __EGL_VENDOR_LIBRARY_FILENAMES=$P/zink/egl_vendor.json
+# our Mesa (zink) as the EGL vendor. From the default runtime's lib/gpu (stage 4.3; both Wine bases
+# use it); a runtime without it (built before 4.3) falls back to the folders stage 1 put on the
+# phone by hand.
+G=$W/runtime/lib/gpu
+if [ -f "$G/vulkan/icd.json" ]; then
+    export LD_LIBRARY_PATH=$G/gl:$G/loader
+    export VK_DRIVER_FILES=$G/vulkan/icd.json
+    export __EGL_VENDOR_LIBRARY_FILENAMES=$G/gl/egl_vendor.json
+else
+    export LD_LIBRARY_PATH=$P/zink/lib:$P/vk/lib
+    export VK_DRIVER_FILES=$P/zink/turnip_icd.json
+    export __EGL_VENDOR_LIBRARY_FILENAMES=$P/zink/egl_vendor.json
+fi
 export MESA_LOADER_DRIVER_OVERRIDE=zink
 export XDG_RUNTIME_DIR=/run/user/32011
 # Games' videos and sounds: Wine plays them through the phone's GStreamer, plus the runtime's own

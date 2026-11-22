@@ -293,6 +293,30 @@ no marker, the library back. (The test-only patch formerly numbered 0019 is
 now `tools/wine-build/patches-test/test-0001-no-fullscreen.patch`.) Installed on stone: the runtime
 `11.16-20261122` (the series 0001-0019; unpublished, the released 20261121 kept) and UTDeck 0.3.3.
 
+## B: the GPU driver in the runtime (2026-11-21)
+
+- **`build-runtime.sh` part `gpu`** (default runtime only; both Wine bases use the default runtime's
+  driver): Mesa from `tools/mesa-build/build-zink.sh` (`OUT=build/runtime-obj/mesa`: Turnip and zink,
+  the pinned commit, our Mesa patches **0001-0006**, so with 3.4's 0006 that the hand-made copy on
+  the Nothing Phone, from `build/zink`, lacked) and Ubuntu 24.04's Khronos loader `libvulkan1`
+  1.3.275.0-1build1 (from the release pocket of Ubuntu's archive, SHA256 `9459488a...a89d53e63`, the
+  same in the signed index, a direct download and apt's copy). Into `lib/gpu/` with stage 1.4's
+  layout: `vulkan/` (`libvulkan_freedreno.so`, `icd.json` with `./`), `gl/` (`libEGL_mesa.so.0`,
+  `libgallium-26.2.5.so`, `egl_vendor.json` with `./`), `loader/libvulkan.so.1`, Mesa's `BUILD-INFO`;
+  listed in the runtime's `BUILD-INFO` with their SHA256.
+- **`wine-env.sh` and `steam-run.sh`** take the driver from `wine/runtime/lib/gpu`; a runtime without
+  it (built before 4.3, such as the released `11.16-20261121`) falls back to `~/utdeck-probe/zink`
+  and `~/utdeck-probe/vk`, which then can go.
+- **Built** (`PARTS=gpu`, 2026-11-22 04:26 UTC: the runtime `11.16-20261122`, Wine 0001-0019 and the
+  driver; unpublished): `lib/gpu/` as planned, Mesa's patches 0001-0006 (0006's option is in the
+  driver), all four libraries in `BUILD-INFO` with their SHA256.
+- **On the Nothing Phone** (24.04-2.x): the runtime by `runtime-push.sh`, UTDeck 0.3.4 (carrying the
+  new `env.sh` and `steam-run.sh`), and the hand-made folders renamed `zink.handmade` and
+  `vk.handmade`, so nothing else is in reach. With `env.sh` alone: `spvrun` on "Adreno 7c+ Gen 3,
+  turnip Mesa 26.2.5", `gltest headless` on zink, both checks PASS. The maintainer: Steam switched off
+  and on (it now runs with `VK_DRIVER_FILES` in `wine/runtime/lib/gpu`), Ys IX runs as before. No
+  process maps the renamed folders. **B works**; the released runtime does not have it yet.
+
 ## Events
 
 - 2026-11-21: 4.3 planned, before the user's own games (now 4.4): the Nothing Phone's fresh Steam
@@ -317,3 +341,5 @@ now `tools/wine-build/patches-test/test-0001-no-fullscreen.patch`.) Installed on
   (62 against 12.3 fps, both GPUs at their top clocks).
 - 2026-11-21: a swiped game card left UTDeck stray on stone; fixed with Wine patch 0019 and the app
   quitting after a game closed from outside (0.3.3).
+- 2026-11-22: B done: the GPU driver (Mesa 0001-0006 and Ubuntu's Khronos loader) is part of the
+  default runtime and used from there by games and Steam (checked on the Nothing Phone).

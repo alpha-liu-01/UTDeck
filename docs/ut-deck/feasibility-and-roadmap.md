@@ -547,6 +547,10 @@ from the kernel. Steam Input's own virtual controller is made by the Steam clien
 connected while a game runs (K3), the on-screen keyboard (Lomiri offers Wine no text-input
 protocol), and touch beyond our patch's "the first finger is the mouse".
 
+Added in stage 4 (2026-11-21, the maintainer): **stone is the test device for this stage** (the
+BETOP T6 is not reliable on the Nothing Phone (1)), and two controllers reach no game on either
+phone, a DualShock clone and a genuine DualSense: a starting point for this stage.
+
 ### Stage 6. Packaging and release
 
 1. Click, unconfined, with the justification for the OpenStore review (gamepads, Wine's process

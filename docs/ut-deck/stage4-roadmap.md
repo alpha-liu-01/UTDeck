@@ -74,6 +74,16 @@ dialog now. Prefix management and
 a Turnip driver manager (the original stage 4 list) wait until a game needs them; controllers are
 stage 5.
 
+## Test devices (the maintainer, 2026-11-21)
+
+- **stone** (Redmi Note 12 5G, Adreno 619, 24.04-2.x): the development phone, and **the test device
+  for the controller stage (5) and the UI work**.
+- **The Nothing Phone (1)** (Spacewar, Adreno 642L, upgraded to 24.04-2.x by the maintainer): the
+  fresh phone for the setup and first launches, and about 5x stone's GPU speed. Not for controllers:
+  the BETOP T6 is not reliable on it.
+- Controllers that reach no game on either phone: a DualShock clone and a genuine DualSense (for
+  stage 5 to look at).
+
 ## Rules for this stage
 
 - The app is a **click**, unconfined (the Dolphin port's decision, for gamepads and Wine's process

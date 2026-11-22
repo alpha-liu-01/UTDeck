@@ -24,6 +24,12 @@
 #   steam  Proton's lsteamclient (Steam's API for Windows games, passed on to the Linux Steam client)
 #          and its steam.exe helper, built in Wine's own build tree as Proton does: ARM64X and i386
 #          DLLs, an aarch64 Unix library (needs the wine part's build tree in build/runtime-obj)
+#   gpu    (default runtime only, stage 4.3) the GPU driver every game uses, in lib/gpu/: our Mesa
+#          (tools/mesa-build/build-zink.sh: Turnip for Vulkan and zink for OpenGL, with
+#          tools/mesa-build/patches/) and Ubuntu's Khronos Vulkan loader (the phone's own libvulkan.so.1
+#          is libhybris'). Stage 1.4's layout: vulkan/ (driver, icd.json), gl/ (zink's EGL, its
+#          egl_vendor.json), loader/; manifests with relative paths, so the folder works wherever it is.
+#          Until stage 4.3 this lived in ~/utdeck-probe/zink and ~/utdeck-probe/vk, put there by hand.
 #   media  GStreamer plugins for games' videos and sounds, which Wine plays through the phone's
 #          GStreamer 1.24 (winegstreamer): gst-libav (FFmpeg's decoders: WMV, WMA, H.264, VP9, ...)
 #          with a small FFmpeg linked in, and asfdemux from gst-plugins-ugly (the reader for .wmv
@@ -44,7 +50,7 @@ OUT="$REPO_DIR/build/runtime"
 TC_VER=20261104
 TC="$REPO_DIR/build/toolchains/llvm-mingw-$TC_VER-ucrt-ubuntu-22.04-x86_64"
 IMAGE=utdeck-wine-cross
-PARTS=${PARTS:-wine fex box64 dxvk vkd3d mono steam media}
+PARTS=${PARTS:-wine fex box64 dxvk vkd3d mono steam media gpu}
 
 # The Wine base (stage 3.3): Hangover's (the default) or Proton 11's. Each has its own source folder,
 # build folders (suffix WS inside build/runtime-obj) and output folder.
@@ -76,6 +82,11 @@ DXVK_VERSION=v2.7.1
 VKD3D_URL=https://github.com/HansKristian-Work/vkd3d-proton.git
 VKD3D_COMMIT=4522cc1a8b1347f1ab1b0f7b14a23ed9444d95d1   # v3.1
 VKD3D_VERSION=v3.1
+# The Khronos Vulkan loader (part gpu): Ubuntu 24.04's own package, from the release pocket (its files
+# stay in the archive), checked against the SHA256 of Ubuntu's signed index.
+VKLOADER_VERSION=1.3.275.0-1build1
+VKLOADER_URL=http://ports.ubuntu.com/ubuntu-ports/pool/main/v/vulkan-loader/libvulkan1_${VKLOADER_VERSION}_arm64.deb
+VKLOADER_SHA256=9459488a53ead304d00587c874f9b31d56d59c9aeae5c46b6f78801a89d53e63
 MONO_VERSION=11.3.0
 MONO_URL=https://dl.winehq.org/wine/wine-mono/$MONO_VERSION/wine-mono-$MONO_VERSION-arm64.msi
 MONO_SHA256=b0c47d374efaf22cbff76cb10488ac2d1627b067e085aef7acec573884120e0f   # as in Wine's appwiz.cpl
@@ -184,6 +195,20 @@ if has media; then
     fetch_tar https://ffmpeg.org/releases/ffmpeg-$FFMPEG_VERSION.tar.xz $FFMPEG_SHA256
     fetch_tar https://gstreamer.freedesktop.org/src/gst-libav/gst-libav-$GST_VERSION.tar.xz $GST_LIBAV_SHA256
     fetch_tar https://gstreamer.freedesktop.org/src/gst-plugins-ugly/gst-plugins-ugly-$GST_VERSION.tar.xz $GST_UGLY_SHA256
+fi
+# gpu: only for the default runtime (both Wine bases use the default runtime's driver).
+if has gpu && [ "$WINE_FLAVOR" = hangover ]; then
+    echo "gpu: building Mesa (Turnip and zink) with tools/mesa-build/build-zink.sh (log: build/runtime-obj/mesa-build.log)"
+    mkdir -p "$OBJ"
+    OUT="$OBJ/mesa" "$REPO_DIR/tools/mesa-build/build-zink.sh" > "$OBJ/mesa-build.log" 2>&1 \
+        || { tail -30 "$OBJ/mesa-build.log" >&2; exit 1; }
+    deb="$OBJ/$(basename "$VKLOADER_URL")"
+    if [ ! -f "$deb" ]; then
+        curl -fsSL -o "$deb.part" "$VKLOADER_URL" || { echo "download failed: $VKLOADER_URL" >&2; exit 1; }
+        mv "$deb.part" "$deb"
+    fi
+    echo "$VKLOADER_SHA256  $deb" | sha256sum -c - > /dev/null || { echo "checksum mismatch: $deb" >&2; rm -f "$deb"; exit 1; }
+    rm -rf "$OBJ/vkloader" && dpkg-deb -x "$deb" "$OBJ/vkloader"
 fi
 if has mono; then
     [ -f "$MONO_MSI" ] || curl -fsSL -o "$MONO_MSI" "$MONO_URL"
@@ -377,6 +402,21 @@ in_container '
 mkdir -p "$RT/share/wine/mono"
 cp "$MONO_MSI" "$RT/share/wine/mono/"
 
+# The GPU driver (part gpu), into lib/gpu with stage 1.4's layout.
+M="$OBJ/mesa/stage/usr"
+if [ "$WINE_FLAVOR" = hangover ] && [ -f "$M/lib/aarch64-linux-gnu/libvulkan_freedreno.so" ] \
+        && [ -f "$OBJ/vkloader/usr/lib/aarch64-linux-gnu/libvulkan.so.1" ]; then
+    G="$RT/lib/gpu"
+    mkdir -p "$G/vulkan" "$G/gl" "$G/loader"
+    cp -L "$M/lib/aarch64-linux-gnu/libvulkan_freedreno.so" "$G/vulkan/"
+    cp -L "$M/lib/aarch64-linux-gnu/libEGL_mesa.so.0" "$M"/lib/aarch64-linux-gnu/libgallium-*.so "$G/gl/"
+    cp -L "$OBJ/vkloader/usr/lib/aarch64-linux-gnu/libvulkan.so.1" "$G/loader/"
+    api=$(sed -n 's/.*"api_version": *"\([^"]*\)".*/\1/p' "$M"/share/vulkan/icd.d/freedreno_icd.*.json)
+    printf '{\n    "ICD": {\n        "api_version": "%s",\n        "library_arch": "64",\n        "library_path": "./libvulkan_freedreno.so"\n    },\n    "file_format_version": "1.0.1"\n}\n' "$api" > "$G/vulkan/icd.json"
+    printf '{\n    "file_format_version" : "1.0.0",\n    "ICD" : {\n        "library_path" : "./libEGL_mesa.so.0"\n    }\n}\n' > "$G/gl/egl_vendor.json"
+    cp "$OBJ/mesa/BUILD-INFO" "$G/BUILD-INFO"
+fi
+
 VERSION="$VERSION_BASE-$(date -u +%Y%m%d)"
 {
     echo "UTDeck runtime $VERSION"
@@ -390,6 +430,10 @@ VERSION="$VERSION_BASE-$(date -u +%Y%m%d)"
     echo "dxvk: $DXVK_URL $DXVK_COMMIT ($DXVK_VERSION), patches: $(cd "$REPO_DIR/tools/wine-build/patches-dxvk" && ls | tr '\n' ' ')"
     echo "vkd3d-proton: $VKD3D_URL $VKD3D_COMMIT ($VKD3D_VERSION)"
     echo "wine-mono: $MONO_URL sha256 $MONO_SHA256"
+    if [ -f "$RT/lib/gpu/BUILD-INFO" ]; then
+        echo "gpu: Mesa $(sed -n 's/^mesa version: //p' "$RT/lib/gpu/BUILD-INFO") ($(sed -n 's/^source: //p' "$RT/lib/gpu/BUILD-INFO") $(sed -n 's/^commit: \([0-9a-f]*\).*/\1/p' "$RT/lib/gpu/BUILD-INFO")), Turnip and zink, patches: $(sed -n 's/^extra patches: //p' "$RT/lib/gpu/BUILD-INFO")"
+        echo "  Khronos Vulkan loader: libvulkan1 $VKLOADER_VERSION ($VKLOADER_URL) sha256 $VKLOADER_SHA256"
+    fi
     [ -f "$RT/lib/wine/aarch64-unix/lsteamclient.so" ] && echo "lsteamclient, steam.exe: $PROTON_URL $PROTON_COMMIT (proton-11.0-2e)"
     if [ -f "$RT/lib/gstreamer-1.0/libgstlibav.so" ]; then
         echo "gstreamer plugins: gst-libav and asfdemux (gst-plugins-ugly) $GST_VERSION, FFmpeg $FFMPEG_VERSION linked in"
@@ -401,7 +445,8 @@ VERSION="$VERSION_BASE-$(date -u +%Y%m%d)"
     (cd "$RT" && sha256sum bin/wine bin/wineserver lib/wine/aarch64-unix/ntdll.so lib/wine/aarch64-unix/win32u.so \
         lib/wine/aarch64-unix/winewayland.so lib/wine/aarch64-windows/libarm64ecfex.dll \
         lib/wine/aarch64-windows/libwow64fex.dll lib/wine/aarch64-windows/wowbox64.dll \
-        lib/dxvk/arm64ec/d3d11.dll lib/vkd3d-proton/arm64x/d3d12core.dll | sed 's/^/  /')
+        lib/dxvk/arm64ec/d3d11.dll lib/vkd3d-proton/arm64x/d3d12core.dll \
+        $(cd "$RT" && ls lib/gpu/vulkan/*.so lib/gpu/gl/*.so* lib/gpu/loader/*.so* 2>/dev/null) | sed 's/^/  /')
 } > "$RT/BUILD-INFO"
 rm -f "$OUT"/utdeck-runtime-*.tar.xz
 tar -C "$OUT" -cJf "$OUT/utdeck-runtime-$VERSION.tar.xz" utdeck-runtime

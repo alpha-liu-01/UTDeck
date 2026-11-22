@@ -23,9 +23,16 @@ U=$STEAM/steamrtarm64
 # in stage 2.1 (seen while SDL was on Wayland). Our own Mesa's EGL and our Turnip instead. Not
 # MESA_LOADER_DRIVER_OVERRIDE=zink: the client's own X11 window uses the system's GLX, which that
 # variable breaks ("failed to load driver: zink", then a fatal assert in vgui2).
+# The driver from the default runtime's lib/gpu (stage 4.3), or the hand-made folders of stage 1.
 P=/home/phablet/utdeck-probe
-export LD_LIBRARY_PATH="$U:$STEAM/steamrtarm64:$STEAM/lib/aarch64-linux-gnu:$P/zink/lib:$P/vk/lib"
-export VK_DRIVER_FILES=$P/zink/turnip_icd.json __EGL_VENDOR_LIBRARY_FILENAMES=$P/zink/egl_vendor.json
+G=$P/wine/runtime/lib/gpu
+if [ -f "$G/vulkan/icd.json" ]; then
+    export LD_LIBRARY_PATH="$U:$STEAM/steamrtarm64:$STEAM/lib/aarch64-linux-gnu:$G/gl:$G/loader"
+    export VK_DRIVER_FILES=$G/vulkan/icd.json __EGL_VENDOR_LIBRARY_FILENAMES=$G/gl/egl_vendor.json
+else
+    export LD_LIBRARY_PATH="$U:$STEAM/steamrtarm64:$STEAM/lib/aarch64-linux-gnu:$P/zink/lib:$P/vk/lib"
+    export VK_DRIVER_FILES=$P/zink/turnip_icd.json __EGL_VENDOR_LIBRARY_FILENAMES=$P/zink/egl_vendor.json
+fi
 unset MESA_LOADER_DRIVER_OVERRIDE
 # Vulkan's FIFO mode waits on Lomiri's late frame callbacks and can stall (stage 2.3): MAILBOX.
 export MESA_VK_WSI_PRESENT_MODE=mailbox
