@@ -3,6 +3,7 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
+#include <QRegularExpression>
 #include <QFileInfo>
 #include <QMetaObject>
 #include <QMutexLocker>
@@ -43,9 +44,13 @@ Setup::Setup(QObject* parent) : QObject(parent)
   m_choice = settings.value(QStringLiteral("steam/choice")).toString();
   m_steam_enabled = settings.value(QStringLiteral("steam/enabled"), true).toBool();
 
-  QString runtime = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation);
-  if (runtime.isEmpty())
-    runtime = QStringLiteral("/run/user/%1").arg(getuid());
+  // The user's runtime folder itself, where game-run.sh and utdeck-setup.sh write (they run outside
+  // the app, with the session's environment), not the app's XDG_RUNTIME_DIR: an app started from an adb
+  // shell by lomiri-app-launch got XDG_RUNTIME_DIR=~/.cache, watched ~/.cache/utdeck and never saw a
+  // game run (stage 4.7).
+  QString runtime = QStringLiteral("/run/user/%1").arg(getuid());
+  if (!QFileInfo(runtime).isDir())
+    runtime = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation);
   m_state_dir = runtime + QStringLiteral("/utdeck/setup");
   QDir().mkpath(m_state_dir);
   m_watcher.addPath(m_state_dir);
@@ -65,6 +70,25 @@ Setup::Setup(QObject* parent) : QObject(parent)
   m_steam_stop.setSingleShot(true);
   m_steam_stop.setInterval(45000);
   connect(&m_steam_stop, &QTimer::timeout, this, [this] {
+    // Not while Steam downloads a game (stage 4.7: steamapps/downloading/<appid>): asked again later.
+    // A folder Steam left behind counts only while the game's state is more than "fully installed"
+    // (StateFlags 4; an empty one stays after a file check that found nothing).
+    const QString apps = QDir::homePath() + QStringLiteral("/.local/share/Steam/steamapps");
+    bool downloads = false;
+    for (const QString& app_id : QDir(apps + QStringLiteral("/downloading")).entryList(QDir::Dirs | QDir::NoDotAndDotDot))
+    {
+      QFile acf(apps + QStringLiteral("/appmanifest_") + app_id + QStringLiteral(".acf"));
+      const QByteArray text = acf.open(QIODevice::ReadOnly) ? acf.readAll() : QByteArray();
+      static const QRegularExpression flags(QStringLiteral("\"StateFlags\"\\s+\"(\\d+)\""));
+      const QRegularExpressionMatch m = flags.match(QString::fromUtf8(text));
+      if (!m.hasMatch() || m.captured(1) != QLatin1String("4"))
+        downloads = true;
+    }
+    if (downloads)
+    {
+      m_steam_stop.start();
+      return;
+    }
     check();
     if (!m_steam_enabled && steamRunning())
       steamService(QStringLiteral("stop"));
@@ -222,8 +246,8 @@ void Setup::steamService(const QString& command)
   }
   else
   {
-    // Steam stops within 30 s.
-    for (const int seconds : {5, 15, 30})
+    // Steam stops within 30 s, after a cloud sync still running (up to 5 minutes, stage 4.7).
+    for (const int seconds : {5, 15, 30, 60, 120, 330})
       QTimer::singleShot(seconds * 1000, this, &Setup::check);
   }
 }

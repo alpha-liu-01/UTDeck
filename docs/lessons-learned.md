@@ -1357,3 +1357,77 @@ Problems met while building UTDeck on the Redmi Note 12 5G (stone). Details in `
   scripts carried UTDeck's app id, so Lomiri waited for them when the user swiped the app away, and
   killed it minutes later. Only processes that can show a window and answer a close request are joined
   to the app.
+- **Steam's game manifests hold the account's number (stage 4.7).** A `grep -A3` over an
+  `appmanifest_<appid>.acf` printed its `LastOwner` line, the account's 17-digit Steam ID, into the
+  session's output (not into any file or note). Lesson: every read of a Steam file goes through the
+  number mask (`sed -E 's/[0-9]{9,}/(n)/g'`) before it is printed, `.acf` files included, not only the
+  logs.
+- **A game's own folder can hold files named after the account (stage 4.7).** A `find` over Aperture
+  Desk Job's leftover install folder (`common/`, its settings) listed `user_<number>_slot0.vcfg`, the
+  account's number as a file name, unmasked into the session's output. Lesson: the number mask applies
+  to file listings in Steam's folders too, not only to file contents.
+- **A click packaged without building carries the old app (stage 4.7).** `build-click.sh` only packs
+  `build/app/utdeck`; run without `build.sh` first, it made "0.3.30" with 0.3.29's app inside, and the
+  new Downloads button was missing on the phone. Fixed: `build-click.sh` now refuses when an app source
+  is newer than the build.
+- **Nothing kept the phone awake during a game or a download (stage 4.7).** With the screen's timeout
+  on, a game played with a controller (no touch on the screen) had its screen turned off and the phone
+  locked mid-game, and Steam's download stopped once the phone slept. Only two test scripts held the
+  screen on (`ab-env.sh`, `ab-gfx.sh`); the app never did. Fixed with `utdeck-awake.py` (repowerd's
+  `keepDisplayOn` while the game is in front, `requestSysState` while Steam downloads). Lesson: what a
+  test script works around (here: the screen going off during a measurement) is a hint that users hit it
+  too.
+- **A watcher that reads one sign of activity misses the cases where that sign stays still (stage
+  4.7).** The download keep-awake decided "Steam is downloading" from the growth of
+  `steamapps/downloading/<appid>`; Barro 2020's download left that folder empty until its last second,
+  so a longer download of that kind would have lost its keep-awake after 3 minutes. Now Steam's own
+  content log counts too. Lesson: a helper that acts without being seen writes down what it decided
+  (`steam/awake.log`), so a failed test can be read afterwards instead of guessed.
+- **Steam Cloud never synced a game on UTDeck, and nothing said so (stage 4.7).** Four games started from
+  a fresh save; Steam's cloud log had thousands of "Unable to resolve path with root WinSavedGames"
+  lines. Steam puts a Windows game's cloud saves in the prefix's `users/steamuser` (Proton's user name);
+  UTDeck's Wine names the user after the Linux user (`phablet`). Lesson: a compatibility tool must give
+  Steam the same layout Proton does, and Steam's own logs (`cloud_log.txt`, not only `console_log.txt`)
+  are read when a game behaves differently than on the PC.
+- **Wine's defaults put game files into the phone's own folders (stage 4.7).** A new Wine prefix links
+  the Windows user's Documents, Downloads, Music, Pictures and Videos to the Linux user's, so Goat
+  Simulator's settings and crash dumps and 3DMark 11's shader cache sat in the phone's Documents, shared
+  by every game and outside Steam Cloud's reach. Proton makes them real folders; UTDeck does too now
+  (`utdeck-profile.py`). Lesson: compare a prefix UTDeck makes with one Proton makes, folder by folder,
+  not only the DLLs.
+- **`pgrep -f NAME` over adb matches its own command line (stage 4.7).** A safety check "is Celceta
+  running?" with `pgrep -f celceta` inside `adb shell '...'` found the shell running that very command,
+  and stopped the step. Lesson: check a game through UTDeck's own state file
+  (`$XDG_RUNTIME_DIR/utdeck/game`) or a pattern that cannot match itself (`[c]elceta`).
+- **Keep-awake started with the game, not with the tap (stage 4.7).** The screen request began when
+  `game-run.sh` started the game, so the minute or more before it (Steam's start, its dialogs,
+  first-start install scripts, the launcher) ran under the screen's timeout and the screen went off
+  during loading. Fixed by holding it from the starting page. Lesson: a feature about "while the user
+  waits" covers the whole wait as the user sees it, from the tap, not the part one script sees.
+- **An app started from adb is not the app the user starts (stage 4.7).** After each install the app was
+  started with `adb shell lomiri-app-launch ...`; the adb shell has no `XDG_RUNTIME_DIR`, the app got
+  `~/.cache` instead, watched the wrong folder for game-run.sh's state and never saw a game run: the
+  starting page stayed and then said "The game ended before it started". It looked like a bug of the
+  change just made (the starting page's keep-awake). Lessons: the app no longer trusts that variable;
+  and when a test fails right after a change, compare the environment of the failing run with a working
+  one before blaming the change.
+- **A marker per game where the thing it marks is per prefix (stage 4.7).** "Prefix prepared for runtime
+  X" was kept once per game; since 4.6 a game has a prefix per Wine base, so switching base and back made
+  the next start update the whole prefix again (49 s). Lesson: when one thing becomes several (one prefix
+  per base), check every marker and cache that described the one.
+- **Two cases out of 132 are not a rule (stage 4.7).** "Every start shows a 10 s update check" came from
+  the only two launches that had the stage; the maintainer's next two launches had none. Lesson: count
+  how often a stage occurs before describing it as what always happens.
+- **"The log is still being written" is not "an upload is running" (stage 4.7).** Step 9's stop waited
+  until Steam's cloud log had been quiet for 10 s; right after Steam's start the log is busy for a
+  minute with every game's cloud check, so a stop then took 99 s. Lesson: wait on what a log says (the
+  last upload line), not on its time stamp; the time stamp alone also counts unrelated activity.
+- **Steam's shader pre-caching on a phone compiles for the CPU (stage 4.7).** With no system Vulkan
+  driver, Steam's `fossilize_replay` used SwiftShader: work our Turnip games can never use, plus
+  re-encoded videos no runtime here reads (760 MB for one game). Lesson: before keeping a desktop
+  feature, check which device it actually targets on the phone (`shader_log.txt` names it).
+- **A folder Steam leaves is not a job Steam runs (stage 4.7).** After a file check that found nothing,
+  Steam left an empty `steamapps/downloading/<appid>`; UTDeck counted every folder there as a download,
+  showed a "repair" stuck at 0 MB, and would have kept Steam running and the phone awake. Lesson: read the
+  state Steam keeps for the game (`StateFlags`), not only whether its folders exist; and a command Steam
+  may refuse ("VerifyApp ... Completed with "0"") needs its answer read, not only its success awaited.

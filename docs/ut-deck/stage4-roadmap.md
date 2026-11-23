@@ -56,7 +56,7 @@ From [stage3-roadmap.md](stage3-roadmap.md), "Stage 3 wrapped up":
 | **4.4 Controllers** | Every controller the maintainer has reaches games, or there is a written reason why not: each one followed from the kernel to the game (driver, device nodes, SDL in Wine's `winebus`, XInput and DirectInput) and fixed where it is lost; a native Controllers page that shows what games see, live. Plan: [stage4.4-controllers.md](stage4.4-controllers.md) | On stone: the BETOP T6 (Xbox mode over Bluetooth and wired, Switch mode with gyro), the DualShock clone and the DualSense each work in a game or have their reason written down; the page shows each one |
 | 4.5 Your own games | Games without Steam: added from a folder (name, the `.exe`, optional cover art) or an installer, each with its own Wine prefix, started through `game-run.sh` like Steam's, listed in the library with Steam's; edited and removed from the app. (Another store may come later.) Plan: [stage4.5-own-games.md](stage4.5-own-games.md) | Two games added and played from the app with Steam off or not set up; one removed |
 | 4.6 Per-game settings | A page per game, Steam's and the user's own: the Wine base (with the download of the second one), launch options, resolution, the 32-bit translator, boost, pause, fast x87 maths, fill, the remaining `utdeck-env` lines, the last run's log. Plan: [stage4.6-game-settings.md](stage4.6-game-settings.md) | Each setting changes what the game gets (checked in its logs), on a Steam game and one of the user's own; the last run's log readable on the phone |
-| 4.7 Steam without its interface | Installing and uninstalling games, free space, signing in again (the QR code, when Steam's token runs out); the Windows build forced for Steam games with a Linux build, before the download (moved from 4.6) | A game installed and removed from the app with no PC and no Steam phone app; a game with a Linux build installs its Windows build from the app |
+| 4.7 Steam without its interface | Installing and uninstalling games, free space, signing in again (the QR code, when Steam's token runs out); the Windows build forced for Steam games with a Linux build, before the download (moved from 4.6); extended 2026-11-23: Steam Cloud saves (they never synced), uploads before Steam stops, updates before a game starts, shader pre-caching checked, repairing a game. Plan: [stage4.7-steam-tasks.md](stage4.7-steam-tasks.md) | A game installed and removed from the app with no PC and no Steam phone app; a game with a Linux build installs its Windows build from the app; a cloud save comes down and a phone save goes up |
 | 4.8 The game round | Three or more new games through the app, bringing the table to ten; stage 3's leftovers for a game round | The stage 3 table at ten games, and stage 4's exit run by the maintainer |
 
 Order and why: 4.1 first, because every later page lives in the app and the window question decides
@@ -158,3 +158,11 @@ stage 5 (real controllers moved to 4.4 on 2026-11-22; touch controls stay in sta
   fill, the remaining `utdeck-env` lines, reset, the last run's log. Checked in logs on Celceta, Ys IX
   and wiliwili. Fixed on the way: Steam's stop racing the next launch, Steam's install steps holding
   UTDeck's card, launch options for the user's games. Next: 4.7, Steam without its interface.
+- 4.7 started and done 2026-11-23. Notes: [stage4.7-steam-tasks.md](stage4.7-steam-tasks.md). The
+  user's Steam library in the app (Linux-only games marked), installing (the Windows build forced) and
+  uninstalling, a Downloads page, keep-awake for games and downloads, Steam Cloud saves (they had never
+  synced: Steam maps Windows saves only for a tool named "...proton...", so UTDeck's tool is now
+  `utdeck-proton`, with one save folder per game for both Wine bases), no stop during an upload, the cloud
+  state per game, shader pre-caching off (it compiled for the CPU), checking a game's files, signing in
+  again. Open: the starting page during a real update, the Nothing Phone, speed of Steam's install-script
+  check.

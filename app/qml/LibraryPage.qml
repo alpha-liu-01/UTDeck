@@ -14,11 +14,20 @@ Page {
         id: pageHeader
 
         title: "UTDeck"
+        trailingActionBar.numberOfSlots: 4
         trailingActionBar.actions: [
             Action {
                 iconName: "add"
                 text: i18n.tr("Add a game")
                 onTriggered: page.pageStack.push(Qt.resolvedUrl("AddGamePage.qml"))
+            },
+            // Stage 4.7: Steam's downloads and tasks, on a page of their own; the icon shows when
+            // something runs.
+            Action {
+                iconName: steamGames.downloads.length > 0 || steamGames.task.appId !== undefined
+                          ? "transfer-progress-download" : "save-to"
+                text: i18n.tr("Downloads")
+                onTriggered: page.pageStack.push(Qt.resolvedUrl("DownloadsPage.qml"))
             },
             Action {
                 iconName: "settings"
@@ -50,11 +59,50 @@ Page {
         }
     }
 
+    // Stage 4.7: Steam signed out (its login ran out), above the games. Steam's downloads and tasks
+    // have their own page (the header's Downloads).
+    Column {
+        id: notices
+
+        anchors {
+            top: pageHeader.bottom
+            left: parent.left
+            right: parent.right
+            margins: units.gu(1)
+        }
+        spacing: units.gu(1)
+
+        Row {
+            width: parent.width
+            spacing: units.gu(1.5)
+            visible: setup.steamInstalled && setup.steamRunning && !setup.steamSignedIn && !setup.steamStarting
+
+            Label {
+                width: parent.width - signInButton.width - units.gu(1.5)
+                anchors.verticalCenter: parent.verticalCenter
+                wrapMode: Text.Wrap
+                color: theme.palette.normal.negative
+                text: i18n.tr("Steam is signed out: its games cannot start until you sign in again.")
+            }
+
+            Button {
+                id: signInButton
+
+                text: i18n.tr("Sign in")
+                color: theme.palette.normal.positive
+                onClicked: {
+                    if (setup.start(true))
+                        page.pageStack.push(Qt.resolvedUrl("SetupPage.qml"))
+                }
+            }
+        }
+    }
+
     GridView {
         id: grid
 
         anchors {
-            top: pageHeader.bottom
+            top: notices.bottom
             left: parent.left
             right: parent.right
             bottom: status.top

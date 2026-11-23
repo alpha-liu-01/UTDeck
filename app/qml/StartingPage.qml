@@ -28,7 +28,20 @@ Page {
     readonly property bool own: library.isOwn(appId)
     property bool firstStart: false
 
-    Component.onCompleted: page.firstStart = page.own && !library.isPrepared(page.appId)
+    // Stage 4.7: the screen stays on while the start goes on (the game's "Keep the screen on" setting):
+    // from the tap until the game runs, Steam's start and its dialogs included, a start can take
+    // minutes, and the screen's timeout turned it off meanwhile. Released once the game's window has
+    // been in front (game-run.sh's own keep-awake follows the game from then on, and lets the timeout
+    // work while another app is in front), when this page goes, or when it shows an error.
+    readonly property bool keepScreen: page.failTitle === "" && !page.frontSeen && !!gameSettings.load(page.appId).awake
+    onKeepScreenChanged: page.keepScreen ? keepAwake.hold("starting") : keepAwake.release("starting")
+
+    Component.onCompleted: {
+        page.firstStart = page.own && !library.isPrepared(page.appId)
+        if (page.keepScreen)
+            keepAwake.hold("starting")
+    }
+    Component.onDestruction: keepAwake.release("starting")
 
     function fail(title, detail, signIn, endable) {
         page.failTitle = title
@@ -92,6 +105,14 @@ Page {
         }
     }
 
+    // Stage 4.7: this game's download, if Steam updates it before the start (the Downloads page's data).
+    readonly property var update: {
+        for (const d of steamGames.downloads)
+            if (d.appId === page.appId)
+                return d
+        return null
+    }
+
     function stepText() {
         if (library.runningGame === page.appId)
             return i18n.tr("Starting the game...")
@@ -108,6 +129,15 @@ Page {
                 return i18n.tr("Steam is checking for notices...")
             case "ShowEula":
                 return i18n.tr("Waiting for your answer to the agreement...")
+            // Stage 4.7: Steam brings the game up to date before it starts (about 10 s when there is
+            // nothing new), or checks its files.
+            case "DownloadingDepots":
+                if (!page.update)
+                    return i18n.tr("Steam is checking for an update...")
+                return page.update.percent >= 0 ? i18n.tr("Updating the game before it starts: %1 %").arg(page.update.percent)
+                                                : i18n.tr("Updating the game before it starts...")
+            case "VerifyingFiles":
+                return i18n.tr("Steam is checking the game's files...")
             case "AgreementAccepted":
                 return i18n.tr("Agreement accepted, starting the game again...")
             case "CreatingProcess":
@@ -129,6 +159,8 @@ Page {
             return page.firstStart && library.runningGame !== page.appId
                    ? i18n.tr("The first start of a game prepares its own Windows folder (DirectX for Vulkan, .NET): about two minutes.")
                    : ""
+        if (steamLaunch.expectedAppId === page.appId && steamLaunch.task === "DownloadingDepots" && page.update)
+            return i18n.tr("Steam updates a game before starting it. With Steam's switch off, Steam runs only around a game, so updates come at its start.")
         if (steamLaunch.expectedAppId === page.appId && steamLaunch.task === "ProcessingInstallScript")
             return i18n.tr("The first start of a game can take several minutes: Windows parts such as Visual C++ and DirectX are installed for it.")
         if (!setup.steamRunning || !setup.steamSignedIn)
@@ -252,6 +284,16 @@ Page {
                 text: page.failTitle !== "" ? page.failDetail : page.hintText()
                 wrapMode: Text.Wrap
                 color: theme.palette.normal.backgroundSecondaryText
+            }
+
+            // Stage 4.7: an update's progress.
+            ProgressBar {
+                width: parent.width
+                visible: page.failTitle === "" && page.update !== null
+                indeterminate: !page.update || page.update.percent < 0
+                minimumValue: 0
+                maximumValue: 100
+                value: page.update ? Math.max(0, page.update.percent) : 0
             }
 
             Label {

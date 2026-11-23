@@ -30,6 +30,9 @@ case "$ut" in
   *) echo "CLICK_UT: 24.04-2.x or 24.04-1.x, not $ut" >&2; exit 2 ;;
 esac
 [ -f "$root/build/app/utdeck" ] || { echo "no build: run tools/app-build/build.sh first" >&2; exit 1; }
+# An app source newer than the build: the click would carry the old app under the new version.
+newer=$(find "$root/app" -newer "$root/build/app/utdeck" -type f \( -name '*.cpp' -o -name '*.h' -o -name '*.qml' -o -name CMakeLists.txt \) | head -1)
+[ -z "$newer" ] || { echo "the build is older than ${newer#$root/}: run tools/app-build/build.sh first" >&2; exit 1; }
 maintainer=${CLICK_MAINTAINER:-"$(git -C "$root" config user.name) <$(git -C "$root" config user.email)>"}
 base=$(sed -n 's/^project(utdeck VERSION \([0-9.]*\).*/\1/p' "$root/app/CMakeLists.txt")
 version=${CLICK_VERSION:-$base}$suffix

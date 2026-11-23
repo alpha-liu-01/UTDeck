@@ -14,21 +14,22 @@ REPO_DIR=$(cd "$(dirname "$0")/../.." && pwd)
 DEST=${1:?usage: home-files.sh DEST}
 T=$REPO_DIR/tools/ut-probe
 P=$DEST/utdeck-probe S=$DEST/.local/share/Steam
-C=$S/compatibilitytools.d/utdeck CP=$S/compatibilitytools.d/utdeck-proton
-mkdir -p "$P/steam" "$P/wine" "$S/utdeck-lib" "$C" "$CP"
+C=$S/compatibilitytools.d/utdeck
+mkdir -p "$P/steam" "$P/wine" "$S/utdeck-lib" "$C"
 
 # The Steam client (stage 3.S): its start, install and service scripts, the drawer entries, the
 # hidden screen's window tool, and SDL3 with Wayland (tools/steam-build/build-sdl3.sh).
-for f in steam-run.sh steam-install.sh steam-service.sh steam-library.py; do cp "$T/$f" "$P/steam/"; done
-cp "$T/xwin.py" "$P/"
+for f in steam-run.sh steam-install.sh steam-service.sh steam-library.py steam-game.sh steam-tools.sh; do cp "$T/$f" "$P/steam/"; done
+cp "$T/xwin.py" "$T/appinfo.py" "$P/"
 cp "$REPO_DIR/build/steam/libSDL3.so.0" "$S/utdeck-lib/"
 
-# UTDeck's compatibility tools: the default runtime's and Proton 11's (stage 3.3).
-for f in compatibilitytool.vdf toolmanifest.vdf utdeck-compat set-default.py steam-prefix.reg; do
+# UTDeck's compatibility tool, Steam's "utdeck-proton" (stage 4.7: one tool for both Wine bases; the
+# folder keeps its name "utdeck"). The old second tool's folder (utdeck-proton) is removed on the
+# phone by steam-tools.sh, after its games got their runtime setting.
+for f in compatibilitytool.vdf toolmanifest.vdf utdeck-compat set-default.py steam-prefix.reg utdeck-profile.py; do
     cp "$T/steam-compat/$f" "$C/"
 done
 cp "$REPO_DIR/build/win/setmode.exe" "$C/"   # tools/ut-probe/win/build.sh
-for f in compatibilitytool.vdf toolmanifest.vdf utdeck-compat; do cp "$T/steam-compat/proton/$f" "$CP/"; done
 
 # The Wine runtime's scripts and defaults (runtime-push.sh's list); env.sh is wine-env.sh.
 cp "$T/wine-env.sh" "$P/wine/env.sh"
@@ -36,9 +37,10 @@ cp "$T/wine-env.sh" "$P/wine/env.sh"
 mkdir -p "$P/wine/padprobe"
 cp "$REPO_DIR/build/win/gptest.exe" "$P/wine/padprobe/"
 for f in prefix-dlls.sh get-runtime.sh runtimes.list defaults.env game-run.sh utdeck-boost.py \
-         uclamp-show.py utdeck-pause.py utdeck-setupwatch.py lifecycle-watch.sh controllers.reg padlayout.py own-run.sh gamecheck.py; do
+         uclamp-show.py utdeck-pause.py utdeck-awake.py utdeck-setupwatch.py lifecycle-watch.sh controllers.reg padlayout.py own-run.sh gamecheck.py; do
     cp "$T/$f" "$P/wine/"
 done
+cp "$T/steam-compat/utdeck-profile.py" "$P/wine/"   # own-run.sh's user folders (stage 4.7)
 
 chmod 755 "$P"/steam/*.sh "$P/steam/steam-library.py" "$P/xwin.py" "$P"/wine/*.sh \
-    "$C/utdeck-compat" "$C/set-default.py" "$CP/utdeck-compat"
+    "$C/utdeck-compat" "$C/set-default.py" "$C/utdeck-profile.py"

@@ -69,6 +69,10 @@ public:
   // The user leaves Steam's question unanswered (the dialog page's Cancel): the page closes, Steam's
   // main window too, and the task reads "Cancelled" until the next expect().
   Q_INVOKABLE void dismiss();
+  // Stage 4.7: a dialog Steam shows outside a launch (its Install window, its Uninstall question,
+  // after steam-game.sh): the page shows Steam's dialog window (never its main window) until that
+  // window has gone for about 1.5 s, or 90 s without one.
+  Q_INVOKABLE void showSteamDialog();
 
 signals:
   void changed();
@@ -106,6 +110,10 @@ private:
   int m_dialog_revision = 0;
   std::atomic<bool> m_capturing{false};
   bool m_opened_main = false;   // asked Steam to open its main window during this wait
+  bool m_manual = false;        // showSteamDialog(): not a launch's wait
+  bool m_manual_seen = false;   // its dialog window was there
+  int m_manual_misses = 0;      // captures since it was last there
+  qint64 m_manual_since = 0;
   QString m_agreements;          // the app's agreement entries when the ShowEula wait began
   QString m_agreement_file;
   qint64 m_agreement_mtime = 0;

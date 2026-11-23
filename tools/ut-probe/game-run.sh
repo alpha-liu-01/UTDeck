@@ -141,6 +141,10 @@ esac
 # Pause (stage 3.6): UTDECK_PAUSE=1 freezes the game's Windows processes while Lomiri's lock screen
 # is up, the screen is off or another app is in front, and wakes them on return; off unless set.
 [ "${UTDECK_PAUSE:-0}" = 1 ] && { python3 "$W/utdeck-pause.py" "$G" "$B.log" & PP=$!; }
+# Keep-awake (stage 4.7): UTDECK_KEEP_AWAKE=1 keeps the screen on while the game is in front (played
+# with a controller, nobody touches the screen, and its timeout turned it off mid-game); not for an
+# install script. Released when the game ends, or as soon as this helper ends for any reason.
+[ "${UTDECK_KEEP_AWAKE:-0}" = 1 ] && [ "${UTDECK_SETUP_RUN:-0}" != 1 ] && { python3 -I "$W/utdeck-awake.py" game $$ "$B.log" & AP=$!; }
 # Install scripts (stage 4.3): a Visual C++ installer that logged its exit but never ends is ended
 # (utdeck-setupwatch.py), so the install script and the game's first launch go on.
 [ "${UTDECK_SETUP_RUN:-0}" = 1 ] && python3 "$W/utdeck-setupwatch.py" "$G" "$B.log" &
@@ -194,6 +198,7 @@ while next=$(prefix_program); [ -n "$next" ]; do
 done
 # The game's process has ended: the app's library comes back (only if the file is still this run's).
 read -r _ pid _ < "$STATE/game" 2>/dev/null && [ "$pid" = $$ ] && rm -f "$STATE/game"
+[ -n "${AP:-}" ] && kill $AP 2>/dev/null   # the screen's own timeout applies again
 [ -n "${BP:-}" ] && wait $BP   # its summary line, within 2 s of the game's end
 [ -n "${PP:-}" ] && wait $PP
 echo "exit $rc" >> $B.log

@@ -111,9 +111,13 @@ Library::Library(QObject* parent) : QAbstractListModel(parent)
   refresh();
 
   // The running game, from game-run.sh's file (stage 4.1).
-  QString runtime = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation);
-  if (runtime.isEmpty())
-    runtime = QStringLiteral("/run/user/%1").arg(getuid());
+  // The user's runtime folder itself, where game-run.sh and utdeck-setup.sh write (they run outside
+  // the app, with the session's environment), not the app's XDG_RUNTIME_DIR: an app started from an adb
+  // shell by lomiri-app-launch got XDG_RUNTIME_DIR=~/.cache, watched ~/.cache/utdeck and never saw a
+  // game run (stage 4.7).
+  QString runtime = QStringLiteral("/run/user/%1").arg(getuid());
+  if (!QFileInfo(runtime).isDir())
+    runtime = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation);
   m_state_dir = runtime + QStringLiteral("/utdeck");
   QDir().mkpath(m_state_dir);
   m_state_watcher.addPath(m_state_dir);

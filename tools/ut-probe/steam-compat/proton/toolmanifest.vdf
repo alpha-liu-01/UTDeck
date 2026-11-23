@@ -1,7 +1,0 @@
-// The same as the default tool's (../toolmanifest.vdf): no container, our own reaper use.
-"manifest"
-{
-  "version" "2"
-  "commandline" "/utdeck-compat %verb%"
-  "use_tool_subprocess_reaper" "1"
-}

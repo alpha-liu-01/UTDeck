@@ -154,6 +154,22 @@ Page {
                     }
                 }
 
+                // Stage 4.7: a game of the user's Steam library, installed through hidden Steam.
+                ListItem {
+                    width: column.width
+                    height: steamLayout.height
+                    visible: setup.steamInstalled
+                    onClicked: page.pageStack.push(Qt.resolvedUrl("SteamLibraryPage.qml"))
+
+                    ListItemLayout {
+                        id: steamLayout
+
+                        title.text: i18n.tr("From your Steam library")
+                        subtitle.text: i18n.tr("Install one of your Steam games")
+                        ProgressionSlot {}
+                    }
+                }
+
                 Label {
                     text: i18n.tr("A game folder")
                     textSize: Label.Large

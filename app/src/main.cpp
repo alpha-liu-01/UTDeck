@@ -6,6 +6,7 @@
 //   EGLConfig" before recovering;
 // - Lomiri Components scale themselves (grid units), so QT_SCALE_FACTOR is not set.
 #include <QCoreApplication>
+#include <QFileInfo>
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
@@ -15,10 +16,14 @@
 #include <csignal>
 #include <cstdlib>
 
+#include <unistd.h>
+
 #include "Controllers.h"
 #include "GameSettings.h"
+#include "KeepAwake.h"
 #include "Library.h"
 #include "OwnGames.h"
+#include "SteamGames.h"
 #include "Setup.h"
 #include "SteamLaunch.h"
 
@@ -67,8 +72,19 @@ void OnQuitSignal(int)
 }
 }  // namespace
 
+// The session's runtime folder for the app and everything it starts (stage 4.7): an app started from
+// an adb shell by lomiri-app-launch got XDG_RUNTIME_DIR=~/.cache (the shell has none), so it watched the
+// wrong folder for game-run.sh's state and never saw a game run.
+void UseSessionRuntimeDir()
+{
+  const QByteArray runtime = "/run/user/" + QByteArray::number(getuid());
+  if (qgetenv("XDG_RUNTIME_DIR") != runtime && QFileInfo(QString::fromLatin1(runtime)).isDir())
+    qputenv("XDG_RUNTIME_DIR", runtime);
+}
+
 int main(int argc, char** argv)
 {
+  UseSessionRuntimeDir();
   DropUbuntuMirClientPlatform();
   UseOpenGLES();
 
@@ -99,6 +115,9 @@ int main(int argc, char** argv)
   OwnGames own_games;
   // One game's settings (stage 4.6).
   GameSettings game_settings;
+  // Steam's own tasks: the user's Steam library, installing, downloads, uninstalling (stage 4.7).
+  SteamGames steam_games(&steam_launch);
+  KeepAwake keep_awake;
 
   QQmlApplicationEngine engine;
   engine.rootContext()->setContextProperty(QStringLiteral("library"), &library);
@@ -107,6 +126,8 @@ int main(int argc, char** argv)
   engine.rootContext()->setContextProperty(QStringLiteral("controllers"), &controllers);
   engine.rootContext()->setContextProperty(QStringLiteral("ownGames"), &own_games);
   engine.rootContext()->setContextProperty(QStringLiteral("gameSettings"), &game_settings);
+  engine.rootContext()->setContextProperty(QStringLiteral("steamGames"), &steam_games);
+  engine.rootContext()->setContextProperty(QStringLiteral("keepAwake"), &keep_awake);
   engine.addImageProvider(QStringLiteral("steamdialog"), new SteamDialogImageProvider(&steam_launch));
   engine.addImageProvider(QStringLiteral("qr"), new QrImageProvider(&setup));
   engine.addImageProvider(QStringLiteral("steamscreen"), new ScreenImageProvider(&setup));

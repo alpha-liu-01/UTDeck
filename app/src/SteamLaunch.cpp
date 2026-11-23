@@ -188,8 +188,21 @@ void SteamLaunch::dismiss()
     return;
   m_waiting = false;
   m_wait_timer.stop();
-  m_task = QStringLiteral("Cancelled");
+  if (!m_manual)
+    m_task = QStringLiteral("Cancelled");
+  m_manual = false;
   setWaitingForUser(false);
+}
+
+void SteamLaunch::showSteamDialog()
+{
+  if (m_waiting_for_user)
+    return;
+  m_manual = true;
+  m_manual_seen = false;
+  m_manual_misses = 0;
+  m_manual_since = QDateTime::currentMSecsSinceEpoch();
+  setWaitingForUser(true);
 }
 
 void SteamLaunch::closeSteamWindowLater()
@@ -291,7 +304,8 @@ void SteamLaunch::captureDialog()
       if (it->width >= 300 && it->height >= 200 && !(it->width >= 1000 && it->height >= 500))
         found = &*it;
     // No dialog window of its own: Steam's main window, which then holds the dialog (an agreement).
-    for (auto it = windows.rbegin(); it != windows.rend() && !found; ++it)
+    // Not for a dialog shown on request (showSteamDialog): that one is always a window of its own.
+    for (auto it = windows.rbegin(); it != windows.rend() && !found && !m_manual; ++it)
       if (it->width >= 1000 && it->height >= 500)
         found = &*it;
     const bool none = !found;
@@ -319,9 +333,26 @@ void SteamLaunch::captureDialog()
     }
     QMetaObject::invokeMethod(this, [this, dialog, x, y, none] {
       m_capturing = false;
+      if (m_manual && m_waiting_for_user)
+      {
+        // A dialog on request: over when its window has gone (3 captures, about 1.5 s), or when
+        // none came within 90 s.
+        if (!dialog.isNull())
+        {
+          m_manual_seen = true;
+          m_manual_misses = 0;
+        }
+        else if ((m_manual_seen && ++m_manual_misses >= 3) ||
+                 (!m_manual_seen && QDateTime::currentMSecsSinceEpoch() - m_manual_since > 90000))
+        {
+          m_manual = false;
+          setWaitingForUser(false);
+          return;
+        }
+      }
       // Nothing on the hidden screen at all: Steam draws this question inside its main window,
       // which is closed; it is opened once for this wait.
-      if (m_waiting_for_user && none && !m_opened_main)
+      else if (m_waiting_for_user && none && !m_opened_main)
         openSteamWindow();
       if (!m_waiting_for_user || dialog.isNull())
         return;

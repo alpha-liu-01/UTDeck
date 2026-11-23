@@ -31,7 +31,7 @@ Page {
             margins: units.gu(2)
         }
         wrapMode: Text.Wrap
-        text: i18n.tr("Steam waits for your answer before it starts the game. Tap the dialog below as you would on a computer; drag up or down to scroll.")
+        text: i18n.tr("Steam waits for your answer (before starting a game, or to install or uninstall one). Tap the dialog below as you would on a computer; drag up or down to scroll.")
     }
 
     Image {

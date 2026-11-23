@@ -56,6 +56,11 @@ esac
                 || echo "  Wine Mono install failed" >> "$LOG"
         fi
     fi
+    # Documents, Music, ... as real folders in the prefix (stage 4.7, utdeck-profile.py): Wine links
+    # them to the phone's own folders, so a game's files landed in the phone's Documents (3DMark 11's
+    # shader cache). No Steam Cloud here, so no shared folder: only the Windows user's own.
+    case "$UTDECK_RUNTIME" in proton) wuser=steamuser ;; *) wuser=${USER:-$(id -un)} ;; esac
+    python3 -I $W/utdeck-profile.py folders "$WINEPREFIX" "$wuser" >> "$LOG" 2>&1
 )
 
 # The prefix's desktop mode (UTDECK_RESOLUTION, stage 4.6), as utdeck-compat sets it for Steam's games:

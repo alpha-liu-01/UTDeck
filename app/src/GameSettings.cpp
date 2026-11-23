@@ -18,7 +18,7 @@ const QRegularExpression kDigits(QStringLiteral("^\\d+$"));
 // The settings the page shows, by their utdeck-env names.
 const QStringList kKnown = {QStringLiteral("UTDECK_RUNTIME"), QStringLiteral("GAME_ARGS"),
                             QStringLiteral("UTDECK_RESOLUTION"), QStringLiteral("HODLL"),
-                            QStringLiteral("UTDECK_BOOST"), QStringLiteral("UTDECK_PAUSE"),
+                            QStringLiteral("UTDECK_BOOST"), QStringLiteral("UTDECK_PAUSE"), QStringLiteral("UTDECK_KEEP_AWAKE"),
                             QStringLiteral("FEX_X87REDUCEDPRECISION"), QStringLiteral("UTDECK_FILL")};
 
 QString Wine()
@@ -120,6 +120,7 @@ QVariantMap GameSettings::load(const QString& app_id) const
                                                                                                     : QStringLiteral("box64");
   s[QStringLiteral("boost")] = value(QStringLiteral("UTDECK_BOOST"), QStringLiteral("0")) != QLatin1String("0");
   s[QStringLiteral("pause")] = value(QStringLiteral("UTDECK_PAUSE"), QStringLiteral("0")) == QLatin1String("1");
+  s[QStringLiteral("awake")] = value(QStringLiteral("UTDECK_KEEP_AWAKE"), QStringLiteral("0")) == QLatin1String("1");
   s[QStringLiteral("x87")] = value(QStringLiteral("FEX_X87REDUCEDPRECISION"), QStringLiteral("0")) == QLatin1String("1");
   s[QStringLiteral("fill")] = value(QStringLiteral("UTDECK_FILL"), QStringLiteral("0")) == QLatin1String("1");
   // The other NAME=value lines, as the advanced text.
@@ -158,6 +159,7 @@ bool GameSettings::save(const QString& app_id, const QVariantMap& s)
                                       ? QStringLiteral("libwow64fex.dll") : QString();
   unless_default(QStringLiteral("UTDECK_BOOST"), s.value(QStringLiteral("boost")).toBool() ? QStringLiteral("1024") : QStringLiteral("0"), QStringLiteral("0"));
   unless_default(QStringLiteral("UTDECK_PAUSE"), s.value(QStringLiteral("pause")).toBool() ? QStringLiteral("1") : QStringLiteral("0"), QStringLiteral("0"));
+  unless_default(QStringLiteral("UTDECK_KEEP_AWAKE"), s.value(QStringLiteral("awake")).toBool() ? QStringLiteral("1") : QStringLiteral("0"), QStringLiteral("0"));
   unless_default(QStringLiteral("FEX_X87REDUCEDPRECISION"), s.value(QStringLiteral("x87")).toBool() ? QStringLiteral("1") : QStringLiteral("0"), QStringLiteral("0"));
   unless_default(QStringLiteral("UTDECK_FILL"), s.value(QStringLiteral("fill")).toBool() ? QStringLiteral("1") : QStringLiteral("0"), QStringLiteral("0"));
 
@@ -216,6 +218,7 @@ bool GameSettings::reset(const QString& app_id)
   s[QStringLiteral("resolution")] = QStringLiteral("native");
   s[QStringLiteral("boost")] = d.value(QStringLiteral("UTDECK_BOOST"), QStringLiteral("0")) != QLatin1String("0");
   s[QStringLiteral("pause")] = d.value(QStringLiteral("UTDECK_PAUSE")) == QLatin1String("1");
+  s[QStringLiteral("awake")] = d.value(QStringLiteral("UTDECK_KEEP_AWAKE")) == QLatin1String("1");
   s[QStringLiteral("x87")] = d.value(QStringLiteral("FEX_X87REDUCEDPRECISION")) == QLatin1String("1");
   s[QStringLiteral("fill")] = d.value(QStringLiteral("UTDECK_FILL")) == QLatin1String("1");
   return save(app_id, s);

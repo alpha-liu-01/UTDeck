@@ -14,8 +14,13 @@
 #   getnativepath PATH       Windows path to Linux path
 #   destroyprefix            remove the game's prefix
 #
+# Steam knows this tool as "utdeck-proton" (compatibilitytool.vdf; it was "utdeck" until stage 4.7):
+# Steam brings a Windows game's cloud saves into its prefix only for a tool whose name contains
+# "proton". One tool for both Wine bases; which one a game uses is its UTDECK_RUNTIME (utdeck-env,
+# the app's settings page, stage 4.6).
+#
 # Each game has its own Wine prefix, as with Proton: $STEAM_COMPAT_DATA_PATH/pfx (pfx-proton on
-# Proton's Wine base, the second tool "UTDeck runtime (Proton 11)", see UTDECK_RUNTIME below)
+# Proton's Wine base, see UTDECK_RUNTIME below)
 # (steamapps/compatdata/<appid>/pfx), made on the first start and prepared for Steam as Proton
 # does: Valve's Windows Steam files from Steam's legacycompat folder in C:\Program Files (x86)\Steam,
 # and the registry keys that point games at them (steam-prefix.reg). Programs are started through
@@ -50,12 +55,13 @@ if [ -f "$DATA/utdeck-env" ]; then
         case "$line" in ''|'#'*) continue ;; *=*) export "$line"; printf '  per-game: %s\n' "$line" >> "$LOG" ;; esac
     done < "$DATA/utdeck-env"
 fi
-# The Wine base (stage 3.3): the tool Steam started picks it. "UTDeck runtime" is Hangover's Wine
-# 11.16 base (the default, fully supported); "UTDeck runtime (Proton 11)" (compatibilitytools.d/
-# utdeck-proton, whose script sets UTDECK_TOOL_RUNTIME=proton) is Proton 11's Wine, for the games
-# that need it. UTDECK_RUNTIME in utdeck-env overrides both, for tests (env.sh picks the runtime
-# from it). Each base has its own prefix: a prefix updated by one Wine is not used by the other.
-# Saves inside a prefix do not move across by themselves.
+# The Wine base (stage 3.3): UTDECK_RUNTIME, from the game's utdeck-env (the app's settings page,
+# stage 4.6). "utdeck" is Hangover's Wine 11.16 base (the default, fully supported); "proton" is
+# Proton 11's Wine, for the games that need it (env.sh picks the runtime from it). Until stage 4.7 a
+# second tool (compatibilitytools.d/utdeck-proton) chose Proton's base by setting UTDECK_TOOL_RUNTIME;
+# its games got UTDECK_RUNTIME=proton in their utdeck-env when it went (steam-tools.sh). Each base has
+# its own prefix (a prefix updated by one Wine is not used by the other); the saves are shared
+# (utdeck-profile.py).
 export UTDECK_RUNTIME=${UTDECK_RUNTIME:-${UTDECK_TOOL_RUNTIME:-utdeck}}
 case "$UTDECK_RUNTIME" in
 proton) export WINEPREFIX=$DATA/pfx-proton ;;
@@ -76,24 +82,39 @@ STEAM=${STEAM_COMPAT_CLIENT_INSTALL_PATH:-$HOME/.local/share/Steam}
 prepare_prefix() {
     (
         . $W/env.sh
-        if [ ! -d "$WINEPREFIX/drive_c" ]; then
+        # Made: Wine's registry is there. Not drive_c alone: since stage 4.7 Steam itself creates
+        # pfx/drive_c/users/steamuser/... when it brings a game's cloud saves before its first start.
+        if [ ! -f "$WINEPREFIX/system.reg" ]; then
             wineboot -i > /dev/null 2>&1; wineserver -w
             echo "  prefix made" >> "$LOG"
         fi
+        # The Windows user folder (stage 4.7, utdeck-profile.py): one per game, in
+        # pfx/drive_c/users/steamuser, where Steam Cloud looks for its saves; this prefix's own user
+        # folder links to it (both Wine bases share the saves), and Documents, Music, ... are real
+        # folders, not links to the phone's own.
+        case "$UTDECK_RUNTIME" in proton) wuser=steamuser ;; *) wuser=${USER:-$(id -un)} ;; esac
+        python3 -I "$TOOL/utdeck-profile.py" layout "$DATA" "$WINEPREFIX" "$wuser" >> "$LOG" 2>&1 \
+            || echo "  the user folder could not be laid out" >> "$LOG"
         # The runtime's DXVK and VKD3D-Proton, whenever the prefix has not got them from this very
         # runtime (stage 4.3): not only into a prefix made here. On the Nothing Phone (1) Ys IX's
         # first launch ran through Steam's own Proton (before UTDeck's tool was Steam's default) and
         # made the prefix; ours then found it and never added DXVK, and the game stopped at once
         # ("d3d11.dll ... not found", exit 53). Also brings a prefix up to date after a runtime update.
         rt=$(head -1 "$(dirname "$(command -v wine)")/../BUILD-INFO" 2>/dev/null)
-        if [ "$(cat "$DATA/utdeck-prefix-dlls" 2>/dev/null)" != "$rt" ]; then
+        # The marker is the prefix's own (stage 4.7): it was one per game (compatdata/<appid>), so a game
+        # switched to the other Wine base and back (4.6: one prefix per base) found the other base's
+        # build in it and updated its prefix again (Celceta: 49 s at its start). The old marker still
+        # counts for the base it names.
+        mark=$WINEPREFIX/utdeck-prefix-dlls
+        [ -f "$mark" ] || [ "$(cat "$DATA/utdeck-prefix-dlls" 2>/dev/null)" != "$rt" ] || echo "$rt" > "$mark"
+        if [ "$(cat "$mark" 2>/dev/null)" != "$rt" ]; then
             # The prefix brought up to this runtime first, without any window (stage 4.3: after a
             # runtime update Wine's "The Wine configuration is being updated" notice came up over
             # UTDeck's starting page, at the game's start): Wine's display drivers off for this step.
             WINEDLLOVERRIDES="winewayland.drv,winex11.drv=d;mscoree,mshtml=;winemenubuilder.exe=d" \
                 wineboot -u > /dev/null 2>&1; wineserver -w
             echo "  prefix updated to the runtime, without a window" >> "$LOG"
-            $W/prefix-dlls.sh > /dev/null && echo "$rt" > "$DATA/utdeck-prefix-dlls" &&
+            $W/prefix-dlls.sh > /dev/null && echo "$rt" > "$mark" &&
                 echo "  DXVK and VKD3D-Proton put in ($rt)" >> "$LOG"
         fi
         # Wine Mono in every prefix, as Proton does (stage 3.4, item 6): Goat Simulator runs .NET
@@ -225,6 +246,13 @@ export DISABLE_VK_LAYER_VALVE_steam_fossilize_1=1
 # but nothing of the Steam Frame belongs here) and a file through which Turnip's debug options can
 # be changed while the game runs.
 unset VK_INSTANCE_LAYERS TU_DEBUG_FILE
+# Turnip's shader cache, one per game (stage 4.7): what the driver compiled is kept in the game's
+# steamapps/shadercache/<appid> (Mesa's single-file cache, mesa_shader_cache_sf/), where Steam's
+# shader manager pointed it; Steam runs without that manager now (steam-service.sh: -noshaders), so
+# it is set here. Steam deletes that folder with the game.
+SC=${STEAM_COMPAT_SHADER_PATH:-$STEAM/steamapps/shadercache/${STEAM_COMPAT_APP_ID:-${SteamAppId:-0}}}
+export MESA_SHADER_CACHE_DIR=${MESA_SHADER_CACHE_DIR:-$SC} MESA_DISK_CACHE_SINGLE_FILE=${MESA_DISK_CACHE_SINGLE_FILE:-1}
+unset MESA_DISK_CACHE_READ_ONLY_FOZ_DBS
 # Steam Input: for a game that uses it (Stray), Steam makes a virtual Xbox controller through the
 # kernel's uinput and tells the game to ignore the real ones (SDL_GAMECONTROLLER_IGNORE_DEVICES, read
 # by Wine's SDL controller backend). On Ubuntu Touch /dev/uinput belongs to an Android system user,

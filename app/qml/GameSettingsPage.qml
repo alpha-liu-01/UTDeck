@@ -13,11 +13,26 @@ Page {
     property var run: ({})
     property bool showLog: false
     property string saved: ""
+    property bool confirmUninstall: false
+    // Stage 4.7: the game's Steam Cloud state (Steam's files, read when the page opens) and how the game
+    // uses Steam Cloud ("auto", "api", "", or undefined while the library list loads).
+    property var cloud: library.isOwn(appId) ? ({}) : steamGames.cloudState(appId)
+    readonly property var cloudKind: {
+        for (const g of steamGames.games)
+            if (g.appId === page.appId)
+                return g.cloud
+        return undefined
+    }
+
+    function sizeText(kb) {
+        return kb >= 1024 ? i18n.tr("%1 MB").arg((kb / 1024).toFixed(1)) : i18n.tr("%1 KB").arg(kb)
+    }
 
     readonly property var resolutions: ["native", "1200x540", "1600x720", "1920x864", "2000x900"]
     readonly property var switchRows: [
         {id: "boost", title: i18n.tr("CPU boost"), subtitle: i18n.tr("Higher CPU clocks for the game: a few frames per second more, a little warmer.")},
         {id: "pause", title: i18n.tr("Pause when not in front"), subtitle: i18n.tr("Freezes the game while the phone is locked or another app is in front.")},
+        {id: "awake", title: i18n.tr("Keep the screen on"), subtitle: i18n.tr("While the game is in front, the screen does not turn off by itself (when played with a controller).")},
         {id: "x87", title: i18n.tr("Fast x87 maths"), subtitle: i18n.tr("64-bit precision for old x86 maths: much faster; turn it off if the game draws wrongly.")},
         {id: "fill", title: i18n.tr("Fill the screen"), subtitle: i18n.tr("A game window smaller than the screen is stretched to fill it.")}
     ]
@@ -30,6 +45,7 @@ Page {
             translator: translatorSelector.selectedIndex === 1 ? "fex" : "box64",
             boost: switches.boost,
             pause: switches.pause,
+            awake: switches.awake,
             x87: switches.x87,
             fill: switches.fill,
             advanced: advancedArea.text
@@ -45,6 +61,7 @@ Page {
         translatorSelector.selectedIndex = settings.translator === "fex" ? 1 : 0
         switches.boost = !!settings.boost
         switches.pause = !!settings.pause
+        switches.awake = !!settings.awake
         switches.x87 = !!settings.x87
         switches.fill = !!settings.fill
         argsField.text = settings.args || ""
@@ -54,7 +71,11 @@ Page {
         switchRepeater.model = page.switchRows
     }
 
-    Component.onCompleted: apply(page.s)
+    Component.onCompleted: {
+        apply(page.s)
+        if (!library.isOwn(page.appId) && steamGames.games.length === 0)
+            steamGames.refresh()
+    }
 
     header: PageHeader {
         id: pageHeader
@@ -256,6 +277,154 @@ Page {
                 }
             }
 
+            // --- Steam Cloud (stage 4.7) ---
+            Label {
+                visible: !library.isOwn(page.appId)
+                text: i18n.tr("Steam Cloud")
+                textSize: Label.Large
+            }
+
+            Label {
+                width: parent.width
+                visible: !library.isOwn(page.appId)
+                wrapMode: Text.Wrap
+                text: {
+                    const c = page.cloud
+                    if (c.known) {
+                        let t = i18n.tr("%1 files in Steam Cloud (%2), last synced %3.").arg(c.files).arg(page.sizeText(c.sizeKb)).arg(c.lastSync)
+                        if (c.inSync < c.files)
+                            t += " " + i18n.tr("%1 of them wait for the next sync.").arg(c.files - c.inSync)
+                        return t + " " + i18n.tr("Steam brings them before the game starts and saves the game's changes after it ends.")
+                    }
+                    if (page.cloudKind === undefined)
+                        return i18n.tr("Reading Steam's data...")
+                    if (page.cloudKind === "")
+                        return i18n.tr("This game does not use Steam Cloud: its saves stay on the phone, in its Windows folder.")
+                    return i18n.tr("Steam has not synced this game yet: it brings its cloud saves at the game's first start.")
+                }
+            }
+
+            Label {
+                width: parent.width
+                visible: !library.isOwn(page.appId) && page.cloud.problem !== undefined && page.cloud.problem !== ""
+                wrapMode: Text.Wrap
+                color: theme.palette.normal.negative
+                text: page.cloud.problem === "conflict"
+                      ? i18n.tr("The last sync found saves that differ on the phone and in the cloud: Steam asks which to keep at the game's next start, on the \"Steam is asking\" page.")
+                      : page.cloud.problem === "path"
+                        ? i18n.tr("At the last sync Steam could not find the game's save folder, so its saves did not sync.")
+                        : i18n.tr("The last sync failed (%1): Steam tries again at the game's next start (no network?).").arg(page.cloud.result)
+            }
+
+            Label {
+                width: parent.width
+                visible: !library.isOwn(page.appId) && page.cloud.backups !== undefined && page.cloud.backups.length > 0
+                wrapMode: Text.Wrap
+                color: theme.palette.normal.backgroundSecondaryText
+                text: i18n.tr("Copies of saves made on the phone were set aside on %1, when the cloud's came first (folder utdeck-saves-DATE in Steam/steamapps/compatdata/%2).").arg(page.cloud.backups ? page.cloud.backups.join(", ") : "").arg(page.appId)
+            }
+
+            // --- Checking the game's files (stage 4.7) ---
+            Label {
+                visible: !library.isOwn(page.appId)
+                text: i18n.tr("The game's files")
+                textSize: Label.Large
+            }
+
+            Label {
+                width: parent.width
+                visible: !library.isOwn(page.appId)
+                wrapMode: Text.Wrap
+                color: theme.palette.normal.backgroundSecondaryText
+                text: i18n.tr("If the game crashes or will not start, Steam can compare its files with its own copy and download again what is missing or damaged. Saves and settings are not touched.")
+            }
+
+            Button {
+                visible: !library.isOwn(page.appId)
+                text: i18n.tr("Check the game's files")
+                enabled: library.runningGame !== page.appId && steamGames.task.appId === undefined
+                onClicked: {
+                    if (steamGames.verify(page.appId, page.title))
+                        page.pageStack.push(Qt.resolvedUrl("DownloadsPage.qml"))
+                }
+            }
+
+            // --- Uninstalling a Steam game (stage 4.7) ---
+            Label {
+                visible: !library.isOwn(page.appId)
+                text: i18n.tr("Uninstall")
+                textSize: Label.Large
+            }
+
+            Label {
+                width: parent.width
+                visible: !library.isOwn(page.appId)
+                wrapMode: Text.Wrap
+                color: theme.palette.normal.backgroundSecondaryText
+                text: i18n.tr("%1 MB on the phone. It stays in your Steam library, to install again later.").arg(steamGames.installedMb(page.appId))
+            }
+
+            Button {
+                visible: !library.isOwn(page.appId) && !page.confirmUninstall
+                text: i18n.tr("Uninstall...")
+                color: theme.palette.normal.negative
+                enabled: library.runningGame !== page.appId && steamGames.task.appId === undefined
+                onClicked: page.confirmUninstall = true
+            }
+
+            Column {
+                width: parent.width
+                spacing: units.gu(1.5)
+                visible: page.confirmUninstall
+
+                Row {
+                    spacing: units.gu(1.5)
+
+                    CheckBox {
+                        id: deleteData
+                    }
+
+                    Label {
+                        width: column.width - units.gu(5)
+                        anchors.verticalCenter: parent.verticalCenter
+                        wrapMode: Text.Wrap
+                        text: i18n.tr("Also delete its Windows folder, with any saved games not in Steam Cloud, and the files the game left in its install folder (Steam keeps both otherwise)")
+                    }
+                }
+
+                Label {
+                    width: parent.width
+                    wrapMode: Text.Wrap
+                    text: i18n.tr("Steam then asks once more, on the \"Steam is asking\" page: tap Uninstall there.")
+                }
+
+                Row {
+                    spacing: units.gu(1.5)
+
+                    Button {
+                        text: i18n.tr("Uninstall")
+                        color: theme.palette.normal.negative
+                        onClicked: {
+                            // On to the Downloads page, which follows the uninstall (Steam's question
+                            // comes over it).
+                            if (steamGames.uninstall(page.appId, page.title, deleteData.checked)) {
+                                const stack = page.pageStack
+                                stack.pop()
+                                stack.push(Qt.resolvedUrl("DownloadsPage.qml"))
+                            }
+                        }
+                    }
+
+                    Button {
+                        text: i18n.tr("Cancel")
+                        onClicked: {
+                            deleteData.checked = false
+                            page.confirmUninstall = false
+                        }
+                    }
+                }
+            }
+
             // --- The last run ---
             Label {
                 text: i18n.tr("The last run")
@@ -311,6 +480,7 @@ Page {
 
         property bool boost
         property bool pause
+        property bool awake
         property bool x87
         property bool fill
     }

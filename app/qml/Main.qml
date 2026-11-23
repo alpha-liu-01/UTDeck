@@ -111,6 +111,16 @@ Window {
             }
         }
 
+        // Stage 4.7: an install or uninstall ended: the library read again; with Steam's switch off,
+        // Steam (started for it) stops again once no download runs (Setup waits for them).
+        Connections {
+            target: steamGames
+            function onInstalledChanged() {
+                library.refresh()
+                setup.gameEnded()
+            }
+        }
+
         // A game ended: with Steam's switch off, Steam (started for the game) stops again, 45 s later
         // unless another game starts meanwhile (stage 4.6).
         Connections {

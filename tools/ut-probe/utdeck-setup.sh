@@ -75,7 +75,7 @@ done_signin()  { done_service && [ "$(signin_state)" = "Logged On" ]; }
 TOOL=$STEAM/compatibilitytools.d/utdeck
 done_tool()    {
     python3 "$TOOL/set-default.py" --show 2> /dev/null |
-        awk '$1 == "\"0\"" {z = 1} z && $1 == "\"name\"" {print $2; exit}' | grep -qx '"utdeck"'
+        awk '$1 == "\"0\"" {z = 1} z && $1 == "\"name\"" {print $2; exit}' | grep -qx '"utdeck-proton"'
 }
 
 # label STEP TEXT: what the step does now, for the ticker.
@@ -92,6 +92,9 @@ step_files() {
     # The tree home-files.sh made, as it is; then the version it came with.
     cp -r "$HERE/home/utdeck-probe" "$HOME/" && cp -r "$HERE/home/.local" "$HOME/" || return 1
     files_version > "$W/.files-version"
+    # Steam's side brought up to the new files (stage 4.7, steam-tools.sh: the tool's name, each
+    # game's user folder): Steam stopped for it and started again if it runs; not while a game runs.
+    sh "$W/steam/steam-tools.sh" --restart
 }
 
 # xvfb_in SUITE: "PATH SHA256" of xvfb (arm64) in SUITE's signed index, or nothing.
