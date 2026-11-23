@@ -3,7 +3,7 @@ import Lomiri.Components
 
 // UTDeck's settings (stage 4.2): Steam, which is optional. Not set up: set it up from here. Set up:
 // its switch (on, hidden Steam runs while the app does; off, only while a Steam game runs, saving
-// about 1.3 GB of memory) and its state.
+// about 1.3 GB of memory) and its state. Stage 4.4: the Controllers page.
 Page {
     id: page
 
@@ -32,6 +32,22 @@ Page {
             y: units.gu(2)
             width: parent.width - units.gu(4)
             spacing: units.gu(1.5)
+
+            ListItem {
+                width: parent.width
+                height: controllersLayout.height
+                divider.visible: false
+                onClicked: page.pageStack.push(Qt.resolvedUrl("ControllersPage.qml"))
+
+                ListItemLayout {
+                    id: controllersLayout
+
+                    title.text: i18n.tr("Controllers")
+                    subtitle.text: i18n.tr("What games get from each connected controller")
+
+                    ProgressionSlot {}
+                }
+            }
 
             Label {
                 text: i18n.tr("Steam")

@@ -31,6 +31,16 @@ file=$(basename "$click")
 # systemd unit ends it (systemd wakes a paused process to end it). adb's shell has no session
 # environment, so the user bus is given by hand (lomiri-app-list lists nothing even then).
 package=${file%%_*}
+# Not while a game runs (stage 4.4): stopping the app takes the library away from under the game
+# (Celceta kept running, but the library did not come back when it ended). The game file
+# (game-run.sh: "LABEL PID FOCUS") names a running game-run.sh then. FORCE=1 installs anyway.
+if [ "${FORCE:-0}" != 1 ]; then
+  game=$(adb shell 'f=/run/user/$(id -u)/utdeck/game; [ -f "$f" ] && read -r label pid _ < "$f" && kill -0 "$pid" 2>/dev/null && echo "$label"' | tr -d '\r')
+  if [ -n "$game" ]; then
+    echo "a game is running on the phone ($game): quit it first, or FORCE=1 to install anyway" >&2
+    exit 1
+  fi
+fi
 adb shell "export XDG_RUNTIME_DIR=/run/user/\$(id -u) DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/\$(id -u)/bus
   for u in \$(systemctl --user list-units --plain --no-legend 'lomiri-app-launch--application-click--${package}_*' | awk '{print \$1}'); do
     echo \"stopping \$u\"; systemctl --user stop \"\$u\"

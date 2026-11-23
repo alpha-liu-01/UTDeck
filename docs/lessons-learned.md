@@ -1307,3 +1307,24 @@ Problems met while building UTDeck on the Redmi Note 12 5G (stone). Details in `
   port's stage 0 had already read stone's `/proc/config.gz`: both drivers are there (backported).
   Lesson: read the kernel's own configuration (and earlier notes) before reasoning from its
   version number.
+- **Wine drops some controllers on purpose (stage 4.4).** For PlayStation and Nintendo pads, Wine's
+  `winebus` ignores the controller on its normal paths and takes it only through the raw HID node
+  (`/dev/hidraw*`); on stone that node is closed to phablet, so the T6 in Switch mode reached no
+  Windows program at all, with only a `warn:hid` line to say so. Lesson: when a controller "does
+  nothing" in Wine, read `winebus`'s own decisions (`WINEDEBUG=+hid`: "ignoring ... device",
+  "Permission denied") before suspecting the controller.
+- **A controller database entry can fit the ID but not the driver (stage 4.4).** SDL's built-in layout
+  for the Switch Pro Controller matched the T6 by its ID, but was written for another version of the
+  kernel driver (D-pad as a hat, no Capture button), so every button after Capture was one off and the
+  D-pad was missing. Lesson: compare the kernel's own events (`evtest.py`) with what the game layer
+  reports before trusting a mapping; and a stick that reports a square, not a circle, can look like a
+  stuck axis when it is moved along an edge.
+- **adb's shell has no user session (stage 4.4).** `systemd-run --user` from `adb shell` failed with
+  "Failed to connect to bus: No medium found": adb's shell has neither `XDG_RUNTIME_DIR` nor
+  `DBUS_SESSION_BUS_ADDRESS`. Set both (`/run/user/<uid>`, `unix:path=/run/user/<uid>/bus`) first.
+  And a test that needs the only USB port (a USB controller) runs as a user service that writes a
+  log, collected when adb is back.
+- **Do not install the app while a game runs (stage 4.4).** I installed a new UTDeck while Celceta
+  was still running (its log had no "exit" line yet); installing stops the app, the game went on
+  without it, and its library would not have come back at the game's end. Lesson: check the game
+  file first; `install-click.sh` now refuses while UTDeck's game file names a running game.

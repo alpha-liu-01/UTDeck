@@ -40,7 +40,7 @@ done
 for t in i686 x86_64; do
     "$TC/bin/$t-w64-mingw32-clang" -O2 -Wall -o "$OUT/d3d9test-$t.exe" "$REPO_DIR/tools/ut-probe/win/d3d9test.c" -ld3d9
 done
-"$TC/bin/x86_64-w64-mingw32-clang" -O2 -Wall -o "$OUT/gptest.exe" "$REPO_DIR/tools/ut-probe/win/gptest.c" -lxinput -lwinmm
+"$TC/bin/x86_64-w64-mingw32-clang" -O2 -Wall -o "$OUT/gptest.exe" "$REPO_DIR/tools/ut-probe/win/gptest.c" -lxinput -lwinmm -ldinput8 -ldxguid -lsetupapi -lhid
 "$TC/bin/x86_64-w64-mingw32-clang" -O2 -Wall -o "$OUT/d3d12test.exe" "$REPO_DIR/tools/ut-probe/win/d3d12test.c" \
     -ld3d12 -ldxgi -ld3dcompiler
 "$TC/bin/x86_64-w64-mingw32-clang" -O2 -Wall -o "$OUT/sndtest.exe" "$REPO_DIR/tools/ut-probe/win/sndtest.c" -lwinmm

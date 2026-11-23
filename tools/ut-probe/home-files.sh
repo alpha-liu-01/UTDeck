@@ -32,8 +32,11 @@ for f in compatibilitytool.vdf toolmanifest.vdf utdeck-compat; do cp "$T/steam-c
 
 # The Wine runtime's scripts and defaults (runtime-push.sh's list); env.sh is wine-env.sh.
 cp "$T/wine-env.sh" "$P/wine/env.sh"
+# The Controllers page's check in Wine (stage 4.4): gptest.exe (tools/ut-probe/win/build.sh).
+mkdir -p "$P/wine/padprobe"
+cp "$REPO_DIR/build/win/gptest.exe" "$P/wine/padprobe/"
 for f in prefix-dlls.sh get-runtime.sh runtimes.list defaults.env game-run.sh utdeck-boost.py \
-         uclamp-show.py utdeck-pause.py utdeck-setupwatch.py lifecycle-watch.sh; do
+         uclamp-show.py utdeck-pause.py utdeck-setupwatch.py lifecycle-watch.sh controllers.reg padlayout.py; do
     cp "$T/$f" "$P/wine/"
 done
 

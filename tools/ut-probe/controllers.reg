@@ -1,0 +1,20 @@
+REGEDIT4
+
+; UTDeck stage 4.4: how Wine's winebus takes controllers, imported into every game's prefix by
+; game-run.sh (again whenever this file changes; its checksum is kept in the prefix).
+;
+; Wine takes PlayStation pads (Sony, 054c) and Nintendo's Pro Controller and Joy-Cons (057e) only
+; through their raw HID node (/dev/hidraw*) and ignores them on its SDL and evdev paths
+; (dlls/winebus.sys/main.c, is_hidraw_enabled). On the phones the raw nodes belong to root and an
+; Android group (stone: /etc/udev/rules.d/70-sunstone.rules, group 1018), so phablet cannot open
+; them, and such a pad reached no Windows program at all ("ignoring non-hidraw device 054c:0ce6",
+; then "Permission denied" on /dev/hidraw0). Hidraw = 0 sends them through SDL instead: XInput,
+; DirectInput and HID, with SDL's layout. Checked on stone with the DualSense, a DualShock 4 clone and
+; the BETOP T6 in its Switch mode. What only the raw node carries (the DualSense's touchpad, gyro and
+; light bar for games with their own support) waits for raw-node access, if the phones ever give it.
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\WineBus\Devices\054c]
+"Hidraw"=dword:00000000
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\WineBus\Devices\057e]
+"Hidraw"=dword:00000000

@@ -68,6 +68,24 @@ fi
 { printf 'game: %s, in %s: %s %s\n' "$LABEL" "$DIR" "$EXE" "$*"; echo "runtime: $(command -v wine), prefix $WINEPREFIX";
   echo "overrides: $WINEDLLOVERRIDES"; echo "extra: ${GAME_ENV:-}"; echo "defaults:$DEFAULTS";
   echo "app: ${UTDECK_APP_ID:-none (UTDeck not running)}"; } > $B.log
+# Controllers (stage 4.4). controllers.reg: Wine takes PlayStation and Nintendo pads through SDL, not
+# only through their raw nodes, which phablet cannot open (without it such a pad reaches no game);
+# imported into this prefix again whenever the file changes. padlayout.py: for a pad whose kernel
+# driver SDL's own layout does not fit (stone's hid-nintendo: the D-pad and every button after
+# Capture), a layout by position, given to SDL (Wine's winebus) in SDL_GAMECONTROLLERCONFIG. Only
+# pads connected now get it; one connected later keeps SDL's layout.
+if [ -f $W/controllers.reg ]; then
+    sum=$(sha256sum $W/controllers.reg | cut -c1-16)
+    if [ "$(cat "$WINEPREFIX/utdeck-controllers-reg" 2>/dev/null)" != "$sum" ]; then
+        wine regedit /S "$(winepath -w $W/controllers.reg 2>/dev/null)" > /dev/null 2>&1 && wineserver -w &&
+            echo "$sum" > "$WINEPREFIX/utdeck-controllers-reg" && echo "controllers: registry settings imported" >> $B.log
+    fi
+fi
+L=$(python3 $W/padlayout.py 2>> $B.log)
+if [ -n "$L" ]; then
+    export SDL_GAMECONTROLLERCONFIG="${SDL_GAMECONTROLLERCONFIG:+$SDL_GAMECONTROLLERCONFIG
+}$L"
+fi
 # GStreamer's plugin list (env.sh: GST_REGISTRY_1_0) is brought up to date here, outside Wine. Wine
 # starts GStreamer with --gst-disable-registry-fork, so a Wine process loads every new or changed
 # plugin into itself to list it; the phone's hybris plugin (Android's hardware decoders) cannot load

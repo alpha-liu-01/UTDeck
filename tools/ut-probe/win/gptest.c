@@ -1,13 +1,22 @@
 /*
  * UTDeck stage 2.4: a Windows gamepad test, as games read controllers: XInput (xinput1_4, what most
  * PC games use) and winmm's joystick API (older games). Built for x86-64 with llvm-mingw (build.sh).
+ * Stage 4.4 added the HID game controllers Windows offers (with their USB IDs: a game with its own
+ * PlayStation or Switch support finds its pad there, gyro included) and DirectInput 8's game
+ * controllers (what games without XInput use).
  *
- *   gptest.exe [SECONDS]      (default 30)
+ *   gptest.exe [SECONDS]      (default 30; 0: only list the controllers)
  *
  * Lists the controllers each API sees, then prints every change of buttons, sticks and triggers
  * for SECONDS seconds. Through Wine the controllers come from winebus (SDL2, hidraw or evdev).
  */
+#define DIRECTINPUT_VERSION 0x0800
 #include <windows.h>
+#include <initguid.h>
+#include <dinput.h>
+#include <setupapi.h>
+#include <hidsdi.h>
+#include <hidpi.h>
 #include <xinput.h>
 #include <mmsystem.h>
 #include <stdio.h>
@@ -29,6 +38,61 @@ static const char *xbuttons(WORD b, char *out)
         if (b & names[i].bit) { strcat(out, names[i].name); strcat(out, " "); }
     if (!out[0]) strcpy(out, "-");
     return out;
+}
+
+/* Every HID device of the game controller kinds (generic desktop: joystick 4, gamepad 5, multi-axis
+ * 8), with its IDs and product name. */
+static void list_hid(void)
+{
+    GUID hid;
+    HidD_GetHidGuid(&hid);
+    HDEVINFO set = SetupDiGetClassDevsW(&hid, NULL, NULL, DIGCF_PRESENT | DIGCF_DEVICEINTERFACE);
+    printf("HID game controllers:");
+    int count = 0;
+    SP_DEVICE_INTERFACE_DATA iface = { sizeof(iface) };
+    for (DWORD i = 0; set != INVALID_HANDLE_VALUE && SetupDiEnumDeviceInterfaces(set, NULL, &hid, i, &iface); i++) {
+        BYTE buffer[1024];
+        SP_DEVICE_INTERFACE_DETAIL_DATA_W *detail = (SP_DEVICE_INTERFACE_DETAIL_DATA_W *)buffer;
+        detail->cbSize = sizeof(*detail);
+        if (!SetupDiGetDeviceInterfaceDetailW(set, &iface, detail, sizeof(buffer), NULL, NULL)) continue;
+        HANDLE h = CreateFileW(detail->DevicePath, 0, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
+        if (h == INVALID_HANDLE_VALUE) continue;
+        HIDD_ATTRIBUTES attr = { sizeof(attr) };
+        PHIDP_PREPARSED_DATA pre;
+        HIDP_CAPS caps = { 0 };
+        WCHAR product[128] = L"?";
+        HidD_GetAttributes(h, &attr);
+        HidD_GetProductString(h, product, sizeof(product));
+        if (HidD_GetPreparsedData(h, &pre)) { HidP_GetCaps(pre, &caps); HidD_FreePreparsedData(pre); }
+        CloseHandle(h);
+        if (caps.UsagePage != 1 || (caps.Usage != 4 && caps.Usage != 5 && caps.Usage != 8)) continue;
+        printf("\n  %04x:%04x \"%ls\" (usage %x:%x, input report %u bytes)", attr.VendorID, attr.ProductID,
+               product, caps.UsagePage, caps.Usage, caps.InputReportByteLength);
+        count++;
+    }
+    if (set != INVALID_HANDLE_VALUE) SetupDiDestroyDeviceInfoList(set);
+    printf("%s\n", count ? "" : " none");
+}
+
+static BOOL CALLBACK dinput_device(const DIDEVICEINSTANCEW *inst, void *ctx)
+{
+    int *count = ctx;
+    printf("\n  \"%ls\" (%04x:%04x, type %#lx)", inst->tszProductName, (unsigned)LOWORD(inst->guidProduct.Data1),
+           (unsigned)HIWORD(inst->guidProduct.Data1), inst->dwDevType);
+    (*count)++;
+    return DIENUM_CONTINUE;
+}
+
+static void list_dinput(void)
+{
+    IDirectInput8W *di;
+    int count = 0;
+    printf("DirectInput 8 game controllers:");
+    if (SUCCEEDED(DirectInput8Create(GetModuleHandleW(NULL), DIRECTINPUT_VERSION, &IID_IDirectInput8W, (void **)&di, NULL))) {
+        IDirectInput8_EnumDevices(di, DI8DEVCLASS_GAMECTRL, dinput_device, &count, DIEDFL_ATTACHEDONLY);
+        IDirectInput8_Release(di);
+    }
+    printf("%s\n", count ? "" : " none");
 }
 
 int main(int argc, char **argv)
@@ -56,6 +120,9 @@ int main(int argc, char **argv)
             printf(" %u: \"%ls\", %u buttons, %u axes;", j, jc.szPname, jc.wNumButtons, jc.wNumAxes);
     }
     printf("\n");
+    list_dinput();
+    list_hid();
+    if (seconds <= 0) return 0;
 
     printf("reading for %d seconds: press buttons, move the sticks and triggers\n", seconds);
     DWORD end = GetTickCount() + seconds * 1000;

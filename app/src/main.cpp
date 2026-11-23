@@ -15,6 +15,7 @@
 #include <csignal>
 #include <cstdlib>
 
+#include "Controllers.h"
 #include "Library.h"
 #include "Setup.h"
 #include "SteamLaunch.h"
@@ -90,11 +91,14 @@ int main(int argc, char** argv)
   Setup setup;
   // Steam's launches and the dialogs it waits on (stage 4.3).
   SteamLaunch steam_launch;
+  // The connected controllers as games see them (stage 4.4); read only while their page is open.
+  Controllers controllers;
 
   QQmlApplicationEngine engine;
   engine.rootContext()->setContextProperty(QStringLiteral("library"), &library);
   engine.rootContext()->setContextProperty(QStringLiteral("setup"), &setup);
   engine.rootContext()->setContextProperty(QStringLiteral("steamLaunch"), &steam_launch);
+  engine.rootContext()->setContextProperty(QStringLiteral("controllers"), &controllers);
   engine.addImageProvider(QStringLiteral("steamdialog"), new SteamDialogImageProvider(&steam_launch));
   engine.addImageProvider(QStringLiteral("qr"), new QrImageProvider(&setup));
   engine.addImageProvider(QStringLiteral("steamscreen"), new ScreenImageProvider(&setup));
