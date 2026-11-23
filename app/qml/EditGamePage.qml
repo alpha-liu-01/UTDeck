@@ -171,6 +171,13 @@ Page {
                 }
             }
 
+            // How the game runs (stage 4.6).
+            Button {
+                text: i18n.tr("Settings")
+                onClicked: page.pageStack.push(Qt.resolvedUrl("GameSettingsPage.qml"),
+                                               {appId: page.appId, title: page.game.name || ""})
+            }
+
             // Removing, confirmed on the page.
             Button {
                 visible: !page.confirming

@@ -16,6 +16,7 @@
 #include <cstdlib>
 
 #include "Controllers.h"
+#include "GameSettings.h"
 #include "Library.h"
 #include "OwnGames.h"
 #include "Setup.h"
@@ -96,6 +97,8 @@ int main(int argc, char** argv)
   Controllers controllers;
   // The user's own games: adding, editing, removing (stage 4.5).
   OwnGames own_games;
+  // One game's settings (stage 4.6).
+  GameSettings game_settings;
 
   QQmlApplicationEngine engine;
   engine.rootContext()->setContextProperty(QStringLiteral("library"), &library);
@@ -103,6 +106,7 @@ int main(int argc, char** argv)
   engine.rootContext()->setContextProperty(QStringLiteral("steamLaunch"), &steam_launch);
   engine.rootContext()->setContextProperty(QStringLiteral("controllers"), &controllers);
   engine.rootContext()->setContextProperty(QStringLiteral("ownGames"), &own_games);
+  engine.rootContext()->setContextProperty(QStringLiteral("gameSettings"), &game_settings);
   engine.addImageProvider(QStringLiteral("steamdialog"), new SteamDialogImageProvider(&steam_launch));
   engine.addImageProvider(QStringLiteral("qr"), new QrImageProvider(&setup));
   engine.addImageProvider(QStringLiteral("steamscreen"), new ScreenImageProvider(&setup));

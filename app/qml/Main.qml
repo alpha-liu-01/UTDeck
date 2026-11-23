@@ -104,17 +104,22 @@ Window {
 
             interval: 2000
             onTriggered: {
-                if (library.play(appId))
+                if (library.play(appId)) {
+                    setup.gameStarting()
                     steamLaunch.expect(appId)
+                }
             }
         }
 
-        // A game ended: with Steam's switch off, Steam (started for the game) stops again.
+        // A game ended: with Steam's switch off, Steam (started for the game) stops again, 45 s later
+        // unless another game starts meanwhile (stage 4.6).
         Connections {
             target: library
             function onRunningGameChanged() {
                 if (library.runningGame === "")
                     setup.gameEnded()
+                else
+                    setup.gameStarting()
             }
         }
 

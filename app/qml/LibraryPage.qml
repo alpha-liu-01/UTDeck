@@ -69,13 +69,17 @@ Page {
         delegate: GameCard {
             width: grid.cellWidth
             height: grid.cellHeight
-            // One of the user's own games (stage 4.5): a long press edits or removes it.
+            // A long press: one of the user's own games opens its page (stage 4.5: edit, remove, its
+            // settings), a Steam game its settings (stage 4.6).
             onPressAndHold: {
                 if (library.isOwn(model.appId))
                     page.pageStack.push(Qt.resolvedUrl("EditGamePage.qml"), {appId: model.appId})
+                else
+                    page.pageStack.push(Qt.resolvedUrl("GameSettingsPage.qml"), {appId: model.appId, title: model.title})
             }
             onClicked: {
                 if (library.play(model.appId)) {
+                    setup.gameStarting()
                     page.starting = model.title
                     page.startingOwn = library.isOwn(model.appId)
                     startingTimer.restart()

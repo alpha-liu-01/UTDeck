@@ -1,7 +1,7 @@
 # UTDeck's app (stage 4, docs/ut-deck/stage4-roadmap.md): a Qt 6 QML frontend in Lomiri's native
 # look. Built in the utdeck-app-cross container by tools/app-build/build.sh.
 cmake_minimum_required(VERSION 3.25)
-project(utdeck VERSION 0.3.25 LANGUAGES CXX)
+project(utdeck VERSION 0.3.28 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -30,6 +30,8 @@ qt_add_executable(utdeck
   src/Controllers.h
   src/OwnGames.cpp
   src/OwnGames.h
+  src/GameSettings.cpp
+  src/GameSettings.h
   src/XScreen.cpp
   src/XScreen.h
 )
@@ -48,6 +50,7 @@ qt_add_qml_module(utdeck
     qml/ControllersPage.qml
     qml/AddGamePage.qml
     qml/EditGamePage.qml
+    qml/GameSettingsPage.qml
 )
 
 target_compile_definitions(utdeck PRIVATE UTDECK_VERSION="${PROJECT_VERSION}")

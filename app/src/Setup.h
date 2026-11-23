@@ -105,8 +105,11 @@ public:
   // Steam's switch. Off stops hidden Steam now; on starts it (if installed).
   Q_INVOKABLE void setSteamEnabled(bool enabled);
   // A game ended: with Steam's switch off, hidden Steam (started on demand by the game's Play) is
-  // stopped again.
+  // stopped again, 45 s later (stage 4.6: stopped at once, it was shut down under the next game's
+  // launch when the user started another game right away).
   Q_INVOKABLE void gameEnded();
+  // A game is being started or runs: a pending stop of Steam (gameEnded) is called off.
+  Q_INVOKABLE void gameStarting();
 
 signals:
   void neededChanged();
@@ -140,6 +143,7 @@ private:
   QTimer m_poll;
   QTimer m_capture_timer;
   QTimer m_steam_watch;
+  QTimer m_steam_stop;
   QElapsedTimer m_steam_since;
   bool m_steam_starting = false;
   std::atomic<bool> m_looking{false};

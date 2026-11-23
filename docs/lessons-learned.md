@@ -1349,3 +1349,11 @@ Problems met while building UTDeck on the Redmi Note 12 5G (stone). Details in `
   (Box64) and it spun for 6 minutes with no window. Lesson: a new way of running something reuses the
   settings of the closest existing way (here `utdeck-compat`'s for install scripts), and the notes are
   searched for the program's name before its first run.
+- **Two automatic actions on the same thing race (stage 4.6).** "Stop Steam when a game ends" (with
+  Steam's switch off) and "start Steam for the game just tapped" ran within a second of each other;
+  Steam was shut down under the new launch. Lesson: an automatic stop waits a little and is called off
+  by the next start, rather than acting at once.
+- **A process joined to an app must be able to close (stage 4.6).** Steam's windowless install
+  scripts carried UTDeck's app id, so Lomiri waited for them when the user swiped the app away, and
+  killed it minutes later. Only processes that can show a window and answer a close request are joined
+  to the app.

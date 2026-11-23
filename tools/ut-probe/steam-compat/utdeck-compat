@@ -145,14 +145,15 @@ prepare_prefix() {
         # screen-shaped modes (1200x540, 1600x720, 1920x864, 2000x900) fill it with no black bars.
         # setmode.exe stores the mode in the registry and Wine's explorer applies it at every start
         # of the prefix; it runs only when the setting changes, with the game's display environment
-        # (landscape).
+        # (landscape). What was set is kept in the prefix itself (stage 4.6: each Wine base has its
+        # own prefix, so a game moved to the other base gets its mode there too).
         want=${UTDECK_RESOLUTION:-native}
-        if [ "$(cat "$DATA/utdeck-resolution" 2>/dev/null || echo native)" != "$want" ]; then
+        if [ "$(cat "$WINEPREFIX/utdeck-resolution" 2>/dev/null || echo native)" != "$want" ]; then
             out=$(WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-wayland-0} UTDECK_WAYLAND_LANDSCAPE=1 DISPLAY= \
                   wine "$(winepath -w "$TOOL/setmode.exe" 2>/dev/null)" "$want" 2>&1 | grep -v -i wayland)
             wineserver -w
             printf '  %s\n' "$out" >> "$LOG"
-            case "$out" in *"set and stored"*) echo "$want" > "$DATA/utdeck-resolution" ;; esac
+            case "$out" in *"set and stored"*) echo "$want" > "$WINEPREFIX/utdeck-resolution" ;; esac
         fi
     )
 }

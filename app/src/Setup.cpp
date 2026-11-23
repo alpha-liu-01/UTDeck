@@ -60,6 +60,15 @@ Setup::Setup(QObject* parent) : QObject(parent)
   connect(&m_screen_timer, &QTimer::timeout, this, &Setup::captureScreen);
   m_steam_watch.setInterval(5000);
   connect(&m_steam_watch, &QTimer::timeout, this, &Setup::watchSteam);
+  // The stop of Steam after a game, with Steam's switch off (gameEnded): 45 s later, unless another
+  // game started meanwhile (gameStarting).
+  m_steam_stop.setSingleShot(true);
+  m_steam_stop.setInterval(45000);
+  connect(&m_steam_stop, &QTimer::timeout, this, [this] {
+    check();
+    if (!m_steam_enabled && steamRunning())
+      steamService(QStringLiteral("stop"));
+  });
   check();
 
   // Updated app, set-up phone: the new files are copied quietly.
@@ -189,9 +198,12 @@ void Setup::setSteamEnabled(bool enabled)
 
 void Setup::gameEnded()
 {
-  check();
-  if (!m_steam_enabled && steamRunning())
-    steamService(QStringLiteral("stop"));
+  m_steam_stop.start();
+}
+
+void Setup::gameStarting()
+{
+  m_steam_stop.stop();
 }
 
 void Setup::steamService(const QString& command)

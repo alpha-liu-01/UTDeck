@@ -46,8 +46,10 @@ Page {
         page.frontSeen = false
         page.completedAt = 0
         page.startedAt = Date.now()
-        if (library.play(page.appId))
+        if (library.play(page.appId)) {
+            setup.gameStarting()
             steamLaunch.expect(page.appId)
+        }
     }
 
     // The checks for a launch that went wrong, once a second (not while Steam waits on a dialog).

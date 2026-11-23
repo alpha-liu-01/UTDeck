@@ -58,6 +58,21 @@ esac
     fi
 )
 
+# The prefix's desktop mode (UTDECK_RESOLUTION, stage 4.6), as utdeck-compat sets it for Steam's games:
+# setmode.exe (in UTDeck's compatibility tool) stores the mode, Wine applies it at each start of the
+# prefix; run only when the setting changed, with the game's display environment (landscape).
+want=${UTDECK_RESOLUTION:-native}
+if [ "${2:-}" != --install ] && [ "$(cat "$WINEPREFIX/utdeck-resolution" 2>/dev/null || echo native)" != "$want" ]; then
+    SETMODE=$HOME/.local/share/Steam/compatibilitytools.d/utdeck/setmode.exe
+    if [ -f "$SETMODE" ]; then
+        out=$(. $W/env.sh; WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-wayland-0} UTDECK_WAYLAND_LANDSCAPE=1 DISPLAY=               wine "$(winepath -w "$SETMODE" 2>/dev/null)" "$want" 2>&1 | grep -v -i wayland; wineserver -w)
+        printf '  resolution %s: %s\n' "$want" "$out" >> "$LOG"
+        case "$out" in *"set and stored"*) echo "$want" > "$WINEPREFIX/utdeck-resolution" ;; esac
+    else
+        echo "  resolution $want: setmode.exe not found ($SETMODE)" >> "$LOG"
+    fi
+fi
+
 if [ "${2:-}" = --install ]; then
     SETUP=${3:?own-run.sh ID --install SETUP_EXE}
     # Installers' 32-bit code under FEX, as Steam's install scripts (utdeck-compat): Box64 stalls on
@@ -70,4 +85,12 @@ if [ "${2:-}" = --install ]; then
 fi
 DIR=$(conf DIR) EXE=$(conf EXE)
 [ -n "$DIR" ] && [ -n "$EXE" ] || { echo "  game.conf has no DIR or EXE" >> "$LOG"; exit 1; }
-exec $W/game-run.sh "own-$ID" "$DIR" "$EXE"
+# Launch options (GAME_ARGS, stage 4.6), as utdeck-compat adds them for Steam's games: words, so
+# "-force-vulkan -screen-width 1600" becomes two arguments.
+set -- "own-$ID" "$DIR" "$EXE"
+if [ -n "${GAME_ARGS:-}" ]; then
+    # shellcheck disable=SC2086 # words on purpose
+    set -- "$@" $GAME_ARGS
+    echo "  game arguments added: $GAME_ARGS" >> "$LOG"
+fi
+exec $W/game-run.sh "$@"

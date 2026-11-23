@@ -42,8 +42,11 @@ fi
 # processes join the app (DESKTOP_FILE_HINT) so that Lomiri keeps the app while its library window
 # is hidden. The id comes from the running app's own APP_ID (package_app_version; the short form
 # package_app is enough). Without the app running nothing is set: a game started from its app drawer
-# entry stays a window of its own, as before.
-if [ -z "${UTDECK_APP_ID+x}" ]; then
+# entry stays a window of its own, as before. Nor for Steam's install scripts and own runs
+# (UTDECK_SETUP_RUN, stage 4.6): their processes have no window, and joined to the app they kept
+# Lomiri from closing it when the user swiped its card away (it waited for them, then killed the app
+# minutes later, and the game then started as a window of its own).
+if [ -z "${UTDECK_APP_ID+x}" ] && [ "${UTDECK_SETUP_RUN:-0}" != 1 ]; then
     for p in $(pgrep -x utdeck); do
         id=$(tr '\0' '\n' < /proc/$p/environ 2>/dev/null | sed -n 's/^APP_ID=\([^_]*_[^_]*\).*/\1/p')
         if [ -n "$id" ]; then

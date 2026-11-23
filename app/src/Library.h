@@ -76,6 +76,9 @@ public:
   // "Stop" would.
   Q_INVOKABLE void endGame();
 
+  // The first problem of a known kind a game's log shows, in words (stage 4.3), or "".
+  static QString problemIn(const QString& text);
+
   Q_INVOKABLE void refresh();
   // A Steam game's app id (a number), or "own:<id>" for one of the user's own games (stage 4.5,
   // wine/own/<id>/, started with own-run.sh).
@@ -103,7 +106,6 @@ private:
   void readGameState();
   void summariseEndedGame(const QString& log);
   void readRunningLog();
-  static QString problemIn(const QString& text);
 
   QString m_steam;
   QString m_service;
