@@ -7,7 +7,8 @@
 #include <QTimer>
 #include <QVector>
 
-// The installed Steam games, read from Steam's own files: steamapps/appmanifest_<appid>.acf (name
+// The installed Steam games and the user's own (stage 4.5: wine/own/<id>/game.conf, id "own:<id>"),
+// sorted by name. Steam's are read from Steam's own files: steamapps/appmanifest_<appid>.acf (name
 // and install state) and appcache/librarycache/<appid>/ (the cover). The same rules as
 // tools/ut-probe/steam-library.py (stage 3.8): Steam's runtimes, Proton, the shared
 // redistributables and FEX are not games, and only fully installed games are listed. Nothing of the
@@ -76,7 +77,12 @@ public:
   Q_INVOKABLE void endGame();
 
   Q_INVOKABLE void refresh();
+  // A Steam game's app id (a number), or "own:<id>" for one of the user's own games (stage 4.5,
+  // wine/own/<id>/, started with own-run.sh).
   Q_INVOKABLE bool play(const QString& app_id);
+  Q_INVOKABLE bool isOwn(const QString& app_id) const;
+  // False for one of the user's games whose Wine prefix is not made yet (its first start).
+  Q_INVOKABLE bool isPrepared(const QString& app_id) const;
 
 signals:
   void countChanged();

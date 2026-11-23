@@ -1,0 +1,30 @@
+REGEDIT4
+
+; UTDeck: 3DMark 11 under Wine (stage 2.4, again in stage 4.5). Its .NET interface creates Futuremark
+; SystemInfo's COM class {F9C82199-...}, an out-of-process 32-bit service (FMSISvc.exe) that SystemInfo's
+; setup registers only in the 32-bit registry view (Wow6432Node\CLSID). Windows lets a 64-bit program
+; start such a server; Wine's COM looks only in the 64-bit view, and SystemInfo's own service
+; registration (register_fmsi.bat) leaves no service. So: the class in the 64-bit view, the service's
+; name on its AppID, and the service itself (own process, started on demand, LocalSystem).
+; Imported into the game's prefix with: wine regedit /S 3dmark11-systeminfo.reg
+
+[HKEY_LOCAL_MACHINE\Software\Classes\CLSID\{F9C82199-B002-41B4-8B00-0F1ECA89425F}]
+@="Futuremark SystemInfo v2 Class"
+"AppID"="{1BF1C030-CE12-4A8A-A4E1-EDDCE7176799}"
+
+[HKEY_LOCAL_MACHINE\Software\Classes\CLSID\{F9C82199-B002-41B4-8B00-0F1ECA89425F}\LocalService]
+@="FMSISvc"
+
+[HKEY_LOCAL_MACHINE\Software\Classes\CLSID\{F9C82199-B002-41B4-8B00-0F1ECA89425F}\ProgID]
+@="FuturemarkSystemInfo2.1"
+
+[HKEY_LOCAL_MACHINE\Software\Classes\AppID\{1BF1C030-CE12-4A8A-A4E1-EDDCE7176799}]
+"LocalService"="FMSISvc"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\FMSISvc]
+"Type"=dword:00000010
+"Start"=dword:00000003
+"ErrorControl"=dword:00000001
+"ImagePath"="\"C:\\Program Files (x86)\\Futuremark\\Futuremark SystemInfo\\FMSISvc.exe\""
+"ObjectName"="LocalSystem"
+"DisplayName"="Futuremark SystemInfo Service"

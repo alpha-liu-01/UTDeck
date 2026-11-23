@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """UTDeck stage 3.2b: check a game folder before its first start. Reads only.
 
-    python3 -I gamecheck.py GAME_DIR
+    python3 -I gamecheck.py GAME_DIR              the full check (our own tests)
+    python3 -I gamecheck.py --programs GAME_DIR   the Windows files and imports only (the app)
 
 Prints:
 - every Windows executable and DLL with its machine (x86, x86-64, ARM64) and bitness;
@@ -9,7 +10,12 @@ Prints:
 - steam_api.dll / steam_api64.dll: whether it carries an Authenticode signature by Valve (a Steam
   emulator put in its place is not signed);
 - any known DRM-bypass marker found in any file of the folder (Steam emulators, crack groups),
-  with the file and the marker. UTDeck does not run games with one (stage 3 rules).
+  with the file and the marker. We do not run games with one in our own tests (stage 3 rules).
+
+--programs (stage 4.5): only the first two parts, for UTDeck's "Add a game" (its list of programs
+to choose from). The app does not check for DRM bypasses (the maintainer, 2026-11-23: UTDeck, like
+Wine itself, does not police what its users run); this mode also does not read every file of the
+game, which for a large game took long.
 """
 import os
 import struct
@@ -82,7 +88,10 @@ def scan(path):
     return found
 
 
-root = sys.argv[1]
+args = sys.argv[1:]
+programs_only = "--programs" in args
+args = [a for a in args if a != "--programs"]
+root = args[0]
 pes, hits = [], []
 for dirpath, _, files in os.walk(root):
     for name in sorted(files):
@@ -93,6 +102,8 @@ for dirpath, _, files in os.walk(root):
             info = pe_info(d)
             if info:
                 pes.append((rel, info))
+        if programs_only:
+            continue
         try:
             m = scan(path)
         except OSError:
@@ -107,6 +118,8 @@ print("Imports of the .exe files:")
 for rel, (_, _, names, _, _) in pes:
     if rel.lower().endswith(".exe"):
         print(f"  {rel}: {' '.join(sorted(set(n.lower() for n in names)))}")
+if programs_only:
+    sys.exit(0)
 for rel, (_, _, _, d, dirs) in pes:
     if os.path.basename(rel).lower() in ("steam_api.dll", "steam_api64.dll"):
         print(f"Steam API: {rel}: {'signed by Valve' if signed_by_valve(d, dirs) else 'NOT signed by Valve'}")

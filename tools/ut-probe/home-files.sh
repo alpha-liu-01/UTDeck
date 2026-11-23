@@ -36,7 +36,7 @@ cp "$T/wine-env.sh" "$P/wine/env.sh"
 mkdir -p "$P/wine/padprobe"
 cp "$REPO_DIR/build/win/gptest.exe" "$P/wine/padprobe/"
 for f in prefix-dlls.sh get-runtime.sh runtimes.list defaults.env game-run.sh utdeck-boost.py \
-         uclamp-show.py utdeck-pause.py utdeck-setupwatch.py lifecycle-watch.sh controllers.reg padlayout.py; do
+         uclamp-show.py utdeck-pause.py utdeck-setupwatch.py lifecycle-watch.sh controllers.reg padlayout.py own-run.sh gamecheck.py; do
     cp "$T/$f" "$P/wine/"
 done
 

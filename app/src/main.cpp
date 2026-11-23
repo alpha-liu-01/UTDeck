@@ -17,6 +17,7 @@
 
 #include "Controllers.h"
 #include "Library.h"
+#include "OwnGames.h"
 #include "Setup.h"
 #include "SteamLaunch.h"
 
@@ -93,12 +94,15 @@ int main(int argc, char** argv)
   SteamLaunch steam_launch;
   // The connected controllers as games see them (stage 4.4); read only while their page is open.
   Controllers controllers;
+  // The user's own games: adding, editing, removing (stage 4.5).
+  OwnGames own_games;
 
   QQmlApplicationEngine engine;
   engine.rootContext()->setContextProperty(QStringLiteral("library"), &library);
   engine.rootContext()->setContextProperty(QStringLiteral("setup"), &setup);
   engine.rootContext()->setContextProperty(QStringLiteral("steamLaunch"), &steam_launch);
   engine.rootContext()->setContextProperty(QStringLiteral("controllers"), &controllers);
+  engine.rootContext()->setContextProperty(QStringLiteral("ownGames"), &own_games);
   engine.addImageProvider(QStringLiteral("steamdialog"), new SteamDialogImageProvider(&steam_launch));
   engine.addImageProvider(QStringLiteral("qr"), new QrImageProvider(&setup));
   engine.addImageProvider(QStringLiteral("steamscreen"), new ScreenImageProvider(&setup));

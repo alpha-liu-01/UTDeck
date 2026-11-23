@@ -143,6 +143,52 @@ esac
 [ "${UTDECK_SETUP_RUN:-0}" = 1 ] && python3 "$W/utdeck-setupwatch.py" "$G" "$B.log" &
 wait $G
 rc=$?
+# A program that restarts itself (stage 4.5: wiliwili after its language was changed) ends its first
+# process while a new one runs on in the same prefix: the game is followed until no Windows program of
+# this prefix runs any more. Wine's own background programs, Steam's launcher and crash reporters do not
+# count. A Windows program's name is looked for in its process name and the first two words of its
+# command line, whichever ends in .exe: the kernel cuts process names to 15 characters (3DMark's
+# "3DMark_11_v103_installer.exe" is "3DMark_11_v103_", its command line names it), while a 64-bit
+# program's command line can start with Wine's loader (wiliwili's process name names it).
+# Only programs started at most 15 s before the first process ended, or later, are the game going on:
+# a restart starts its new process as the old one ends, while a service or helper started long before,
+# as the game ran (3DMark 11's SystemInfo service FMSISvc.exe and its hardware scan fmsiscan.exe, stage
+# 4.5), is not the game. Their parent cannot tell: Wine starts Windows programs detached (systemd).
+# And a game the user swiped away (Wine patch 0019's .closed file) is not followed at all: whatever of
+# its prefix is left is ended, as the starting page's "End the game" does.
+TICKS=$(getconf CLK_TCK)
+ended_at=$(( $(cut -d. -f1 /proc/uptime) - 15 ))
+prefix_program() {
+    for p in /proc/[0-9]*; do
+        c=
+        for n in "$(cat "$p/comm" 2>/dev/null)" $({ tr '\0' '\n' < "$p/cmdline" | head -2 | tr ' ' '?'; } 2>/dev/null); do
+            n=${n##*\\}; n=${n##*/}
+            case "$n" in *.exe|*.EXE) c=$n; break ;; esac
+        done
+        [ -n "$c" ] || continue
+        case "$c" in
+        services.exe|winedevice.exe|plugplay.exe|svchost.exe|explorer.exe|rpcss.exe|tabtip.exe|conhost.exe) continue ;;
+        start.exe|wineboot.exe|winemenubuilder.exe|rundll32.exe|steam.exe|UnityCrashHandler64.exe|UnityCrashHandler32.exe|iscriptevaluator.exe) continue ;;
+        *.exe|*.EXE) ;;
+        *) continue ;;
+        esac
+        # Its start, in s since boot: field 22 of stat, counted after the name in parentheses (a name
+        # may hold spaces).
+        start=$({ sed 's/.*) //' "$p/stat" | awk -v t="$TICKS" '{print int($20 / t)}'; } 2>/dev/null)
+        [ -n "$start" ] && [ "$start" -ge "$ended_at" ] || continue
+        { tr '\0' '\n' < "$p/environ"; } 2>/dev/null | grep -qxF "WINEPREFIX=$WINEPREFIX" && { echo "${p#/proc/} $c"; return; }
+    done
+}
+followed=
+if [ -f "$UTDECK_FOCUS_FILE.closed" ]; then
+    echo "the first process ended ($rc) after the game was closed from outside: the rest of its prefix is ended" >> $B.log
+    wineserver -k 2>/dev/null
+fi
+while next=$(prefix_program); [ -n "$next" ]; do
+    [ -z "$followed" ] && echo "the first process ended ($rc), followed on: ${next#* } (pid ${next%% *})" >> $B.log
+    followed=1
+    sleep 2
+done
 # The game's process has ended: the app's library comes back (only if the file is still this run's).
 read -r _ pid _ < "$STATE/game" 2>/dev/null && [ "$pid" = $$ ] && rm -f "$STATE/game"
 [ -n "${BP:-}" ] && wait $BP   # its summary line, within 2 s of the game's end

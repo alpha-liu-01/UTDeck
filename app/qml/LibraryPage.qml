@@ -1,19 +1,25 @@
 import QtQuick
 import Lomiri.Components
 
-// The library: the installed Steam games as a grid of covers. A tap starts the game through hidden
-// Steam (Library.play). Read again whenever the app comes to the front, so games installed or
-// removed meanwhile show up.
+// The library: the installed Steam games and the user's own (stage 4.5) as a grid of covers. A tap
+// starts the game (Library.play: through hidden Steam, or the user's with own-run.sh). Read again
+// whenever the app comes to the front, so games installed or removed meanwhile show up.
 Page {
     id: page
 
     property string starting: ""
+    property bool startingOwn: false
 
     header: PageHeader {
         id: pageHeader
 
         title: "UTDeck"
         trailingActionBar.actions: [
+            Action {
+                iconName: "add"
+                text: i18n.tr("Add a game")
+                onTriggered: page.pageStack.push(Qt.resolvedUrl("AddGamePage.qml"))
+            },
             Action {
                 iconName: "settings"
                 text: i18n.tr("Settings")
@@ -63,9 +69,15 @@ Page {
         delegate: GameCard {
             width: grid.cellWidth
             height: grid.cellHeight
+            // One of the user's own games (stage 4.5): a long press edits or removes it.
+            onPressAndHold: {
+                if (library.isOwn(model.appId))
+                    page.pageStack.push(Qt.resolvedUrl("EditGamePage.qml"), {appId: model.appId})
+            }
             onClicked: {
                 if (library.play(model.appId)) {
                     page.starting = model.title
+                    page.startingOwn = library.isOwn(model.appId)
                     startingTimer.restart()
                     // The starting page (stage 4.3) follows this launch until the game's window is in front.
                     steamLaunch.expect(model.appId)
@@ -80,7 +92,7 @@ Page {
         anchors.centerIn: grid
         width: grid.width - units.gu(4)
         visible: library.count === 0
-        text: i18n.tr("No installed Steam games found in %1.").arg(library.steamFolder)
+        text: i18n.tr("No games yet. Steam's installed games show up here, and so do your own (copied into Documents/UTDeck/Games).")
         wrapMode: Text.Wrap
         horizontalAlignment: Text.AlignHCenter
         color: theme.palette.normal.backgroundSecondaryText
@@ -108,7 +120,8 @@ Page {
                 margins: units.gu(2)
             }
             text: library.lastError !== "" ? library.lastError
-                  : page.starting !== "" ? i18n.tr("Starting %1 through Steam...").arg(page.starting)
+                  : page.starting !== "" ? (page.startingOwn ? i18n.tr("Starting %1...").arg(page.starting)
+                                                             : i18n.tr("Starting %1 through Steam...").arg(page.starting))
                   : ""
             color: library.lastError !== "" ? theme.palette.normal.negative
                                             : theme.palette.normal.foregroundText

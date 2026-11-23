@@ -24,6 +24,33 @@ const QSet<QString> kToolIds = {"228980",  "1070560", "1391110", "1628350",
 const QRegularExpression kToolNames(
     QStringLiteral("^(Steam Linux Runtime|Proton|Steamworks Common Redistributables|FEX$|SteamVR)"));
 
+// The user's own games (stage 4.5): wine/own/<id>/, started by own-run.sh. In the app their id is
+// "own:<id>" (Steam's are numbers); game-run.sh labels their runs "own-<id>".
+const QString kOwnPrefix = QStringLiteral("own:");
+const QRegularExpression kOwnId(QStringLiteral("^[a-z0-9][a-z0-9._-]{0,63}$"));
+
+QString OwnFolder()
+{
+  return QDir::homePath() + QStringLiteral("/utdeck-probe/wine/own");
+}
+
+// NAME=value lines of a game.conf (read as text).
+QHash<QString, QString> ConfFields(const QString& path)
+{
+  QHash<QString, QString> fields;
+  QFile file(path);
+  if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+    return fields;
+  while (!file.atEnd())
+  {
+    const QString line = QString::fromUtf8(file.readLine()).trimmed();
+    const int eq = line.indexOf(QLatin1Char('='));
+    if (eq > 0 && !line.startsWith(QLatin1Char('#')) && !fields.contains(line.left(eq)))
+      fields.insert(line.left(eq), line.mid(eq + 1));
+  }
+  return fields;
+}
+
 // The first value of each key in an .acf file: the app's own, not a depot's further down.
 QHash<QString, QString> ManifestFields(const QString& path)
 {
@@ -149,6 +176,23 @@ void Library::refresh()
     game.cover = CoverFor(m_steam, game.app_id);
     games.append(game);
   }
+  // The user's own games (stage 4.5), shown whether Steam is set up or not.
+  const QDir own(OwnFolder());
+  for (const QString& id : own.entryList(QDir::Dirs | QDir::NoDotAndDotDot))
+  {
+    if (!kOwnId.match(id).hasMatch())
+      continue;
+    const QHash<QString, QString> fields = ConfFields(own.filePath(id) + QStringLiteral("/game.conf"));
+    if (fields.value(QStringLiteral("EXE")).isEmpty())
+      continue;
+    Game game;
+    game.app_id = kOwnPrefix + id;
+    game.title = fields.value(QStringLiteral("NAME"), id).simplified();
+    const QString cover = fields.value(QStringLiteral("COVER"));
+    if (!cover.isEmpty() && QFileInfo(cover).isFile())
+      game.cover = QUrl::fromLocalFile(cover).toString();
+    games.append(game);
+  }
   std::sort(games.begin(), games.end(), [](const Game& a, const Game& b) {
     return QString::localeAwareCompare(a.title, b.title) < 0;
   });
@@ -161,8 +205,45 @@ void Library::refresh()
     emit countChanged();
 }
 
+bool Library::isOwn(const QString& app_id) const
+{
+  return app_id.startsWith(kOwnPrefix);
+}
+
+bool Library::isPrepared(const QString& app_id) const
+{
+  // A game whose Wine prefix exists: its first start (about two minutes) is behind it.
+  if (!isOwn(app_id))
+    return true;
+  return QFileInfo::exists(OwnFolder() + QLatin1Char('/') + app_id.mid(kOwnPrefix.size()) +
+                           QStringLiteral("/pfx/drive_c"));
+}
+
 bool Library::play(const QString& app_id)
 {
+  if (isOwn(app_id))
+  {
+    const QString id = app_id.mid(kOwnPrefix.size());
+    const QString script = QDir::homePath() + QStringLiteral("/utdeck-probe/wine/own-run.sh");
+    if (!kOwnId.match(id).hasMatch())
+      return false;
+    if (!QFileInfo(script).isExecutable())
+    {
+      setLastError(tr("UTDeck's start script is not installed (%1).").arg(script));
+      return false;
+    }
+    // As a Steam game: a unit outside the app, so the game does not end with it; one of that name
+    // still running means the game is already starting.
+    if (!QProcess::startDetached(QStringLiteral("systemd-run"),
+                                 {QStringLiteral("--user"), QStringLiteral("--collect"), QStringLiteral("--quiet"),
+                                  QStringLiteral("--unit=utdeck-play-own-") + id, script, id}))
+    {
+      setLastError(tr("Could not start the game (systemd-run failed to start)."));
+      return false;
+    }
+    setLastError({});
+    return true;
+  }
   static const QRegularExpression digits(QStringLiteral("^\\d+$"));
   if (!digits.match(app_id).hasMatch())
     return false;
@@ -213,6 +294,8 @@ void Library::readGameState()
       game = parts[0];
       if (game.startsWith(QStringLiteral("steam-")))
         game = game.mid(6);
+      else if (game.startsWith(QStringLiteral("own-")))
+        game = kOwnPrefix + game.mid(4);
       // Steam's own runs (app id 0) are never the game (stage 4.3; utdeck-compat writes no file for
       // them any more).
       if (game == QLatin1String("0"))

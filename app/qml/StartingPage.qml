@@ -24,6 +24,11 @@ Page {
     property bool failSignIn: false
     property bool failEndable: false
     property double completedAt: 0
+    // One of the user's own games (stage 4.5): no Steam steps; its first start prepares its Wine folder.
+    readonly property bool own: library.isOwn(appId)
+    property bool firstStart: false
+
+    Component.onCompleted: page.firstStart = page.own && !library.isPrepared(page.appId)
 
     function fail(title, detail, signIn, endable) {
         page.failTitle = title
@@ -57,6 +62,13 @@ Page {
         if (page.gameSeen)
             return
         const waited = (Date.now() - page.startedAt) / 1000
+        if (page.own) {
+            // No Steam: own-run.sh prepares the prefix (about two minutes the first time), then starts it.
+            if (waited > 240)
+                page.fail(i18n.tr("The game did not start."),
+                          i18n.tr("Its start script ran for four minutes without the game appearing. What it did is in utdeck-probe/wine/own/%1/own-run.log.").arg(page.appId.substring(4)))
+            return
+        }
         const ours = steamLaunch.expectedAppId === page.appId
         if (ours && steamLaunch.task === "Cancelled") {
             page.fail(i18n.tr("The game was not started."),
@@ -81,6 +93,8 @@ Page {
     function stepText() {
         if (library.runningGame === page.appId)
             return i18n.tr("Starting the game...")
+        if (page.own)
+            return page.firstStart ? i18n.tr("Preparing Wine for this game...") : i18n.tr("Starting the game...")
         if (steamLaunch.expectedAppId === page.appId && steamLaunch.task !== "") {
             switch (steamLaunch.task) {
             case "ProcessingInstallScript":
@@ -109,6 +123,10 @@ Page {
     }
 
     function hintText() {
+        if (page.own)
+            return page.firstStart && library.runningGame !== page.appId
+                   ? i18n.tr("The first start of a game prepares its own Windows folder (DirectX for Vulkan, .NET): about two minutes.")
+                   : ""
         if (steamLaunch.expectedAppId === page.appId && steamLaunch.task === "ProcessingInstallScript")
             return i18n.tr("The first start of a game can take several minutes: Windows parts such as Visual C++ and DirectX are installed for it.")
         if (!setup.steamRunning || !setup.steamSignedIn)

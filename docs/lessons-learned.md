@@ -1328,3 +1328,24 @@ Problems met while building UTDeck on the Redmi Note 12 5G (stone). Details in `
   was still running (its log had no "exit" line yet); installing stops the app, the game went on
   without it, and its library would not have come back at the game's end. Lesson: check the game
   file first; `install-click.sh` now refuses while UTDeck's game file names a running game.
+- **A memory guard must watch the right process (stage 4.5).** A diagnostic run meant to stop
+  wiliwili at 1.8 GB found its process with `pgrep -f 'wiliwili.exe$'`, which matched a 1 MB Wine
+  helper whose command line also ends in the program's name. The game itself grew unwatched to 5.7 GB
+  until the kernel's out-of-memory killer ended it (stone survived; its swap was nearly full). Lesson:
+  check the size the guard reads before trusting it, and stop at the first reading that makes no
+  sense. The second attempt failed too: it picked the process by its Windows path in the command
+  line, tested against a made-up process line; on this Wine the game's command line starts with the
+  loader's path and only its process name is `wiliwili.exe`, so the guard saw nothing and the game
+  reached 4.6 GB. So: test a selector against the real process, and put the guard on what cannot be
+  missed, the phone's free memory (stop the prefix's Wine below 1.5 GB available).
+- **A program stuck at 100 % CPU in FEX may be doing x87 maths (stage 4.5).** wiliwili drew nothing and
+  ate memory; its main thread was never in a system call, so it had to be frozen (`SIGSTOP`) to read its
+  stack, which was all FEX's software 80-bit maths (`cephes_f128_sinl`, `softfloat_*F128`).
+  `FEX_X87REDUCEDPRECISION=1` made it start in a second. Lesson: when an x86 program spins under FEX,
+  look up the stack's FEX offsets in the unstripped build before suspecting the program.
+- **What a path learned once must reach every new path (stage 4.5).** Stage 2.4 found that Box64
+  stalls on self-unpacking installers and that FEX runs them, and Steam's install scripts got FEX for
+  it; the new "add a game from its installer" path started 3DMark's installer with the default
+  (Box64) and it spun for 6 minutes with no window. Lesson: a new way of running something reuses the
+  settings of the closest existing way (here `utdeck-compat`'s for install scripts), and the notes are
+  searched for the program's name before its first run.

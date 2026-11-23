@@ -1,0 +1,41 @@
+From: UTDeck
+Subject: [PATCH] winewayland: keep a window of UTDeck's app landscape
+
+Lomiri first configures a new window of UTDeck's app as fullscreen portrait (1080x2400 on stone)
+and only then applies the app's orientation (landscape-only, from its desktop file) with a
+landscape size. Patch 0003 takes the portrait size for a rotated screen, and a resizable window
+(wiliwili, a GLFW program, stage 4.5) followed it; Wine then reported an ordinary 1080x2400 window
+and Lomiri sent nothing more, so the program stayed portrait in the left part of the landscape
+screen. A fixed-size game window (Celceta) never followed and got the landscape size.
+
+A window of UTDeck's app (UTDECK_APP_ID set, patch 0016) with the landscape monitor
+(UTDECK_WAYLAND_LANDSCAPE=1, patch 0003) no longer follows a rotation into portrait. Programs
+started outside UTDeck keep following the phone.
+---
+diff --git a/dlls/winewayland.drv/window.c b/dlls/winewayland.drv/window.c
+index cbacf6aa..ca647cee 100644
+--- a/dlls/winewayland.drv/window.c
++++ b/dlls/winewayland.drv/window.c
+@@ -693,6 +693,22 @@ static void wayland_configure_window(HWND hwnd)
+         BOOL rotated = width && height &&
+                        (width > height) != (surface_rect.right - surface_rect.left >
+                                             surface_rect.bottom - surface_rect.top);
++        /* Never into portrait for a window of UTDeck's app (UTDECK_APP_ID, patch 0016) with the
++         * landscape monitor (UTDECK_WAYLAND_LANDSCAPE): the app is landscape-only, so a portrait
++         * size is Lomiri's first configure, sent before it applies the app's orientation (the
++         * landscape one follows). A resizable window that followed it stayed portrait for good,
++         * as Lomiri sent nothing more (wiliwili, stage 4.5). */
++        static int landscape_app = -1;
++        if (landscape_app < 0)
++        {
++            const char *app_id = getenv("UTDECK_APP_ID"), *landscape = getenv("UTDECK_WAYLAND_LANDSCAPE");
++            landscape_app = app_id && *app_id && landscape && atoi(landscape);
++        }
++        if (rotated && landscape_app && width < height)
++        {
++            TRACE("hwnd=%p UTDeck's app is landscape: not following %dx%d\n", hwnd, width, height);
++            rotated = FALSE;
++        }
+         if (!rotated || data->fill_on) flags |= SWP_NOSIZE;
+         else TRACE("hwnd=%p fullscreen window follows the rotation to %dx%d\n", hwnd, width, height);
+     }
