@@ -13,9 +13,13 @@
 set -eu
 REPO_DIR=$(cd "$(dirname "$0")/../.." && pwd)
 W=/home/phablet/utdeck-probe/wine
+# Free space first (stage 4.3: stone's disk ran full in the middle of a push, which left a half-unpacked
+# runtime and an empty steam-run.sh behind). The archive plus the unpacked runtime: about 1.5 GB.
+free=$(adb shell "df -m /home/phablet | awk 'NR == 2 {print \$4}'" | tr -d '\r\n ')
+[ "${free:-0}" -ge 1600 ] || { echo "not enough space on the phone: ${free:-?} MB free, 1600 MB needed; nothing was changed" >&2; exit 1; }
 adb push -q "$REPO_DIR/tools/ut-probe/wine-env.sh" "$W/env.sh" > /dev/null
 adb push -q "$REPO_DIR/tools/ut-probe/prefix-dlls.sh" "$W/prefix-dlls.sh" > /dev/null
-adb push -q "$REPO_DIR/tools/ut-probe/get-runtime.sh" "$REPO_DIR/tools/ut-probe/runtimes.list" "$REPO_DIR/tools/ut-probe/defaults.env" "$REPO_DIR/tools/ut-probe/game-run.sh" "$REPO_DIR/tools/ut-probe/utdeck-boost.py" "$REPO_DIR/tools/ut-probe/uclamp-show.py" "$REPO_DIR/tools/ut-probe/utdeck-pause.py" "$REPO_DIR/tools/ut-probe/lifecycle-watch.sh" "$W/" > /dev/null
+adb push -q "$REPO_DIR/tools/ut-probe/get-runtime.sh" "$REPO_DIR/tools/ut-probe/runtimes.list" "$REPO_DIR/tools/ut-probe/defaults.env" "$REPO_DIR/tools/ut-probe/game-run.sh" "$REPO_DIR/tools/ut-probe/utdeck-boost.py" "$REPO_DIR/tools/ut-probe/uclamp-show.py" "$REPO_DIR/tools/ut-probe/utdeck-pause.py" "$REPO_DIR/tools/ut-probe/utdeck-setupwatch.py" "$REPO_DIR/tools/ut-probe/lifecycle-watch.sh" "$W/" > /dev/null
 adb shell "chmod +x $W/prefix-dlls.sh $W/get-runtime.sh $W/game-run.sh"
 
 if [ "${1:-}" = proton ]; then

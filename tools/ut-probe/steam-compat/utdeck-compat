@@ -87,6 +87,12 @@ prepare_prefix() {
         # ("d3d11.dll ... not found", exit 53). Also brings a prefix up to date after a runtime update.
         rt=$(head -1 "$(dirname "$(command -v wine)")/../BUILD-INFO" 2>/dev/null)
         if [ "$(cat "$DATA/utdeck-prefix-dlls" 2>/dev/null)" != "$rt" ]; then
+            # The prefix brought up to this runtime first, without any window (stage 4.3: after a
+            # runtime update Wine's "The Wine configuration is being updated" notice came up over
+            # UTDeck's starting page, at the game's start): Wine's display drivers off for this step.
+            WINEDLLOVERRIDES="winewayland.drv,winex11.drv=d;mscoree,mshtml=;winemenubuilder.exe=d" \
+                wineboot -u > /dev/null 2>&1; wineserver -w
+            echo "  prefix updated to the runtime, without a window" >> "$LOG"
             $W/prefix-dlls.sh > /dev/null && echo "$rt" > "$DATA/utdeck-prefix-dlls" &&
                 echo "  DXVK and VKD3D-Proton put in ($rt)" >> "$LOG"
         fi
@@ -247,6 +253,10 @@ run|waitforexitandrun)
     case "$1" in
     */iscriptevaluator.exe) export HODLL=libwow64fex.dll UTDECK_PAUSE=0 UTDECK_SETUP_RUN=1 ;;
     esac
+    # Steam's own runs (app id 0: d3ddriverquery64.exe, which it starts after signing in) are no game
+    # either (stage 4.3): marked "the running game", their end once looked like the game ending to
+    # UTDeck, which then stopped Steam (its switch off) in the middle of a game's launch.
+    [ "$APPID" = 0 ] && export UTDECK_PAUSE=0 UTDECK_SETUP_RUN=1
     prepare_prefix
     case "$1" in */iscriptevaluator.exe) ;; *) fix_vc_runtime ;; esac
     # game-run.sh sets the rest of the environment (env.sh, Wayland, overrides) and the logs, in

@@ -33,7 +33,7 @@ for f in compatibilitytool.vdf toolmanifest.vdf utdeck-compat; do cp "$T/steam-c
 # The Wine runtime's scripts and defaults (runtime-push.sh's list); env.sh is wine-env.sh.
 cp "$T/wine-env.sh" "$P/wine/env.sh"
 for f in prefix-dlls.sh get-runtime.sh runtimes.list defaults.env game-run.sh utdeck-boost.py \
-         uclamp-show.py utdeck-pause.py lifecycle-watch.sh; do
+         uclamp-show.py utdeck-pause.py utdeck-setupwatch.py lifecycle-watch.sh; do
     cp "$T/$f" "$P/wine/"
 done
 

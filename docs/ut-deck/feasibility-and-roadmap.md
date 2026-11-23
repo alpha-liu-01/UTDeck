@@ -551,6 +551,11 @@ Added in stage 4 (2026-11-21, the maintainer): **stone is the test device for th
 BETOP T6 is not reliable on the Nothing Phone (1)), and two controllers reach no game on either
 phone, a DualShock clone and a genuine DualSense: a starting point for this stage.
 
+Moved 2026-11-22 (the maintainer): **real controllers are stage 4.4**
+([stage4.4-controllers.md](stage4.4-controllers.md)), since stage 4's exit needs a gamepad. This stage
+keeps the touch controls, the virtual controller, the in-game menu, the overlay and the on-screen
+keyboard.
+
 ### Stage 6. Packaging and release
 
 1. Click, unconfined, with the justification for the OpenStore review (gamepads, Wine's process

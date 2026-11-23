@@ -22,6 +22,8 @@ bool CaptureXScreen(const char* display, XScreenImage* image);
 // (XTest), as a real mouse and keyboard would:
 // a left click at X,Y of the screen;
 bool XClick(const char* display, int x, int y);
+// STEPS turns of the mouse wheel at X,Y (negative: up), as one notch each;
+bool XScroll(const char* display, int x, int y, int steps);
 // the characters of TEXT typed (a character missing from the screen's keyboard map gets a spare key
 // for the moment); nothing of the text is kept;
 bool XTypeText(const char* display, const std::u32string& text);

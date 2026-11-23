@@ -120,6 +120,9 @@ esac
 # Pause (stage 3.6): UTDECK_PAUSE=1 freezes the game's Windows processes while Lomiri's lock screen
 # is up, the screen is off or another app is in front, and wakes them on return; off unless set.
 [ "${UTDECK_PAUSE:-0}" = 1 ] && { python3 "$W/utdeck-pause.py" "$G" "$B.log" & PP=$!; }
+# Install scripts (stage 4.3): a Visual C++ installer that logged its exit but never ends is ended
+# (utdeck-setupwatch.py), so the install script and the game's first launch go on.
+[ "${UTDECK_SETUP_RUN:-0}" = 1 ] && python3 "$W/utdeck-setupwatch.py" "$G" "$B.log" &
 wait $G
 rc=$?
 # The game's process has ended: the app's library comes back (only if the file is still this run's).

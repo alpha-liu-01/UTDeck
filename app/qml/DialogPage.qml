@@ -11,6 +11,14 @@ Page {
         id: pageHeader
 
         title: i18n.tr("Steam is asking")
+        // No back arrow: Cancel leaves the question unanswered (and closes it on hidden Steam's side).
+        leadingActionBar.actions: [
+            Action {
+                iconName: "close"
+                text: i18n.tr("Cancel")
+                onTriggered: steamLaunch.dismiss()
+            }
+        ]
     }
 
     Label {
@@ -23,7 +31,7 @@ Page {
             margins: units.gu(2)
         }
         wrapMode: Text.Wrap
-        text: i18n.tr("Steam waits for your answer before it starts the game. Tap the dialog below as you would on a computer.")
+        text: i18n.tr("Steam waits for your answer before it starts the game. Tap the dialog below as you would on a computer; drag up or down to scroll.")
     }
 
     Image {
@@ -41,12 +49,29 @@ Page {
         fillMode: Image.PreserveAspectFit
         cache: false
 
+        // A tap is a click on the dialog; a drag up or down scrolls it (one wheel notch per 3 grid units).
         MouseArea {
+            property real startY: 0
+            property real lastY: 0
+            property bool dragged: false
+
+            function fx(mx) { return (mx - (dialog.width - dialog.paintedWidth) / 2) / dialog.paintedWidth }
+            function fy(my) { return (my - (dialog.height - dialog.paintedHeight) / 2) / dialog.paintedHeight }
+
             anchors.fill: parent
-            onClicked: (mouse) => {
-                const x0 = (dialog.width - dialog.paintedWidth) / 2
-                const y0 = (dialog.height - dialog.paintedHeight) / 2
-                steamLaunch.tap((mouse.x - x0) / dialog.paintedWidth, (mouse.y - y0) / dialog.paintedHeight)
+            onPressed: (mouse) => { startY = mouse.y; lastY = mouse.y; dragged = false }
+            onPositionChanged: (mouse) => {
+                if (Math.abs(mouse.y - startY) > units.gu(2))
+                    dragged = true
+                const steps = Math.trunc((lastY - mouse.y) / units.gu(3))
+                if (dragged && steps !== 0) {
+                    steamLaunch.scroll(fx(mouse.x), fy(mouse.y), steps)
+                    lastY -= steps * units.gu(3)
+                }
+            }
+            onReleased: (mouse) => {
+                if (!dragged)
+                    steamLaunch.tap(fx(mouse.x), fy(mouse.y))
             }
         }
     }

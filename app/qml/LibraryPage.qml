@@ -67,6 +67,10 @@ Page {
                 if (library.play(model.appId)) {
                     page.starting = model.title
                     startingTimer.restart()
+                    // The starting page (stage 4.3) follows this launch until the game's window is in front.
+                    steamLaunch.expect(model.appId)
+                    page.pageStack.push(Qt.resolvedUrl("StartingPage.qml"),
+                                        {appId: model.appId, title: model.title, cover: model.cover})
                 }
             }
         }

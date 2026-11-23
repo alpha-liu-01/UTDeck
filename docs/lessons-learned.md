@@ -1275,3 +1275,35 @@ Problems met while building UTDeck on the Redmi Note 12 5G (stone). Details in `
   and its output carries a carriage return, so `[ "$s" = active ]` never matched. A second test then
   started on top of the first. Lesson: compare adb's output after `tr -d '\r\n '`, and test a wait
   loop once on something known to be running.
+- **Check the phone's free space before writing to it (stage 4.3).** stone's disk was full (19 MB
+  of 101 GB); `runtime-push.sh` failed halfway, leaving a half-unpacked runtime, and an `adb push`
+  of `steam-run.sh` replaced the file with an empty one, so Steam did not start. Lesson: a script
+  that writes much to the phone checks the free space first and stops before changing anything
+  (`runtime-push.sh` now needs 1,600 MB), and older versions kept "for going back" are counted and
+  cleared from time to time, with the maintainer's OK.
+- **Not every Windows program Steam starts is the game (stage 4.3).** Steam runs its own graphics
+  check (`d3ddriverquery64.exe`, app id 0) through the compatibility tool after signing in. UTDeck
+  took its end for the game's end and, with Steam's switch off, stopped Steam in the middle of the
+  real game's install script. Lesson: classify every run of the compatibility tool (the game, its
+  install scripts, Steam's own tools) and let only the game drive "the game has ended".
+- **A failed game does not always end (stage 4.3).** Without Vulkan, Ys: Memories of Celceta's game
+  spun at a full core after DXVK's error instead of quitting, and its launcher window had already
+  counted as "the game's window in front". A check that waits for the game to end never fires then.
+  Lesson: watch the running game's own log for fatal errors, and offer to end the game.
+- **Not every Steam dialog is a window of its own (stage 4.3).** The "Controller using Steam Input"
+  notice is a separate window, but a publisher's agreement (ShowEula) is a box inside Steam's main
+  window, which UTDeck keeps closed: the "Steam is asking" page showed a black rectangle. And the
+  hidden screen, sized like the phone (1200x540), cut the agreement's buttons off. Lesson: when
+  Steam waits for an answer, look for where the question is really drawn (open the main window if
+  nothing is mapped), and give the hidden screen the size Steam's own windows expect (1280x800).
+- **Steam can save an answer without passing it on (stage 4.3).** A publisher's agreement accepted in
+  Steam's main window was saved for the account (`localconfig.vdf`), but the launch that waited for
+  it stayed waiting for good, and Steam's log said nothing. Lesson: do not rely on one signal for
+  "the user answered"; check where the answer is stored, and have a way out (Cancel) of every wait
+  the user is put in.
+- **A vendor kernel's version says little about its drivers (stage 4.4 planning).** Planning the
+  controller stage, I said the phones' Linux 5.4 kernels were too old for the DualSense
+  (`hid-playstation`, upstream 5.12) and Switch Pro (`hid-nintendo`, 5.16) drivers. The Dolphin
+  port's stage 0 had already read stone's `/proc/config.gz`: both drivers are there (backported).
+  Lesson: read the kernel's own configuration (and earlier notes) before reasoning from its
+  version number.

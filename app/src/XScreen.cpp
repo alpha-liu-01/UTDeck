@@ -90,6 +90,23 @@ bool XClick(const char* display_name, int x, int y)
   return true;
 }
 
+bool XScroll(const char* display_name, int x, int y, int steps)
+{
+  Display* display = OpenForInput(display_name);
+  if (!display)
+    return false;
+  XTestFakeMotionEvent(display, -1, x, y, CurrentTime);
+  const unsigned int button = steps < 0 ? 4 : 5;   // X11's wheel: 4 up, 5 down
+  for (int i = 0; i < (steps < 0 ? -steps : steps); ++i)
+  {
+    XTestFakeButtonEvent(display, button, True, CurrentTime);
+    XTestFakeButtonEvent(display, button, False, CurrentTime);
+  }
+  XSync(display, False);
+  XCloseDisplay(display);
+  return true;
+}
+
 bool XPressKey(const char* display_name, const char* keysym_name)
 {
   Display* display = OpenForInput(display_name);

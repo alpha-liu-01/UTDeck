@@ -315,7 +315,188 @@ now `tools/wine-build/patches-test/test-0001-no-fullscreen.patch`.) Installed on
   `vk.handmade`, so nothing else is in reach. With `env.sh` alone: `spvrun` on "Adreno 7c+ Gen 3,
   turnip Mesa 26.2.5", `gltest headless` on zink, both checks PASS. The maintainer: Steam switched off
   and on (it now runs with `VK_DRIVER_FILES` in `wine/runtime/lib/gpu`), Ys IX runs as before. No
-  process maps the renamed folders. **B works**; the released runtime does not have it yet.
+  process maps the renamed folders. **B works.**
+- **Published** (the maintainer committed ca3831c and agreed): pre-release `runtime-11.16-20261122`,
+  target ca3831c78985d630ab78aba60cd9c8767bec2291 (its build inputs, Wine 0001-0019, Mesa 0001-0006,
+  the `gpu` part, match the commit), asset `utdeck-runtime-11.16-20261122.tar.xz`, SHA256
+  `7519e7f4...a23d3633`, downloaded back and checked. `runtimes.list`'s `default` line points at it;
+  UTDeck 0.3.5 carries the new list, so a phone set up from now on gets the driver and patch 0019
+  through the setup.
+
+### The switch on stone (2026-11-21)
+
+The first try failed: **stone's disk was full** (19 MB free of 101 GB). The runtime's unpacking
+stopped halfway (`runtime-11.16-20261122.new`, 719 MB, and the pushed archive left behind), and the
+push of `steam-run.sh` left it empty, so hidden Steam did not start. Put right at once: the renamed
+driver folders back, the failed step's leftovers deleted (946 MB free), `steam-run.sh` pushed again,
+Steam started. The maintainer then agreed to delete the four older runtimes (`11.16-20261119`,
+`-20261120`, `-20261120-games`, `proton11.0-20261120`; none linked, the published ones can be
+downloaded again): 5.4 GB free. (Also on stone, the maintainer's to decide: stage 2's
+`prefix-hangover-backup` 3.5 GB, `hangover-11.16` and `prefix-hangover-gfx` 4.7 GB, `fex-rootfs`
+1.9 GB.)
+
+Then the switch: the runtime `11.16-20261122` (`runtime-push.sh`), UTDeck 0.3.5, `zink` and `vk`
+renamed `.handmade` (stone's also hold stage 1-2's test tools and older driver copies), Steam
+restarted (`VK_DRIVER_FILES` in `wine/runtime/lib/gpu`), and with `env.sh` alone: `spvrun` on
+"Turnip Adreno (TM) 619", `gltest headless` on zink, both PASS. `runtime-push.sh` now checks for
+1,600 MB free before changing anything. The maintainer: Ys IX runs fine on stone with it.
+
+## Visual C++ installers that never exit (2026-11-22)
+
+The hang of 3.9 and of Ys IX's first launch here (the installer's own log ends with "i007: Exit
+code: 0x...", the process stays, asleep, no CPU, and the install script waits on it) is ended
+automatically now: **`tools/ut-probe/utdeck-setupwatch.py`**, started by `game-run.sh` beside every
+install script (`UTDECK_SETUP_RUN`), every 5 s looks for this prefix's Visual C++ installers
+(`vc_?redist...exe` in the command line, `WINEPREFIX` in the environment), reads the newest main
+log of that architecture (`dd_vcredist_<arch>_<time>.log` in the prefix's Temp folder), and ends the
+process (SIGTERM, then SIGKILL) when its last line says it finished more than 20 s ago and it used no
+CPU over 10 s; logged in the install script's log ("setupwatch: ..."). Carried by the click
+(`home-files.sh`) and `runtime-push.sh`.
+
+Tested on stone with a stand-in (a sleeping process named `VC_redist.x64.exe /q` with a fake prefix
+and a finished log 30 s old, and the same name in another prefix): the first ended after about 18 s
+("logged its exit 46 s ago ... and is idle: ending it"), the other left alone. The real case waits for
+the next first launch of a game with a Visual C++ install script. UTDeck 0.3.6 carries it; installed
+on stone.
+
+## The starting page (2026-11-22)
+
+**`StartingPage.qml`** (UTDeck 0.3.7), opened by a tap on a game: the cover, the title, a spinner, the
+step in words and the time so far, and "Back to the library" (the game goes on starting). Before
+Steam has logged a step of this launch: "Starting Steam..." / "Steam is signing in..." (from
+`setup`, checked every 5 s on the page) or "Asking Steam to start the game..."; then Steam's task for
+this game (`SteamLaunch.expect(appId)` forgets what Steam logged before and follows only this game):
+preparing, "Installing what the game needs..." (with a note that a first start can take minutes),
+"Synchronizing your saves with Steam Cloud...", "Starting the game...". A question from Steam opens
+the dialog page on top; the game's window in front hides the app; when the game ends the page goes.
+
+**Manual run S5 (stone, the maintainer)**: a normal start of Celceta, every step shown correctly;
+quitting brought the library back. Two problems:
+- **Wine's "The Wine configuration is being updated" notice** came up over the starting page (with
+  the wallpaper around it): the runtime had changed (`11.16-20261121` to `20261122`), and Wine
+  updates a prefix at its first start with a new version, with that window. **Fixed** (`utdeck-compat`):
+  when a prefix has not met this runtime yet (the `utdeck-prefix-dlls` marker), it is updated first
+  with `wineboot -u` and Wine's display drivers off (`winewayland.drv,winex11.drv=d`), so without
+  any window; the game then finds it up to date.
+- **With Steam's switch off, the launch "stuck" at "Installing what the game needs"**: UTDeck had
+  stopped Steam itself, at 00:03:44, in the middle of the install script. Steam, started for the
+  game, runs its own graphics check (`d3ddriverquery64.exe`, app id 0) through UTDeck's runtime after
+  signing in; `game-run.sh` marked it as the running game, its end looked like the game ending, and
+  with the switch off UTDeck stopped Steam, killing the install script with it. **Fixed**: app id 0
+  is a setup run (`utdeck-compat`: no game file, no pause), and the app never takes app 0 for the game.
+
+**Manual run S6 (stone, UTDeck 0.3.8)**, Celceta's prefix made to look out of date (its marker and
+Wine's `.update-timestamp` removed), Steam stopped, the switch off: the page through "Starting
+Steam...", signing in and Steam's steps; the install script ran a minute, with "prefix updated to
+the runtime, without a window" in its log; **no Wine window**; Steam's own check (`steam-0`) ran in
+the middle of it and did not stop Steam; the game started; after quitting, the library came back and
+Steam stopped (00:15:01), as the switch says.
+
+## Errors in words (2026-11-22, item 4)
+
+The starting page (0.3.9-0.3.10) says when a launch went wrong, with "Try again" (or "End the game",
+or "Settings") and "Back to the library":
+
+| Case | How UTDeck notices |
+|---|---|
+| **The game could not start** while it still runs | `Library.runningGameProblem`: every 2 s the new part of the game's log (`game-run.sh`'s `<label>-<time>.log`) is read for fatal markers: a DLL not found (`err:module:import_dll ... not found`), "Failed to create Vulkan instance" / "Failed to initialize DXVK", `VK_ERROR_DEVICE_LOST`. The app comes back over the game's window; "End the game" runs `wineserver -k` for the game's prefix (read from `game-run.sh`'s environment) |
+| **The game stopped right after starting** | the run ends before its window was in front, or within 20 s with a non-zero exit; the log's exit code and recognised problem shown |
+| **The game ended before it started** | Steam's "Game process removed" for the game, with no UTDeck game run (Steam using another compatibility tool: Ys IX's 2 s through Proton) |
+| **Steam did not start the game** | Steam's launch "Completed", no game within 45 s |
+| **Steam did not start / did not sign in** | not running after 150 s / running but not signed in after 180 s (then "Settings") |
+
+**Manual run S7 (stone)**, Celceta made to fail on purpose (`GAME_ENV=VK_DRIVER_FILES=/nonexistent`
+in its `utdeck-env`, which hides the Vulkan driver from the game only): the first version (0.3.9)
+waited for the game to end, but Celceta did not end: its own launcher window came first (and counted
+as "in front"), then `Ysc_dx11.exe` spun at a full core after DXVK's failure. Ended by hand; the live
+reading of the log added (0.3.10). Again: UTDeck came back over the game by itself with "The game
+could not start." and "Direct3D could not start: no Vulkan device was found."; "End the game" ended
+it and the warning stayed. Celceta's test `utdeck-env` removed. (After `wineserver -k` the game's
+log had no closing "exit" line: Steam's reaper likely ended `game-run.sh` first; harmless here.)
+
+## A publisher's agreement: inside Steam's main window (2026-11-22, item 3)
+
+Item 3, the dialog page, tested with Plants vs. Zombies: Replanted (app 3654560) on the Nothing Phone,
+its first start. Steam logged `LaunchApp changed task to ShowEula` and `waiting for user response to
+ShowEula` at 00:35:13; UTDeck's "Steam is asking" page opened, but it showed a black rectangle.
+
+Why: no window was mapped on hidden Steam's screen (Xvfb `:50`). Steam does not open the agreement
+(EULA, the publisher's licence text) as a window of its own, as it does with the "Controller using
+Steam Input" notice: it draws it as a box inside its main window. UTDeck keeps that window closed
+(it costs CPU, stage 3.4), so the agreement had nowhere to appear. Opening the main window by hand
+(`./steam -silent steam://open/main` on `:50`) showed it, 1280x800, with the agreement in the middle;
+but the hidden screen was 1200x540 (the phone's shape, no other reason), so the agreement's bottom,
+with its buttons, lay below the screen's edge.
+
+The fix (UTDeck 0.3.11):
+
+- **The hidden screen is 1280x800** (`steam-service.sh`, `UTDECK_STEAM_XSIZE` still overrides it):
+  Steam's main window fits whole. Nothing else depended on 1200x540 (the games' own 1200x540 mode in
+  the prefix's desktop, patch 0008, is a different thing).
+- **No dialog window: the main window is shown.** When Steam waits for the user and no dialog window
+  of its own exists, the page shows Steam's main window instead, and if no window is mapped at all
+  UTDeck opens it (`steam://open/main`) once per wait. The main window shows the account name; it is
+  only drawn on the phone's own screen, never saved.
+- **Scrolling.** An agreement must be scrolled before Steam enables its button. A drag up or down on
+  the page turns hidden Steam's mouse wheel (XTest buttons 4 and 5, one notch per 3 grid units); a
+  tap without a drag stays a tap.
+
+### The answer does not reach the waiting launch (UTDeck 0.3.12)
+
+With 0.3.11 the page showed Steam's main window with the agreement in front of it; the maintainer
+scrolled it and accepted. The agreement closed, Steam's window stayed on the page, and the launch
+never went on: Steam's log has no `continues with user response "ShowEula"` line, nor anything else
+after `steam://open/main`. Yet the answer was saved: the account's `localconfig.vdf` gained the entry
+`"3654560_eula_0" "2"`. A new `-applaunch` then ran straight past the agreement
+(CheckShaderDepotManifest, the install script with DirectX's setup in about 45 s, the cloud, the
+notices, the game) and PvZ Replanted started. So an agreement answered in the main window is saved for
+the account, but not handed to the launch that waits for it.
+
+The fix:
+
+- **During a ShowEula wait UTDeck reads that file's entries for this game only**
+  (`"<appid>_eula_<n>" "<value>"`, nothing else of the file is kept). When they change, the wait
+  ends, the page closes, and two seconds later the game is started again (Main.qml), which Steam runs
+  past the agreement. The starting page says "Agreement accepted, starting the game again...".
+- **Cancel** on the "Steam is asking" page: an agreement declined, or a question the user does not
+  want to answer, left the page with no way out. Cancel closes the page and Steam's window; the
+  starting page then says "The game was not started." with "Try again".
+- **Steam's main window comes up again when Steam creates the game's process** (00:48:25, 50 s after
+  the `-applaunch`): `steam-service.sh launch` only closes it during the first 10 s, so it stayed open
+  on the hidden screen (Store trailers drawn in software, stage 3.4). UTDeck now closes it 3 s and
+  10 s after Steam's `Game process added` line for the game.
+
+Tested on the Nothing Phone (PvZ's agreement entry removed with Steam stopped, with the maintainer's
+OK; a backup of the file stays on the phone):
+
+- **Accepted:** Steam's interface log (`webhelper_js.txt`) says `accepted eula 3654560_eula_0` and
+  `eulas complete`, yet the launch still does not go on. UTDeck saw the entry change, closed the
+  page, and started the game again 2 s later (01:00:16 to 01:00:18); Steam ran past the agreement and
+  the game was up at 01:00:27. No Steam window stayed on the hidden screen after the game started.
+- **Declined inside Steam:** the agreement's own Cancel closes the box and Steam logs nothing at all
+  (neither log has a line for it); the launch stays waiting and the page shows Steam's Store. So
+  UTDeck cannot see a decline. The way out is UTDeck's own cancel, which works (page closed, Steam's
+  window closed, no new start, "The game was not started."), but the header's small close icon was
+  missed. 0.3.13 added a "Don't start the game" button and a sentence under the text; the maintainer
+  found that they took too much height (Steam's window smaller, its accept button harder to hit), so
+  0.3.14 reverts them: the header's close icon stays the only cancel. A way out that costs no height
+  is still open.
+
+### The agreement shown larger (UTDeck 0.3.15)
+
+The whole 1280x800 window, fitted into the page, made the agreement's buttons small and hard to hit
+(the maintainer). Steam draws the agreement as a box over a black backdrop (at most 7 per channel;
+the box and all inside it 22 or more). So when the page shows Steam's main window, UTDeck looks for
+that box: from the picture's centre, each edge is the last light pixel before 8 dark ones; it counts
+only if the box is at least 300x200, leaves room at the sides, and the columns just beside it are
+dark over its whole height. Then only the box is shown, and taps and scrolling are placed with the
+same offsets. Checked on the three captures in `build/shots/` (with the C++ function itself, built on
+the PC): the agreement's box found (648x430 from x 316, y 110, the blue line at its top), and the
+empty screen and the plain Store page left whole. Not yet seen on the phone with a real agreement
+(the next game that has one).
+
+PvZ Replanted asks for a player name on its first start: without a keyboard the user cannot type it.
+Typing into a game is a later stage's work (an on-screen keyboard for games); a USB keyboard works.
 
 ## Events
 
@@ -343,3 +524,30 @@ now `tools/wine-build/patches-test/test-0001-no-fullscreen.patch`.) Installed on
   quitting after a game closed from outside (0.3.3).
 - 2026-11-22: B done: the GPU driver (Mesa 0001-0006 and Ubuntu's Khronos loader) is part of the
   default runtime and used from there by games and Steam (checked on the Nothing Phone).
+- 2026-11-22: the runtime `11.16-20261122` (Wine 0001-0019 and the GPU driver) published.
+- 2026-11-22: stone switched to the runtime's driver (after its full disk was cleared: four older
+  runtimes deleted with the maintainer's OK).
+- 2026-11-22: item 1 done: `utdeck-setupwatch.py` ends a Visual C++ installer that logged its exit
+  but stays (tested with a stand-in on stone); UTDeck 0.3.6.
+- 2026-11-22: item 2, the starting page, done (0.3.7-0.3.8), with two fixes found by it: Wine's
+  prefix-update window hidden, and Steam's own runs no longer taken for the game.
+- 2026-11-22: item 4, errors in words, done (0.3.10): a running game's log read live for fatal
+  problems, "End the game"; checked with Celceta made to fail.
+- 2026-11-22: item 3 on the Nothing Phone with PvZ Replanted: the agreement (ShowEula) is drawn
+  inside Steam's main window, which was closed: a black page. The hidden screen made 1280x800, the
+  main window opened and shown, drag to scroll (0.3.11).
+- 2026-11-22: the agreement answered in the page (0.3.11), but the waiting launch never went on;
+  a new start ran past it and PvZ Replanted started. UTDeck 0.3.12 restarts the launch when the
+  game's agreement entry changes, adds Cancel to the dialog page, and closes Steam's main window
+  after the game's process starts.
+- 2026-11-22: 0.3.12 tested: accepting restarts the launch past the agreement; a decline inside Steam
+  is not logged by Steam, so the page's own cancel is the way out. A larger cancel button (0.3.13)
+  took too much height and was reverted (0.3.14).
+- 2026-11-22: PvZ's agreement entry put back (only that line, so Steam's newer playtime and tickets
+  stay), the backup deleted with the maintainer's OK.
+- 2026-11-22: the agreement shown as its box alone, larger (0.3.15).
+- 2026-11-22: **4.3 closed.** The exit met on the Nothing Phone: Ys IX and PvZ Replanted, each a first
+  start and a normal start from the app with every step shown; a publisher's agreement answered in
+  the app. Open, for when they come: the Visual C++ helper on a real install script; the box view
+  with a real agreement; Steam's own decline is not visible to UTDeck (the header's close is the way
+  out); typing into games (stage 5).

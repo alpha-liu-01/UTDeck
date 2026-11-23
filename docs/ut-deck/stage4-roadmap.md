@@ -53,10 +53,11 @@ From [stage3-roadmap.md](stage3-roadmap.md), "Stage 3 wrapped up":
 | **4.1 The app shell, and the game's window as part of it** | A Qt 6 QML app with Lomiri Components, built in our own cross container, installed as a click on stone: it lists the installed Steam games and starts one through hidden Steam. The question first: how a game started by hidden Steam is shown by Lomiri as part of the app (orientation, fullscreen, one icon, Lomiri's lifecycle) | The app opens with the native look and starts a game; the window question answered on the screen with a decision; the 24.04-1.x click builds |
 | **4.2 First-time setup from the app** | On a phone with nothing but the click: the app installs UTDeck's pieces (its scripts and compatibility tools, carried in the click) and the Wine runtime (`get-runtime.sh`, a published release), with progress shown: the mandatory part. Then **Steam, optional**: "Set up Steam" or "Skip" (it can be added later from the settings): the hidden screen (Xvfb) and Valve's client, then the sign-in **by QR code** (the app reads the QR code from hidden Steam's own sign-in window and shows it natively, the user scans it with the Steam phone app, Steam signs itself in; no password, code or token passes through UTDeck), with fallback B (hidden Steam's sign-in window inside the app). A Steam switch in the settings: off stops hidden Steam (1.3-1.4 GB of memory) and keeps it from starting with the app; a Steam game's Play starts it on demand | On the Nothing Phone (1), from the click alone, no PC: the mandatory part installed; once with Steam skipped (no Steam running), once with Steam set up and signed in by QR code; the fallback seen working once; the Steam switch off and on |
 | **4.3 The launch flow** | A starting screen with what is happening (Steam starting, signing in, install scripts, Wine Mono); hidden Steam's dialogs shown in the app, accepted only by the user; errors shown; back to the library when the game ends | A first start and a normal start of two games, each step visible; a publisher's agreement and Steam's Steam Input notice shown and answered in the app |
-| 4.4 Your own games | Games without Steam: added from a folder (name, the `.exe`, optional cover art), each with its own Wine prefix, started through `game-run.sh` like Steam's, listed in the library with Steam's; edited and removed from the app. (Another store may come later.) | Two games added and played from the app with Steam off or not set up; one removed |
-| 4.5 Per-game settings | A page per game: the Wine base (with the download of the second one), launch options, boost, pause, logs; the Windows build forced for Steam games with a Linux build, before the download | Each setting changes what the game gets (checked in its logs); a game with a Linux build installs its Windows build from the app |
-| 4.6 Steam without its interface | Installing and uninstalling games, free space, signing in again (the QR code, when Steam's token runs out) | A game installed and removed from the app with no PC and no Steam phone app |
-| 4.7 The game round | Three or more new games through the app, bringing the table to ten; stage 3's leftovers for a game round | The stage 3 table at ten games, and stage 4's exit run by the maintainer |
+| **4.4 Controllers** | Every controller the maintainer has reaches games, or there is a written reason why not: each one followed from the kernel to the game (driver, device nodes, SDL in Wine's `winebus`, XInput and DirectInput) and fixed where it is lost; a native Controllers page that shows what games see, live. Plan: [stage4.4-controllers.md](stage4.4-controllers.md) | On stone: the BETOP T6 (Bluetooth and wired), an Xbox controller, the DualShock clone and the DualSense each work in a game or have their reason written down; the Switch Pro path ready, marked untested; the page shows each one |
+| 4.5 Your own games | Games without Steam: added from a folder (name, the `.exe`, optional cover art), each with its own Wine prefix, started through `game-run.sh` like Steam's, listed in the library with Steam's; edited and removed from the app. (Another store may come later.) | Two games added and played from the app with Steam off or not set up; one removed |
+| 4.6 Per-game settings | A page per game: the Wine base (with the download of the second one), launch options, boost, pause, logs; the Windows build forced for Steam games with a Linux build, before the download | Each setting changes what the game gets (checked in its logs); a game with a Linux build installs its Windows build from the app |
+| 4.7 Steam without its interface | Installing and uninstalling games, free space, signing in again (the QR code, when Steam's token runs out) | A game installed and removed from the app with no PC and no Steam phone app |
+| 4.8 The game round | Three or more new games through the app, bringing the table to ten; stage 3's leftovers for a game round | The stage 3 table at ten games, and stage 4's exit run by the maintainer |
 
 Order and why: 4.1 first, because every later page lives in the app and the window question decides
 how games are started. **4.2, the setup, moved first (2026-11-21, the maintainer):** every later
@@ -72,7 +73,7 @@ substage (4.4). The launch flow (4.3) comes first: a game that seems not to star
 start) is the most visible problem, and the Nothing Phone's fresh Steam shows every first-launch
 dialog now. Prefix management and
 a Turnip driver manager (the original stage 4 list) wait until a game needs them; controllers are
-stage 5.
+stage 5 (real controllers moved to 4.4 on 2026-11-22; touch controls stay in stage 5).
 
 ## Test devices (the maintainer, 2026-11-21)
 
@@ -117,3 +118,16 @@ stage 5.
   Hidden Steam's dialogs come on a game's first launch (install scripts, publishers' agreements,
   Steam's Steam Input notice); stone's games are past theirs, while every game on the Nothing Phone's
   fresh Steam still has its first launch ahead: the chance to see the real dialogs is now.
+- 4.3 started 2026-11-21 and done 2026-11-22. Notes: [stage4.3-launch-flow.md](stage4.3-launch-flow.md).
+  The starting page with Steam's steps in words; hidden Steam's dialogs on the "Steam is asking" page
+  (a dialog window of its own, or the box an agreement is drawn in inside Steam's main window, with
+  taps and scrolling passed on, a restart after an agreement is accepted, and a cancel); errors in
+  words with "End the game"; the swipe that closes a game closes the app. On the way: the Nothing
+  Phone moved to 24.04-2.x (1.x's Mir did not show Wine's subsurfaces), and the GPU driver became part
+  of the runtime (`runtime-11.16-20261122`). Exit met on the Nothing Phone with Ys IX and PvZ
+  Replanted. Open: the Visual C++ helper on a real install script; the box view with a real agreement.
+- Reordered 2026-11-22 (the maintainer): **controllers become 4.4**, pulled forward from stage 5 (real
+  controllers only; touch controls, the virtual controller and the on-screen keyboard stay there).
+  Stage 4's exit needs a gamepad, and only the BETOP T6 over Bluetooth reaches games today. The
+  user's own games are 4.5, per-game settings 4.6, Steam without its interface 4.7, the game round
+  4.8. 4.4 is tested on stone (its Bluetooth is the more reliable), so it starts when stone is at hand.

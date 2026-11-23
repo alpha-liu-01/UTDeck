@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QAbstractListModel>
+#include <QElapsedTimer>
 #include <QFileSystemWatcher>
 #include <QString>
 #include <QTimer>
@@ -32,6 +33,17 @@ class Library : public QAbstractListModel
   // The last game ended after Lomiri asked its window to close (the user swiped its card, which is
   // UTDeck's, away): Wine patch 0019 creates "<focus file>.closed". The app then quits too.
   Q_PROPERTY(bool gameClosedFromOutside READ gameClosedFromOutside NOTIFY runningGameChanged)
+  // The last game run that ended (stage 4.3, errors on the starting page): its app id, how long it
+  // ran, its exit code (-1 when its log has none) and the problem its log shows, in words (empty when
+  // none is recognised). Read from game-run.sh's log when the run ends.
+  Q_PROPERTY(QString lastGame READ lastGame NOTIFY runningGameChanged)
+  Q_PROPERTY(int lastGameSeconds READ lastGameSeconds NOTIFY runningGameChanged)
+  Q_PROPERTY(int lastGameExit READ lastGameExit NOTIFY runningGameChanged)
+  Q_PROPERTY(QString lastGameProblem READ lastGameProblem NOTIFY runningGameChanged)
+  // A fatal problem the running game's log already shows (Direct3D or Vulkan not starting, a missing
+  // DLL, the GPU lost) while the game is still running: some games spin instead of quitting (Ys:
+  // Memories of Celceta without Vulkan). Read every 2 s from the new part of its log.
+  Q_PROPERTY(QString runningGameProblem READ runningGameProblem NOTIFY runningGameChanged)
 
 public:
   enum Role
@@ -53,6 +65,15 @@ public:
   QString runningGame() const { return m_running_game; }
   bool gameInFront() const { return m_game_in_front; }
   bool gameClosedFromOutside() const { return m_game_closed_from_outside; }
+  QString lastGame() const { return m_last_game; }
+  int lastGameSeconds() const { return m_last_game_seconds; }
+  int lastGameExit() const { return m_last_game_exit; }
+  QString lastGameProblem() const { return m_last_game_problem; }
+  QString runningGameProblem() const { return m_running_problem; }
+
+  // Ends the running game: every Windows process of its prefix (wineserver -k), as Steam's own
+  // "Stop" would.
+  Q_INVOKABLE void endGame();
 
   Q_INVOKABLE void refresh();
   Q_INVOKABLE bool play(const QString& app_id);
@@ -74,6 +95,9 @@ private:
 
   void setLastError(const QString& error);
   void readGameState();
+  void summariseEndedGame(const QString& log);
+  void readRunningLog();
+  static QString problemIn(const QString& text);
 
   QString m_steam;
   QString m_service;
@@ -86,4 +110,14 @@ private:
   bool m_game_in_front = false;
   QString m_focus_file;  // the running game's focus file (game-run.sh), for the .closed marker
   bool m_game_closed_from_outside = false;
+  QElapsedTimer m_game_started;
+  QString m_last_game;
+  int m_last_game_seconds = 0;
+  int m_last_game_exit = -1;
+  QString m_last_game_problem;
+  QString m_running_problem;
+  QString m_running_log;
+  qint64 m_running_log_offset = 0;
+  int m_log_poll_count = 0;
+  QString m_running_pid;
 };

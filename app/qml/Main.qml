@@ -19,15 +19,16 @@ Window {
     property int normalRequests: 0
 
     function follow() {
-        // Steam waits for the user (a dialog before a game starts, stage 4.3): the app shows it.
-        if (steamLaunch.waitingForUser && !visible) {
+        // Steam waits for the user (a dialog before a game starts, stage 4.3), or the running game's
+        // log shows it cannot go on: the app shows itself, even over the game's window.
+        if ((steamLaunch.waitingForUser || library.runningGameProblem !== "") && !visible) {
             normalRequests = 0
             show()
             raise()
             requestActivate()
             return
         }
-        if (library.runningGame !== "" && library.gameInFront) {
+        if (library.runningGame !== "" && library.gameInFront && library.runningGameProblem === "") {
             if (visible)
                 hide()
         } else if (library.runningGame === "" && library.gameClosedFromOutside) {
@@ -86,6 +87,25 @@ Window {
                 } else if (!steamLaunch.waitingForUser && onTop) {
                     pageStack.pop()
                 }
+            }
+            // An agreement answered in Steam's window: the waiting launch never goes on, so the
+            // game is started again (Steam then runs past the agreement).
+            function onAgreementAccepted(appId) {
+                agreementRestart.appId = appId
+                agreementRestart.restart()
+            }
+        }
+
+        // Two seconds later: Steam takes a moment to save the answer.
+        Timer {
+            id: agreementRestart
+
+            property string appId
+
+            interval: 2000
+            onTriggered: {
+                if (library.play(appId))
+                    steamLaunch.expect(appId)
             }
         }
 

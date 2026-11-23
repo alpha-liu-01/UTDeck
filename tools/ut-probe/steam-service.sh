@@ -21,7 +21,9 @@ set -u
 W=/home/phablet/utdeck-probe
 X=$W/xvfb/root
 D=${UTDECK_STEAM_XDISPLAY:-:50}
-SIZE=${UTDECK_STEAM_XSIZE:-1200x540}
+# 1280x800: Steam's main window fits whole (stage 4.3: a publisher's agreement is drawn inside it, and
+# at 1200x540 its "I agree" button lay below the screen's edge).
+SIZE=${UTDECK_STEAM_XSIZE:-1280x800}
 export XDG_RUNTIME_DIR=/run/user/$(id -u) DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus
 CONN=$HOME/.local/share/Steam/logs/connection_log.txt
 

@@ -213,13 +213,21 @@ void Library::readGameState()
       game = parts[0];
       if (game.startsWith(QStringLiteral("steam-")))
         game = game.mid(6);
+      // Steam's own runs (app id 0) are never the game (stage 4.3; utdeck-compat writes no file for
+      // them any more).
+      if (game == QLatin1String("0"))
+        game.clear();
       QFile focus(parts.size() >= 3 ? parts[2] : QString());
       in_front = focus.open(QIODevice::ReadOnly) && focus.read(1) == "1";
       if (parts.size() >= 3)
         m_focus_file = parts[2];
+      m_running_pid = parts[1];
     }
   }
 
+  // The running game's log, every 2 s (the poll runs every 250 ms).
+  if (!game.isEmpty() && game == m_running_game && ++m_log_poll_count % 8 == 0)
+    readRunningLog();
   if (game.isEmpty())
     m_focus_poll.stop();
   else if (!m_focus_poll.isActive())
@@ -228,12 +236,31 @@ void Library::readGameState()
   {
     // A game ended: closed from outside if Wine marked its window as asked to close (patch 0019).
     if (game.isEmpty())
+    {
       m_game_closed_from_outside =
           !m_focus_file.isEmpty() && QFileInfo::exists(m_focus_file + QStringLiteral(".closed"));
+      // What the run's log says (game-run.sh: <label>-<time>.log next to the focus file).
+      m_last_game = m_running_game;
+      m_last_game_seconds = m_game_started.isValid() ? int(m_game_started.elapsed() / 1000) : 0;
+      if (m_focus_file.endsWith(QLatin1String(".focus")))
+        summariseEndedGame(m_focus_file.chopped(6) + QStringLiteral(".log"));
+    }
     else
+    {
       m_game_closed_from_outside = false;
+      m_game_started.start();
+      m_running_problem.clear();
+      m_running_log = m_focus_file.endsWith(QLatin1String(".focus")) ? m_focus_file.chopped(6) + QStringLiteral(".log")
+                                                                    : QString();
+      m_running_log_offset = 0;
+    }
     if (game.isEmpty())
+    {
       m_focus_file.clear();
+      m_running_problem.clear();
+      m_running_log.clear();
+      m_running_pid.clear();
+    }
     m_running_game = game;
     emit runningGameChanged();
   }
@@ -242,4 +269,78 @@ void Library::readGameState()
     m_game_in_front = in_front;
     emit gameInFrontChanged();
   }
+}
+
+void Library::summariseEndedGame(const QString& path)
+{
+  // The exit code game-run.sh logged, and the first problem of a known kind, said in words. Only the
+  // log's last 256 KB are read (Wine's errors and the graphics layers' messages).
+  m_last_game_exit = -1;
+  m_last_game_problem.clear();
+  QFile file(path);
+  if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+    return;
+  if (file.size() > 256 * 1024)
+    file.seek(file.size() - 256 * 1024);
+  const QString text = QString::fromUtf8(file.readAll());
+  static const QRegularExpression exit_line(QStringLiteral("^exit (\\d+)$"),
+                                            QRegularExpression::MultilineOption);
+  QRegularExpressionMatchIterator exits = exit_line.globalMatch(text);
+  while (exits.hasNext())
+    m_last_game_exit = exits.next().captured(1).toInt();
+  m_last_game_problem = problemIn(text);
+}
+
+QString Library::problemIn(const QString& text)
+{
+  static const QRegularExpression missing_dll(
+      QStringLiteral("err:module:import_dll Library (\\S+) \\(which is needed by [^)]*\\) not found"));
+  const QRegularExpressionMatch dll = missing_dll.match(text);
+  if (dll.hasMatch())
+    return tr("A Windows part the game needs is missing: %1.").arg(dll.captured(1));
+  if (text.contains(QLatin1String("Failed to create Vulkan instance")) ||
+      text.contains(QLatin1String("Failed to initialize DXVK")))
+    return tr("Direct3D could not start: no Vulkan device was found.");
+  if (text.contains(QLatin1String("VK_ERROR_DEVICE_LOST")))
+    return tr("The GPU stopped responding (device lost).");
+  if (text.contains(QLatin1String("Unhandled exception")) || text.contains(QLatin1String("err:seh:")))
+    return tr("The game crashed.");
+  return {};
+}
+
+void Library::readRunningLog()
+{
+  if (m_running_log.isEmpty() || !m_running_problem.isEmpty())
+    return;
+  QFile file(m_running_log);
+  if (!file.open(QIODevice::ReadOnly | QIODevice::Text) || file.size() <= m_running_log_offset)
+    return;
+  file.seek(m_running_log_offset);
+  const QString text = QString::fromUtf8(file.read(512 * 1024));
+  m_running_log_offset = file.pos();
+  // "The game crashed" from a running game's log is not fatal by itself (handled exceptions).
+  const QString problem = problemIn(text);
+  if (!problem.isEmpty() && problem != tr("The game crashed."))
+  {
+    m_running_problem = problem;
+    emit runningGameChanged();
+  }
+}
+
+void Library::endGame()
+{
+  // The prefix from game-run.sh's environment; Wine's server of that prefix ends all its processes.
+  QFile environ(QStringLiteral("/proc/%1/environ").arg(m_running_pid));
+  if (m_running_pid.isEmpty() || !environ.open(QIODevice::ReadOnly))
+    return;
+  QString prefix;
+  for (const QByteArray& entry : environ.readAll().split('\0'))
+    if (entry.startsWith("WINEPREFIX="))
+      prefix = QString::fromUtf8(entry.mid(11));
+  if (prefix.isEmpty())
+    return;
+  QProcess::startDetached(QStringLiteral("sh"),
+                          {QStringLiteral("-c"),
+                           QStringLiteral(". \"$HOME/utdeck-probe/wine/env.sh\" && WINEPREFIX=\"$1\" wineserver -k"),
+                           QStringLiteral("sh"), prefix});
 }
