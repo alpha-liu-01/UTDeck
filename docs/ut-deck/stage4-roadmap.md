@@ -189,3 +189,17 @@ stage 5 (real controllers moved to 4.4 on 2026-11-22; touch controls stay in sta
 - 2026-11-23: UTDeck 0.3.50 on the Nothing Phone (1): an own game's cover from Gallery or File Manager
   (Content Hub), with the two setup fixes and the controller fix of 4.9's test. Next, before 4.10: the
   runtime release with patch 0020, then the game round and stage 4's exit run.
+- 2026-11-24: runtime releases `11.16-20261124` (patch 0020) and `proton11.0-20261124` (patches 0019 and
+  0020, Proton's own copy of 0020), pre-releases at commit bd0b753, in `runtimes.list`. Only Wine's
+  Wayland driver and `BUILD-INFO` differ from the 20261122 releases (checked file by file). A phone with
+  a runtime keeps it until `get-runtime.sh` runs (the setup's runtime step is done with any runtime).
+  Next: click 0.3.51 with the new list, the Nothing Phone's runtime updated, then 4.10.
+- 2026-11-24: UTDeck 0.3.51 (the new `runtimes.list`) on the Nothing Phone (1), and its default runtime
+  updated by hand to `11.16-20261124` (the click's `get-runtime.sh default`, 54 s; the old runtime kept
+  next to it; Wine's Wayland driver the same as the release's). The phone has no Proton runtime. Next:
+  4.10, the game round and stage 4's exit run.
+- 2026-11-24 (the maintainer): **4.10 parked**, the game round and stage 4's exit run with it: testing
+  more games waits until stage 5's performance overlay is ready, so that each game's numbers are seen
+  and written down as it is tried. Stage 5 starts ([stage5-roadmap.md](stage5-roadmap.md)); 4.10
+  comes back after 5.3 (the maintainer, 2026-11-24: after Steam's memory work, since Ys IX already ran
+  into memory trouble).

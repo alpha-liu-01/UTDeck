@@ -563,6 +563,10 @@ measured before and after each change, and the user can see and limit what a gam
 Exit: on stone, one game run with Steam's memory lowered (measured), the frame limiter and the overlay
 switched on from the app, with the numbers before and after written down.
 
+Planned 2026-11-24 ([stage5-roadmap.md](stage5-roadmap.md)): the overlay comes first (the maintainer:
+games are tested again only with it, so 4.10 waits for it), as 5.1; then the frame limiter (5.2),
+Steam's memory (5.3) and the other losses (5.4). Tested on the Nothing Phone (1) and stone.
+
 ### Stage 6. Touch controls and the in-game menu
 
 Goal: games are playable with touch only, and the menu works during a game.

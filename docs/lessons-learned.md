@@ -1505,3 +1505,102 @@ Problems met while building UTDeck on the Redmi Note 12 5G (stone). Details in `
   picture is copied into the game's folder, since Content Hub leaves it in the app's cache. Lesson: on
   a phone, choosing a file goes through the system's picker, not only a list the app builds; and check
   where the system's own apps actually save (here, one level down).
+- **A sampler written for one phone's CPU layout (found 2026-11-24, open until 5.1).** `game-run.sh`
+  reads the big cores' clock limit from `cpufreq/policy6`: stone's layout (6 small and 2 big cores).
+  The Nothing Phone (1) has `policy0`, `policy4` and `policy7`, so the read failed, the shell's
+  arithmetic on the empty value ended the whole sampler, and every `.sensors` file there (19 runs) is
+  empty; nobody noticed, since only stone's were read. Lesson: device paths are found on the phone
+  (by listing, by name), never written in for one phone; and one failed reading must not end the
+  others (each read with a fallback).
+- **An overlay that costs more than it should (stage 5.1, found 2026-11-24, open).** MangoHud as it is
+  measured no cost in PvZ (held at 28 fps by a full GPU), but on wiliwili's home page (about 97 fps) it
+  took 16-17 % of the frame rate at the full level and 11 % with only the frame rate shown (runs on,
+  off, on, so the phone's heat is cancelled out). The first suspect was MangoHud drawing over the whole screen
+  image every frame (on a tiler GPU like Adreno, reading and writing the full picture even for one line
+  of text); a patch limiting the drawing to the overlay's rectangle changed nothing measurable, and
+  with the overlay hidden (nothing drawn) the frame rate was the same as with one line shown. So the
+  cost is not the drawing; on this screen no part of the phone is full, and the CPU governor's choice
+  of clocks may be what moves. Open: runs off, hidden, off with the clocks recorded. Lessons: test the
+  suspected cause in isolation (here: hidden, loaded) before building a fix for it; a
+  cost is measured where it can show (a light scene at a high frame rate, not one a full GPU holds
+  back), with the runs ordered so heat cannot explain the result; and a tool made on desktop GPUs is
+  checked against how a phone GPU works before it is called cheap.
+- **The screen flashing between the game and the wallpaper (stage 5.1, 2026-11-24, parked).** During the
+  overlay's cost runs on the Nothing Phone (1), the screen began to flash between wiliwili and Lomiri's
+  wallpaper: every few minutes at first, then a few times a second after the overlay was hidden through
+  its control socket. The game's own frame log showed nothing (no long frames, about 86 fps), so the
+  game kept drawing and Lomiri lost its picture. Lomiri then stayed broken (UTDeck no longer started
+  correctly) until the phone was restarted. The maintainer had never seen it before and saw it start
+  only with run 4, the first with the patched MangoHud (the redraw limited to the overlay's
+  rectangle). Run 5 (the original MangoHud, from a fresh boot) ended
+  after a minute with Lomiri itself crashing (`Fatal glibc error: pthread_mutex_lock ... assertion
+  failed`, killed with ABRT, restarted by systemd; the game ended with it), so the patch was not the
+  cause. MangoHud's only direct contact with Lomiri is a `wl_seat` and `wl_keyboard` it binds on the
+  game's own Wayland connection for its keyboard shortcuts, which UTDeck does not use; a MangoHud
+  patch left that out, and run 6 (5 minutes) looked clean, but the flashing came back later in that
+  run and grew in run 7, **which had no MangoHud loaded at all**, so MangoHud is not the cause either
+  (both patches are kept out of the tree). After the next restart, a 16-minute run without MangoHud,
+  with Lomiri sampled every 15 s (read only): at 14:40:46, 1:40 after the game started, **the whole
+  screen froze** (Lomiri's clock stopped), with no flashing before it. The game went on drawing, but
+  every frame then took exactly 100 ms (10 fps): Lomiri no longer asked it for frames. Lomiri's
+  memory, open files, GPU buffers and GPU memory stayed flat for the whole 16 minutes (no leak); its
+  three render threads waited (no CPU), and so did the system compositor's drawing thread
+  (`lomiri-system-compositor`, `Mir/Comp`, which hands Lomiri's picture to the display hardware). The
+  kernel logged nothing. So the display chain below the game stops (sometimes briefly: the flashes;
+  sometimes for good: the freeze, or Lomiri's crash). Still open: what triggers it. Not MangoHud; not
+  a leak; `adb` commands (sent often during these runs) do not register login sessions. Remaining
+  suspects: wiliwili presenting about 100 frames per second (`MESA_VK_WSI_PRESENT_MODE=mailbox`,
+  UTDeck's default) to a 60 Hz screen for many minutes, which no game did before; and `adb` traffic
+  itself. A run with no `adb` command at all (15:02-15:20,
+  no MangoHud) flashed again after about 17 minutes, so `adb` is ruled out. The game kept 100 fps
+  without a stall; while it flashed, the system compositor's drawing thread (`Mir/Comp`) used 8.8 % of
+  a core and Lomiri's Wayland thread (`Mir/Wayland`, which receives the game's frames and logs one
+  `wl_subsurface.visiblity not implemented` warning per frame) 8.2 %, with the phone warm (CPU 58 °C,
+  skin 44.8 °C). (These were first reported 10 times too high, 88 % and 82 %: the per-thread CPU
+  counts are hundredths of a second, and 5 s at full load are 500 of them, not 50. The wrong figures
+  led to the theory that the display chain was overloaded by 100 frames per second; the right ones
+  do not support it.) `FIFO` (paced by the screen) deadlocks under Wine on Lomiri (stage 2), so the
+  test was a cap: `DXVK_FRAME_RATE=60` (run 9). The cap held
+  (exactly 60 fps, 60 warnings a second) and **the screen flashed anyway**, after about 19 minutes:
+  the frame rate is not the trigger. While it flashed, Lomiri's three render threads (`QSGRenderThread`,
+  which draw the screen) each used 9-9.4 % of a core, the system compositor's `Mir/Comp` 8.8 %,
+  `Mir/Wayland` 4.6 % (corrected as above): far from full; all on the big cores (4, 6, 7) with the game's boosted threads; the phone was
+  limiting its speeds a little for heat (big cores 2.05 of 2.4 GHz, the fastest 2.21 of 2.52 GHz, the
+  GPU 550 of 608 MHz). So the compositors are not short of CPU time when it flashes. Lomiri then
+  crashed a second time (15:4x). Next: stone (Adreno 619, app 0.3.48, runtime `11.16-20261122`, Lomiri
+  up for 2 days) ran wiliwili the same way, to see whether the problem follows our software or stays
+  with the Nothing Phone (1): **27 minutes clean** (15:45-16:12, about 56 fps, never under 40, no
+  flash, no freeze; Lomiri's render thread 75 % of a core, `Mir/Wayland` 30 %, `Mir/Comp` 12 %, the
+  same at the start and the end; skin 33.6 °C). Differences left between the two: the phone (GPU,
+  display, its Lomiri build), its heat (skin 42-45 °C on the Nothing Phone (1)), and our versions
+  (stone: app 0.3.48, runtime `11.16-20261122`; the Nothing Phone (1): app 0.3.51, runtime
+  `11.16-20261124`, in use there since 2026-11-23 22:56). Same system on both (Ubuntu 24.04.5,
+  Lomiri 0.5.0, Mir 1.8.3, the same `lomiri-system-compositor`). Run 10 put the Nothing Phone (1) back
+  on runtime `11.16-20261122` (no patch 0020, so wiliwili was portrait in the left 45 % of the screen
+  again): **it flashed again**, about 20 minutes in (16:39). So the cause is not in our versions and
+  not the landscape picture. The kernel logged no display event after boot (only an unrelated timeout
+  on the unused modem's data link, `rmnet_ipa0`, 3 minutes before); the phone was draining its battery
+  while plugged into the PC (about -500 mA). Left: something on the Nothing Phone (1) itself after about
+  17-25 minutes of a game on screen; whether it needs a game at all is not known yet. Then PvZ
+  (a DXVK game through Steam, fullscreen landscape, about 27 fps) ran 26 minutes on the same phone and
+  runtime (16:43-17:09): **no flash**. So on the Nothing Phone (1) it comes with wiliwili (a GLFW
+  program drawing through DXVK at 60-100 fps), not with every game; stone runs wiliwili cleanly. Why
+  is not known (a guess: something in how wiliwili's drawing meets Turnip on the Adreno 642L, or
+  Lomiri on that phone). **Parked** (the maintainer, 2026-11-24): wiliwili is not used for long runs on
+  the Nothing Phone (1), and is watched when it is used. Lessons: change one thing per run, and test
+  the other program early (here PvZ ruled wiliwili in after nine runs that only ruled things out); and
+  a phone being tested also needs a charger that keeps up (the PC's USB port did not).
+  Lesson so far: when a symptom
+  appears during a test, run the same test without the newly added part early (here a run without
+  MangoHud), before building fixes around the first suspect; measure the processes that show the
+  symptom (here the compositors), not only the game; and check a new formula on a case with a known
+  answer before building a theory on its numbers.
+- **A vendor setting that only applies at the next start (stage 5, 2026-11-24).** The Nothing Phone (1)
+  throttled Stray from 30 to about 16 fps with Nothing's most cautious thermal profile (`mid`): its
+  Android picks a profile through its system server, which a Halium port does not run, so
+  thermal-engine falls back to `mid`. Setting `persist.vendor.thermal.config` to Nothing's
+  `high.perf` profile made init restart thermal-engine, which failed silently: init stops a service
+  through its process group, and on this port it could not create those groups at boot. The old
+  daemon kept the old profile; the property is read at the next boot. Lessons: on a Halium port,
+  check that a service really restarted (its start time), not only that init was asked to; and look
+  for the vendor's own choices (here nine profiles) before thinking of going past the vendor's values.

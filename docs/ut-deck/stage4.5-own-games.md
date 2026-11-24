@@ -355,7 +355,9 @@ swipe; Wine patch 0020 (UTDeck's windows stay landscape); FEX's reduced-precisio
 
 Open:
 - **Patch 0020 is only in stone's runtime** (put in by hand). It goes into the next runtime release, on
-  both Wine bases (Proton's needs its own copy of the patch), which the maintainer publishes.
+  both Wine bases (Proton's needs its own copy of the patch), which the maintainer publishes. **Done
+  2026-11-24**: runtimes `11.16-20261124` and `proton11.0-20261124` (commit bd0b753; Proton's copy is
+  `patches-proton/0020`, since its patch 0003 differs at that spot), in `runtimes.list`.
 - The Nothing Phone has none of 4.5 yet (UTDeck 0.3.24, the runtime with 0020).
 - Touch scrolling in programs that scroll only with the mouse wheel (wiliwili): stage 5.
 - A program left asleep after quitting from its own menu (wiliwili once): "End the game" ends it.
