@@ -29,6 +29,9 @@ bool XScroll(const char* display, int x, int y, int steps);
 bool XTypeText(const char* display, const std::u32string& text);
 // one named key pressed and released ("BackSpace", "Return", "Tab").
 bool XPressKey(const char* display, const char* keysym_name);
+// Stage 4.8: one named key at X,Y: the pointer moved there first (with no window manager on the hidden
+// screen, the keyboard goes to the window under the pointer).
+bool XPressKeyAt(const char* display, int x, int y, const char* keysym_name);
 
 // Stage 4.3, hidden Steam's dialogs: the screen's mapped top-level windows, bottom to top (the
 // last one is in front).

@@ -1,6 +1,11 @@
 #include "Controllers.h"
 
+#include <QDateTime>
 #include <QDir>
+#include <QGuiApplication>
+#include <QKeyEvent>
+#include <QWheelEvent>
+#include <QWindow>
 #include <QDirIterator>
 #include <QFile>
 #include <QFileInfo>
@@ -140,7 +145,9 @@ Controllers::Controllers(QObject* parent) : QObject(parent)
 
 Controllers::~Controllers()
 {
-  stop();
+  m_page_open = false;
+  m_navigation = false;
+  closeSdl();
 }
 
 bool Controllers::loadSdl()
@@ -178,6 +185,38 @@ bool Controllers::loadSdl()
 
 void Controllers::start()
 {
+  m_page_open = true;
+  updateOpen();
+}
+
+void Controllers::stop()
+{
+  m_page_open = false;
+  updateOpen();
+}
+
+void Controllers::setNavigation(bool on)
+{
+  if (on == m_navigation)
+    return;
+  m_navigation = on;
+  m_nav_dir = 0;
+  m_back_since = 0;
+  emit navigationChanged();
+  updateOpen();
+}
+
+void Controllers::updateOpen()
+{
+  const bool want = m_page_open || m_navigation;
+  if (want && !m_running)
+    openSdl();
+  else if (!want && m_running)
+    closeSdl();
+}
+
+void Controllers::openSdl()
+{
   if (m_running)
     return;
   m_running = true;
@@ -192,7 +231,7 @@ void Controllers::start()
   runPadLayout();
 }
 
-void Controllers::stop()
+void Controllers::closeSdl()
 {
   if (!m_running)
     return;
@@ -262,6 +301,9 @@ void Controllers::openAll(const QString& decisions)
     if (game_controller)
       pad.controller = g_sdl.GameControllerOpen(i);
     info[QStringLiteral("pad")] = static_cast<int>(m_pads.size());
+    pad.nintendo = vendor == 0x057e;
+    pad.style = pad.nintendo ? QStringLiteral("nintendo")
+                : vendor == 0x054c ? QStringLiteral("playstation") : QStringLiteral("xbox");
     m_list << info;
     m_pads.push_back(pad);
   }
@@ -315,8 +357,10 @@ void Controllers::poll()
     return;
   }
   QVariantList state;
-  for (const Pad& pad : m_pads)
+  for (Pad& pad : m_pads)
   {
+    if (m_navigation && pad.controller)
+      navigate(pad);
     QVariantMap s;
     if (pad.controller)
     {
@@ -421,4 +465,131 @@ QVariantList Controllers::refusedUsb() const
     refused << info;
   }
   return refused;
+}
+
+void Controllers::sendKey(int key, bool autorepeat)
+{
+  QWindow* window = QGuiApplication::focusWindow();
+  if (!window)
+    return;
+  QKeyEvent press(QEvent::KeyPress, key, Qt::NoModifier, QString(), autorepeat);
+  QKeyEvent release(QEvent::KeyRelease, key, Qt::NoModifier, QString(), autorepeat);
+  QGuiApplication::sendEvent(window, &press);
+  QGuiApplication::sendEvent(window, &release);
+  if (!m_controller_used)
+  {
+    m_controller_used = true;
+    emit controllerUsedChanged();
+  }
+}
+
+void Controllers::navigate(Pad& pad)
+{
+  // SDL's buttons by number (SDL_GameControllerButton): 0 A (bottom), 1 B (right), 2 X (left), 3 Y
+  // (top), 4 Back, 5 Guide, 6 Start, 7 LS, 8 RS, 9 LB, 10 RB, 11-14 D-pad up, down, left, right.
+  uint32_t now = 0;
+  for (int b = 0; b < 15; ++b)
+    if (g_sdl.GameControllerGetButton(pad.controller, b))
+      now |= 1u << b;
+  const uint32_t pressed = now & ~pad.held;
+  pad.held = now;
+  // Confirm and back, X and Y: by position, or by label on a Nintendo-style pad (A right, B bottom,
+  // X top, Y left).
+  const int confirm = pad.nintendo ? 1 : 0, back = pad.nintendo ? 0 : 1;
+  const int settings = pad.nintendo ? 3 : 2, search = pad.nintendo ? 2 : 3;
+  const qint64 ms = QDateTime::currentMSecsSinceEpoch();
+
+  // Any button or stick counts as the user being there (the phone sees touches, not SDL's input):
+  // used() at most once a second, which keeps the screen on (main.cpp).
+  bool active = now != 0;
+  for (int axis = 0; axis < 6 && !active; ++axis)
+    active = std::abs(g_sdl.GameControllerGetAxis(pad.controller, axis)) > 8000;
+  if (active && pad.style != m_style)
+  {
+    m_style = pad.style;
+    emit controllerUsedChanged();
+  }
+  if (active && ms - m_used_at >= 1000)
+  {
+    m_used_at = ms;
+    emit used();
+  }
+
+  if (m_nav_paused)
+  {
+    // The Controllers page: only back held for a second leaves it.
+    if (now & (1u << back))
+    {
+      if (!m_back_since)
+        m_back_since = ms;
+      else if (ms - m_back_since >= 1000)
+      {
+        m_back_since = 0;
+        pad.held |= 1u << back;
+        sendKey(Qt::Key_Escape);
+      }
+    }
+    else
+      m_back_since = 0;
+    return;
+  }
+
+  const struct
+  {
+    int button;
+    int key;
+  } map[] = {{confirm, Qt::Key_Return}, {back, Qt::Key_Escape}, {settings, Qt::Key_Menu},
+             {search, Qt::Key_Search}, {9, Qt::Key_PageUp},  {10, Qt::Key_PageDown},
+             {6, Qt::Key_F2},          {4, Qt::Key_F3}};
+  for (const auto& m : map)
+    if (pressed & (1u << m.button))
+      sendKey(m.key);
+
+  // Directions: the D-pad, or the left stick past half way; held: again after 400 ms, then every
+  // 120 ms.
+  double lx = g_sdl.GameControllerGetAxis(pad.controller, 0) / 32767.0;
+  double ly = g_sdl.GameControllerGetAxis(pad.controller, 1) / 32767.0;
+  if (m_cursor_mode)
+  {
+    // A pointer page: the left stick moves the pointer (past a dead zone of 15 %), not the focus.
+    const double x = std::abs(lx) > 0.15 ? lx : 0, y = std::abs(ly) > 0.15 ? ly : 0;
+    if (x != 0 || y != 0)
+      emit cursorMoved(x, y);
+    lx = ly = 0;
+  }
+  int dir = 0;
+  if ((now & (1u << 11)) || ly < -0.5)
+    dir = Qt::Key_Up;
+  else if ((now & (1u << 12)) || ly > 0.5)
+    dir = Qt::Key_Down;
+  else if ((now & (1u << 13)) || lx < -0.5)
+    dir = Qt::Key_Left;
+  else if ((now & (1u << 14)) || lx > 0.5)
+    dir = Qt::Key_Right;
+  if (dir != m_nav_dir)
+  {
+    m_nav_dir = dir;
+    if (dir)
+    {
+      sendKey(dir);
+      m_nav_next = ms + 400;
+    }
+  }
+  else if (dir && ms >= m_nav_next)
+  {
+    sendKey(dir, true);
+    m_nav_next = ms + 120;
+  }
+
+  // The right stick scrolls what is under the middle of the window (a wheel event), faster the
+  // further it is pushed.
+  const double ry = g_sdl.GameControllerGetAxis(pad.controller, 3) / 32767.0;
+  if (std::abs(ry) > 0.25)
+    if (QWindow* window = QGuiApplication::focusWindow())
+    {
+      const QPointF centre(window->width() / 2.0, window->height() / 2.0);
+      QWheelEvent wheel(centre, window->mapToGlobal(centre), QPoint(), QPoint(0, int(-ry * 40)), Qt::NoButton,
+                        Qt::NoModifier, Qt::NoScrollPhase, false);
+      QGuiApplication::sendEvent(window, &wheel);
+    }
 }

@@ -35,6 +35,10 @@ case "$UTDECK_RUNTIME" in
 proton) export WINEPREFIX=$O/pfx-proton ;;
 *)      export WINEPREFIX=$O/pfx ;;
 esac
+# Turnip's shader cache in the game's own folder (stage 4.9), as utdeck-compat gives Steam's games
+# theirs: the phone's shared ~/.cache/mesa_shader_cache may also be other apps', so UTDeck no longer
+# writes there, and uninstalling (or removing the game with its data) takes the cache along.
+export MESA_SHADER_CACHE_DIR=${MESA_SHADER_CACHE_DIR:-$O/shadercache} MESA_DISK_CACHE_SINGLE_FILE=${MESA_DISK_CACHE_SINGLE_FILE:-1}
 
 # The prefix, on the first start: made, DXVK and VKD3D-Proton put in, and Wine Mono (as utdeck-compat
 # does for Steam's: .NET programs need it, 3DMark 11's interface among them). No window meanwhile.

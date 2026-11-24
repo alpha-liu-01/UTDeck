@@ -126,6 +126,25 @@ Page {
                 color: theme.palette.normal.negative
                 text: setup.lastError
             }
+
+            // Stage 4.9.
+            ListItem {
+                width: parent.width
+                height: uninstallLayout.height
+                divider.visible: false
+                onClicked: page.pageStack.push(Qt.resolvedUrl("UninstallPage.qml"))
+
+                ListItemLayout {
+                    id: uninstallLayout
+
+                    title.text: i18n.tr("Uninstall UTDeck")
+                    subtitle.text: i18n.tr("Remove UTDeck from this phone; your games and saved games can stay")
+                    subtitle.maximumLineCount: 2
+                    subtitle.wrapMode: Text.Wrap
+
+                    ProgressionSlot {}
+                }
+            }
         }
     }
 }

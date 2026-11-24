@@ -102,51 +102,11 @@ Page {
                 text: i18n.tr("Cover")
             }
 
-            Flow {
-                width: parent.width
-                spacing: units.gu(1)
-
-                Repeater {
-                    model: [""].concat(ownGames.images(page.game.folder || ""))
-
-                    delegate: LomiriShape {
-                        required property string modelData
-
-                        width: units.gu(8)
-                        height: units.gu(12)
-                        backgroundColor: theme.palette.normal.base
-                        sourceFillMode: LomiriShape.PreserveAspectCrop
-                        source: modelData !== "" ? coverImage : null
-
-                        Image {
-                            id: coverImage
-
-                            visible: false
-                            source: parent.modelData !== "" ? "file://" + parent.modelData : ""
-                            sourceSize.width: units.gu(8)
-                            asynchronous: true
-                        }
-
-                        Label {
-                            anchors.centerIn: parent
-                            visible: parent.modelData === ""
-                            text: i18n.tr("None")
-                        }
-
-                        Rectangle {
-                            anchors.fill: parent
-                            color: "transparent"
-                            border.width: page.cover === parent.modelData ? units.dp(3) : 0
-                            border.color: theme.palette.normal.positive
-                            radius: units.gu(1)
-                        }
-
-                        MouseArea {
-                            anchors.fill: parent
-                            onClicked: page.cover = parent.modelData
-                        }
-                    }
-                }
+            CoverChooser {
+                folder: page.game.folder || ""
+                cover: page.cover
+                stack: page.pageStack
+                onChosen: (path) => page.cover = path
             }
 
             Label {

@@ -6,6 +6,26 @@ import Lomiri.Components
 AbstractButton {
     id: card
 
+    // Stage 4.8: the card a controller's (or keyboard's) buttons act on: framed (not enlarged: a larger
+    // card on the first row reached into the page's header).
+    property bool selected: false
+    // The game's data, for the library's key handling (the grid's current card).
+    readonly property string appId: model.appId
+    readonly property string title: model.title
+    readonly property string coverUrl: model.cover
+
+    Rectangle {
+        anchors {
+            fill: cover
+            margins: -units.gu(0.5)
+        }
+        visible: card.selected
+        radius: units.gu(1.5)
+        color: "transparent"
+        border.width: units.gu(0.4)
+        border.color: theme.palette.normal.focus
+    }
+
     LomiriShape {
         id: cover
 

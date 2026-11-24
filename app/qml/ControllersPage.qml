@@ -18,8 +18,15 @@ Page {
         title: i18n.tr("Controllers")
     }
 
-    Component.onCompleted: controllers.start()
-    Component.onDestruction: controllers.stop()
+    // Buttons are tried here: the app's navigation pauses (stage 4.8); B held for a second goes back.
+    Component.onCompleted: {
+        controllers.start()
+        controllers.navigationPaused = true
+    }
+    Component.onDestruction: {
+        controllers.navigationPaused = false
+        controllers.stop()
+    }
 
     Flickable {
         anchors {
@@ -43,6 +50,14 @@ Page {
                 width: parent.width
                 wrapMode: Text.Wrap
                 text: i18n.tr("What games get from each connected controller, with its buttons under the names games use for an Xbox pad. Connect a controller before starting a game.")
+            }
+
+            Label {
+                width: parent.width
+                visible: controllers.controllerUsed
+                wrapMode: Text.Wrap
+                color: theme.palette.normal.backgroundSecondaryText
+                text: i18n.tr("The buttons are only tried here: hold B (on a Switch-style controller, B at the bottom) for a second to go back.")
             }
 
             Button {

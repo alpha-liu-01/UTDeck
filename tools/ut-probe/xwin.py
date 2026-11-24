@@ -9,6 +9,11 @@
     xwin.py [DISPLAY] --fit           move and resize every mapped top-level window to the screen
                                       (Steam opens its window at the phone's size, larger than :50)
     xwin.py [DISPLAY] --click X Y     a left mouse click at X,Y, through X11's test extension (XTest)
+    xwin.py [DISPLAY] --key NAME ...  key presses through XTest, one after the other (X key names: Tab,
+                                      Return, Escape, Left, Right, Up, Down, space); with no window
+                                      manager the keyboard follows the pointer, so --click or --point
+                                      first puts the pointer on the window meant (stage 4.8)
+    xwin.py [DISPLAY] --point X Y     only move the pointer to X,Y
 Options combine; the screenshot is taken last.
 
 Used for hidden Steam's Xvfb screen (:50), where Steam's windows are drawn but nobody sees them.
@@ -32,6 +37,16 @@ if "--click" in args:
     i = args.index("--click")
     click = (int(args[i + 1]), int(args[i + 2]))
     del args[i:i + 3]
+point = None
+if "--point" in args:
+    i = args.index("--point")
+    point = (int(args[i + 1]), int(args[i + 2]))
+    del args[i:i + 3]
+keys = []
+while "--key" in args:
+    i = args.index("--key")
+    keys.append(args[i + 1])
+    del args[i:i + 2]
 if "--shot" in args:
     i = args.index("--shot")
     shot = args[i + 1]
@@ -150,6 +165,33 @@ if click:
     X.XFlush(d)
     print(f"  clicked at {click[0]},{click[1]}")
     time.sleep(2)
+
+if point or keys:
+    import time
+    Xtst = ctypes.CDLL("libXtst.so.6")
+    Xtst.XTestFakeMotionEvent.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_ulong]
+    Xtst.XTestFakeKeyEvent.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.c_int, ctypes.c_ulong]
+    X.XStringToKeysym.argtypes = [ctypes.c_char_p]
+    X.XStringToKeysym.restype = ctypes.c_ulong
+    X.XKeysymToKeycode.argtypes = [ctypes.c_void_p, ctypes.c_ulong]
+    X.XKeysymToKeycode.restype = ctypes.c_ubyte
+    if point:
+        Xtst.XTestFakeMotionEvent(d, -1, point[0], point[1], 0)
+        X.XFlush(d)
+        time.sleep(0.2)
+    for name in keys:
+        code = X.XKeysymToKeycode(d, X.XStringToKeysym(name.encode()))
+        if not code:
+            print(f"  no key {name}")
+            continue
+        Xtst.XTestFakeKeyEvent(d, code, 1, 0)
+        X.XFlush(d)
+        time.sleep(0.05)
+        Xtst.XTestFakeKeyEvent(d, code, 0, 0)
+        X.XFlush(d)
+        print(f"  key {name}")
+        time.sleep(0.4)
+    time.sleep(1)
 
 if shot:
     a = Attrs()

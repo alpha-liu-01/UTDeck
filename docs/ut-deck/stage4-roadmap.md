@@ -57,7 +57,9 @@ From [stage3-roadmap.md](stage3-roadmap.md), "Stage 3 wrapped up":
 | 4.5 Your own games | Games without Steam: added from a folder (name, the `.exe`, optional cover art) or an installer, each with its own Wine prefix, started through `game-run.sh` like Steam's, listed in the library with Steam's; edited and removed from the app. (Another store may come later.) Plan: [stage4.5-own-games.md](stage4.5-own-games.md) | Two games added and played from the app with Steam off or not set up; one removed |
 | 4.6 Per-game settings | A page per game, Steam's and the user's own: the Wine base (with the download of the second one), launch options, resolution, the 32-bit translator, boost, pause, fast x87 maths, fill, the remaining `utdeck-env` lines, the last run's log. Plan: [stage4.6-game-settings.md](stage4.6-game-settings.md) | Each setting changes what the game gets (checked in its logs), on a Steam game and one of the user's own; the last run's log readable on the phone |
 | 4.7 Steam without its interface | Installing and uninstalling games, free space, signing in again (the QR code, when Steam's token runs out); the Windows build forced for Steam games with a Linux build, before the download (moved from 4.6); extended 2026-11-23: Steam Cloud saves (they never synced), uploads before Steam stops, updates before a game starts, shader pre-caching checked, repairing a game. Plan: [stage4.7-steam-tasks.md](stage4.7-steam-tasks.md) | A game installed and removed from the app with no PC and no Steam phone app; a game with a Linux build installs its Windows build from the app; a cloud save comes down and a phone save goes up |
-| 4.8 The game round | Three or more new games through the app, bringing the table to ten; stage 3's leftovers for a game round | The stage 3 table at ten games, and stage 4's exit run by the maintainer |
+| 4.8 The app with a controller | The whole app used with a controller (and a keyboard), as a Steam Deck: focus on every page, the controller's buttons turned into key events while no game is in front, the "Steam is asking" page answered with it; chosen 2026-11-23 (the maintainer) over keyboard and mouse (now test items of 4.10) and the touch overlay (stage 6, after the 2026-11-23 renumbering). Plan: [stage4.8-controller-ui.md](stage4.8-controller-ui.md) | On stone with the T6 and the DualSense, the screen untouched: a game started and played, its settings changed, a game's files checked, a game uninstalled and installed, back to the library after the game |
+| 4.9 Uninstalling UTDeck | Added 2026-11-23 (the maintainer): "Uninstall UTDeck" in the settings stops what runs and removes everything UTDeck put in the home folder (scripts, runtimes, Steam's client, the sign-in, the app drawer entries), keeping the Steam games and the saves unless the user ticks them; a fresh install for 4.10's exit run is then possible. Tested on the Nothing Phone (1). Plan: [stage4.9-uninstall.md](stage4.9-uninstall.md) | On the Nothing Phone (1): the uninstall with the defaults, nothing of UTDeck left but the kept games and saves; the app installed again, the kept games back in the library with their saves |
+| 4.10 The game round | Three or more new games through the app, bringing the table to ten; stage 3's leftovers for a game round; a keyboard and a mouse tried in each game (added 2026-11-23: what works, and what Lomiri's missing pointer locking and relative motion break) | The stage 3 table at ten games, and stage 4's exit run by the maintainer |
 
 Order and why: 4.1 first, because every later page lives in the app and the window question decides
 how games are started. **4.2, the setup, moved first (2026-11-21, the maintainer):** every later
@@ -165,4 +167,25 @@ stage 5 (real controllers moved to 4.4 on 2026-11-22; touch controls stay in sta
   `utdeck-proton`, with one save folder per game for both Wine bases), no stop during an upload, the cloud
   state per game, shader pre-caching off (it compiled for the CPU), checking a game's files, signing in
   again. Open: the starting page during a real update, the Nothing Phone, speed of Steam's install-script
-  check.
+  check. Next: 4.8, the app with a controller (chosen over keyboard and mouse, now test items of the
+  game round, 4.9, and the touch overlay, stage 5).
+- 2026-11-23: 4.8 steps 1-5 built (UTDeck 0.3.48): the controller bridge, the library with button
+  hints, every page reached with the arrows, the "Steam is asking" page with a pointer. Next: the
+  maintainer's test of steps 4-5, then the exit run.
+- 2026-11-23: 4.8 done (UTDeck 0.3.48, the maintainer's test on stone). Left in stage 4: the game round
+  and stage 4's exit run from a fresh install.
+- 2026-11-23 (the maintainer): **uninstalling UTDeck becomes 4.9**, the game round with stage 4's exit run
+  4.10 (both on the Nothing Phone (1)); games and saves kept by default. After stage 4: **stage 5 is
+  performance and resources** (Steam's memory during games, a frame limiter, a performance overlay), and
+  touch controls with the in-game menu move to stage 6
+  ([feasibility-and-roadmap.md](feasibility-and-roadmap.md)). Plan: [stage4.9-uninstall.md](stage4.9-uninstall.md).
+- 2026-11-23: 4.9 done (UTDeck 0.3.49, the Nothing Phone (1)): uninstalled with the defaults, installed
+  again, the kept games back without a download, a save loads. Two setup fixes from it (the download
+  count, the sign-in saved before Steam is stopped). Next: the two parked problems (a DualShock 4 clone
+  in games, an own game's cover), then 4.10.
+- 2026-11-23: the DualShock 4 clone reaches Ys IX on the Nothing Phone (1): Steam Input's virtual pad,
+  never fed by our hidden Steam, is now hidden from games and the real pads passed on (`utdeck-compat`).
+  Next: an own game's cover picture, then 4.10.
+- 2026-11-23: UTDeck 0.3.50 on the Nothing Phone (1): an own game's cover from Gallery or File Manager
+  (Content Hub), with the two setup fixes and the controller fix of 4.9's test. Next, before 4.10: the
+  runtime release with patch 0020, then the game round and stage 4's exit run.

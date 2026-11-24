@@ -64,6 +64,16 @@ Page {
         page.pageStack.pop()
     }
 
+    // B (Escape): as the header's Back does (a step back first, the page left from the first step).
+    Keys.onEscapePressed: (event) => {
+        if (page.step === "choose" || page.step === "installing") {
+            event.accepted = false   // Main.qml leaves the page
+            return
+        }
+        page.step = "choose"
+        page.forceActiveFocus()   // the arrows go on from the top of the page
+    }
+
     header: PageHeader {
         id: pageHeader
 
@@ -394,52 +404,12 @@ Page {
                 text: i18n.tr("Cover (optional)")
             }
 
-            Flow {
-                width: parent.width
-                spacing: units.gu(1)
+            CoverChooser {
                 visible: (page.step === "folder" || page.step === "installed") && page.chosenExe !== ""
-
-                Repeater {
-                    model: visible ? [""].concat(ownGames.images(page.chosenFolder())) : []
-
-                    delegate: LomiriShape {
-                        required property string modelData
-
-                        width: units.gu(8)
-                        height: units.gu(12)
-                        backgroundColor: page.cover === modelData ? theme.palette.normal.positive : theme.palette.normal.base
-                        sourceFillMode: LomiriShape.PreserveAspectCrop
-                        source: modelData !== "" ? coverImage : null
-
-                        Image {
-                            id: coverImage
-
-                            visible: false
-                            source: parent.modelData !== "" ? "file://" + parent.modelData : ""
-                            sourceSize.width: units.gu(8)
-                            asynchronous: true
-                        }
-
-                        Label {
-                            anchors.centerIn: parent
-                            visible: parent.modelData === ""
-                            text: i18n.tr("None")
-                        }
-
-                        Rectangle {
-                            anchors.fill: parent
-                            color: "transparent"
-                            border.width: page.cover === parent.modelData ? units.dp(3) : 0
-                            border.color: theme.palette.normal.positive
-                            radius: units.gu(1)
-                        }
-
-                        MouseArea {
-                            anchors.fill: parent
-                            onClicked: page.cover = parent.modelData
-                        }
-                    }
-                }
+                folder: visible ? page.chosenFolder() : ""
+                cover: page.cover
+                stack: page.pageStack
+                onChosen: (path) => page.cover = path
             }
 
             Label {

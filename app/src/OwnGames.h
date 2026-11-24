@@ -42,7 +42,7 @@ public:
   // Lists a game folder's programs with gamecheck.py --programs (in the background; checkedChanged
   // when done).
   Q_INVOKABLE void check(const QString& folder);
-  // Pictures for a cover: from the game's folder (two levels down) and Pictures.
+  // Pictures for a cover: from the game's folder (two levels down) and Pictures (one level down).
   Q_INVOKABLE QStringList images(const QString& folder) const;
   // Saves a game; returns its id ("own:<id>"), or "" on failure (error says why).
   Q_INVOKABLE QString add(const QString& name, const QString& folder, const QString& exe, const QString& cover);

@@ -107,6 +107,17 @@ bool XScroll(const char* display_name, int x, int y, int steps)
   return true;
 }
 
+bool XPressKeyAt(const char* display_name, int x, int y, const char* keysym_name)
+{
+  Display* display = OpenForInput(display_name);
+  if (!display)
+    return false;
+  XTestFakeMotionEvent(display, -1, x, y, CurrentTime);
+  XSync(display, False);
+  XCloseDisplay(display);
+  return XPressKey(display_name, keysym_name);
+}
+
 bool XPressKey(const char* display_name, const char* keysym_name)
 {
   Display* display = OpenForInput(display_name);

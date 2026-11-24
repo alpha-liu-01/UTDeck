@@ -86,6 +86,12 @@ public:
   Q_INVOKABLE bool isOwn(const QString& app_id) const;
   // False for one of the user's games whose Wine prefix is not made yet (its first start).
   Q_INVOKABLE bool isPrepared(const QString& app_id) const;
+  // Stage 4.8: what utdeck-compat is preparing for this Steam game before it starts (its Wine folder,
+  // Wine Mono, ...), in words, or "" (its file $XDG_RUNTIME_DIR/utdeck/preparing; older than 15
+  // minutes: left by a run that was killed, ignored).
+  Q_INVOKABLE QString preparing(const QString& app_id) const;
+  // Stage 4.8: the game's row in the library, or -1 (the grid's selection kept across a refresh).
+  Q_INVOKABLE int indexOf(const QString& app_id) const;
 
 signals:
   void countChanged();

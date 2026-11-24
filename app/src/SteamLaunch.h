@@ -69,6 +69,9 @@ public:
   // The user leaves Steam's question unanswered (the dialog page's Cancel): the page closes, Steam's
   // main window too, and the task reads "Cancelled" until the next expect().
   Q_INVOKABLE void dismiss();
+  // Stage 4.8 (B on a controller): Escape to Steam's dialog, which closes it as its Cancel does
+  // (checked on Steam's Install window), then the page goes as with dismiss().
+  Q_INVOKABLE void cancel();
   // Stage 4.7: a dialog Steam shows outside a launch (its Install window, its Uninstall question,
   // after steam-game.sh): the page shows Steam's dialog window (never its main window) until that
   // window has gone for about 1.5 s, or 90 s without one.

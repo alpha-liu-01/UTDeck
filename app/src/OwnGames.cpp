@@ -1,5 +1,6 @@
 #include "OwnGames.h"
 
+#include <QDateTime>
 #include <QDir>
 #include <QDirIterator>
 #include <QFile>
@@ -193,8 +194,20 @@ QStringList OwnGames::images(const QString& folder) const
         found << path;
     }
   }
-  QDir pictures(Home(QStringLiteral("Pictures")));
-  for (const QFileInfo& file : pictures.entryInfoList(kinds, QDir::Files, QDir::Time))
+  // Pictures and its folders one level down (Screenshots, the camera's camera.ubports), newest first.
+  // Others come through "Choose a picture..." (Content Hub: Gallery, File Manager).
+  const QString pictures = Home(QStringLiteral("Pictures"));
+  QFileInfoList recent;
+  QDirIterator pics(pictures, kinds, QDir::Files, QDirIterator::Subdirectories);
+  while (pics.hasNext() && recent.size() < 500)
+  {
+    const QString path = pics.next();
+    if (path.mid(pictures.size()).count(QLatin1Char('/')) <= 2)
+      recent << QFileInfo(path);
+  }
+  std::sort(recent.begin(), recent.end(),
+            [](const QFileInfo& a, const QFileInfo& b) { return a.lastModified() > b.lastModified(); });
+  for (const QFileInfo& file : recent)
     if (found.size() < 60)
       found << file.filePath();
   return found;
@@ -231,11 +244,32 @@ QString OwnGames::newId(const QString& name, const QString& folder) const
   return {};
 }
 
-bool OwnGames::writeConf(const QString& id, const QVariantMap& fields)
+bool OwnGames::writeConf(const QString& id, const QVariantMap& given)
 {
   const QString dir = OwnFolder() + QLatin1Char('/') + id;
   if (!QDir().mkpath(dir))
     return false;
+  // A cover from another app (CoverPickerPage.qml) arrives in this app's cache (Content Hub's
+  // HubIncoming), which is not meant to last: it is copied into the game's folder, under a new name
+  // each time (an image cache would show the old picture under the old name). A copied cover the game
+  // no longer uses goes.
+  QVariantMap fields = given;
+  QString cover = fields.value(QStringLiteral("COVER")).toString();
+  if (cover.startsWith(QDir::homePath() + QStringLiteral("/.cache/")) && cover.contains(QStringLiteral("/HubIncoming/")))
+  {
+    const QString suffix = QFileInfo(cover).suffix().toLower();
+    const QString kept = QStringLiteral("%1/cover-%2.%3").arg(dir).arg(QDateTime::currentMSecsSinceEpoch())
+                             .arg(suffix.isEmpty() ? QStringLiteral("jpg") : suffix);
+    if (!QFile::copy(cover, kept))
+      return false;
+    QFile::remove(cover);
+    QDir().rmdir(QFileInfo(cover).path());  // Content Hub's folder for this transfer, if now empty
+    cover = kept;
+    fields[QStringLiteral("COVER")] = cover;
+  }
+  for (const QFileInfo& old : QDir(dir).entryInfoList({QStringLiteral("cover-*")}, QDir::Files))
+    if (old.filePath() != cover)
+      QFile::remove(old.filePath());
   QFile file(dir + QStringLiteral("/game.conf.new"));
   if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text))
     return false;

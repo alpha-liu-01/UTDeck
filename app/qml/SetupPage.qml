@@ -225,6 +225,7 @@ Page {
                 AbstractButton {
                     width: parent.width
                     height: fallbackLink.height
+                    activeFocusOnTab: true
                     onClicked: setup.setFallback(true)
 
                     Label {
@@ -233,6 +234,8 @@ Page {
                         width: parent.width
                         wrapMode: Text.Wrap
                         color: theme.palette.normal.activity
+                        // Underlined while a controller or keyboard has the focus on it (stage 4.8).
+                        font.underline: parent.activeFocus
                         text: i18n.tr("Can't scan the code? Use Steam's own sign-in window")
                     }
                 }

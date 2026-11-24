@@ -98,8 +98,96 @@ Page {
         }
     }
 
+    // Stage 4.8: the controller's (or a keyboard's) buttons, as keys: arrows move between the cards,
+    // Return plays, Menu (X) opens the game's page, Search (Y) "Add a game", F2 (Start) the settings,
+    // F3 (Back/View) the downloads. The frame shows once a key or button has been used.
+    property bool keyUsed: false
+    readonly property bool showFocus: controllers.controllerUsed || page.keyUsed
+
+    function playGame(appId, title, cover) {
+        if (library.play(appId)) {
+            setup.gameStarting()
+            page.starting = title
+            page.startingOwn = library.isOwn(appId)
+            startingTimer.restart()
+            // The starting page (stage 4.3) follows this launch until the game's window is in front.
+            steamLaunch.expect(appId)
+            page.pageStack.push(Qt.resolvedUrl("StartingPage.qml"), {appId: appId, title: title, cover: cover})
+        }
+    }
+
+    function openGamePage(appId, title) {
+        // One of the user's own games opens its page (stage 4.5: edit, remove, its settings), a Steam
+        // game its settings (stage 4.6).
+        if (library.isOwn(appId))
+            page.pageStack.push(Qt.resolvedUrl("EditGamePage.qml"), {appId: appId})
+        else
+            page.pageStack.push(Qt.resolvedUrl("GameSettingsPage.qml"), {appId: appId, title: title})
+    }
+
+    // Where the focus goes when this page comes to the front (Main.qml's focusPage).
+    function focusFirst() {
+        grid.forceActiveFocus()
+    }
+
+    // The selected card is kept when the library is read again (each time the app comes to the front,
+    // so also after a game: its card stays selected). The model is reset, which moves the grid to the
+    // first card.
+    property string keptAppId: ""
+    Connections {
+        target: library
+        function onModelAboutToBeReset() {
+            page.keptAppId = grid.currentItem ? grid.currentItem.appId : ""
+        }
+        function onModelReset() {
+            Qt.callLater(() => {
+                const i = library.indexOf(page.keptAppId)
+                if (i >= 0)
+                    grid.currentIndex = i
+            })
+        }
+    }
+
+    // The buttons, by the labels on the controller used last.
+    function hint() {
+        switch (controllers.buttonStyle) {
+        case "playstation":
+            return i18n.tr("Cross: play    Square: game settings    Triangle: add a game    Options: settings    Create: downloads")
+        case "nintendo":
+            return i18n.tr("A: play    X: game settings    Y: add a game    +: settings    -: downloads")
+        }
+        return i18n.tr("A: play    X: game settings    Y: add a game    Menu: settings    View: downloads")
+    }
+
     GridView {
         id: grid
+
+        focus: true
+        keyNavigationEnabled: true
+        // Room for the frame of a card on the first and last row.
+        topMargin: units.gu(0.5)
+        bottomMargin: units.gu(0.5)
+        Keys.onPressed: (event) => {
+            // Only while the library is the page shown (another page has the focus otherwise).
+            if (page.pageStack.currentPage !== page)
+                return
+            page.keyUsed = true
+            const card = grid.currentItem
+            if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && card) {
+                page.playGame(card.appId, card.title, card.coverUrl)
+            } else if (event.key === Qt.Key_Menu && card) {
+                page.openGamePage(card.appId, card.title)
+            } else if (event.key === Qt.Key_Search) {
+                page.pageStack.push(Qt.resolvedUrl("AddGamePage.qml"))
+            } else if (event.key === Qt.Key_F2) {
+                page.pageStack.push(Qt.resolvedUrl("SettingsPage.qml"))
+            } else if (event.key === Qt.Key_F3) {
+                page.pageStack.push(Qt.resolvedUrl("DownloadsPage.qml"))
+            } else {
+                return
+            }
+            event.accepted = true
+        }
 
         anchors {
             top: notices.bottom
@@ -117,25 +205,12 @@ Page {
         delegate: GameCard {
             width: grid.cellWidth
             height: grid.cellHeight
-            // A long press: one of the user's own games opens its page (stage 4.5: edit, remove, its
-            // settings), a Steam game its settings (stage 4.6).
-            onPressAndHold: {
-                if (library.isOwn(model.appId))
-                    page.pageStack.push(Qt.resolvedUrl("EditGamePage.qml"), {appId: model.appId})
-                else
-                    page.pageStack.push(Qt.resolvedUrl("GameSettingsPage.qml"), {appId: model.appId, title: model.title})
-            }
+            selected: GridView.isCurrentItem && grid.activeFocus && page.showFocus
+            // A long press: the game's page (X on a controller).
+            onPressAndHold: page.openGamePage(model.appId, model.title)
             onClicked: {
-                if (library.play(model.appId)) {
-                    setup.gameStarting()
-                    page.starting = model.title
-                    page.startingOwn = library.isOwn(model.appId)
-                    startingTimer.restart()
-                    // The starting page (stage 4.3) follows this launch until the game's window is in front.
-                    steamLaunch.expect(model.appId)
-                    page.pageStack.push(Qt.resolvedUrl("StartingPage.qml"),
-                                        {appId: model.appId, title: model.title, cover: model.cover})
-                }
+                grid.currentIndex = index
+                page.playGame(model.appId, model.title, model.cover)
             }
         }
     }
@@ -157,7 +232,7 @@ Page {
         anchors {
             left: parent.left
             right: parent.right
-            bottom: parent.bottom
+            bottom: hintBar.top
         }
         height: statusLabel.text !== "" ? units.gu(5) : 0
         color: theme.palette.normal.foreground
@@ -178,6 +253,32 @@ Page {
             color: library.lastError !== "" ? theme.palette.normal.negative
                                             : theme.palette.normal.foregroundText
             elide: Text.ElideRight
+        }
+    }
+
+    // Stage 4.8: the controller's buttons, once one has been used.
+    Item {
+        id: hintBar
+
+        anchors {
+            left: parent.left
+            right: parent.right
+            bottom: parent.bottom
+        }
+        height: controllers.controllerUsed ? units.gu(4) : 0
+        visible: controllers.controllerUsed
+
+        Label {
+            anchors {
+                verticalCenter: parent.verticalCenter
+                left: parent.left
+                right: parent.right
+                margins: units.gu(2)
+            }
+            text: page.hint()
+            textSize: Label.Small
+            elide: Text.ElideRight
+            color: theme.palette.normal.backgroundSecondaryText
         }
     }
 

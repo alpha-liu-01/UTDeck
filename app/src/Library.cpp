@@ -209,6 +209,14 @@ void Library::refresh()
     emit countChanged();
 }
 
+int Library::indexOf(const QString& app_id) const
+{
+  for (int i = 0; i < m_games.size(); ++i)
+    if (m_games[i].app_id == app_id)
+      return i;
+  return -1;
+}
+
 bool Library::isOwn(const QString& app_id) const
 {
   return app_id.startsWith(kOwnPrefix);
@@ -430,4 +438,17 @@ void Library::endGame()
                           {QStringLiteral("-c"),
                            QStringLiteral(". \"$HOME/utdeck-probe/wine/env.sh\" && WINEPREFIX=\"$1\" wineserver -k"),
                            QStringLiteral("sh"), prefix});
+}
+
+QString Library::preparing(const QString& app_id) const
+{
+  const QFileInfo info(m_state_dir + QStringLiteral("/preparing"));
+  if (!info.exists() || info.lastModified().secsTo(QDateTime::currentDateTime()) > 900)
+    return {};
+  QFile file(info.filePath());
+  if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+    return {};
+  const QString line = QString::fromUtf8(file.readLine()).trimmed();
+  const int space = line.indexOf(QLatin1Char(' '));
+  return space > 0 && line.left(space) == app_id ? line.mid(space + 1) : QString();
 }

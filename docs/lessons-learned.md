@@ -1431,3 +1431,77 @@ Problems met while building UTDeck on the Redmi Note 12 5G (stone). Details in `
   showed a "repair" stuck at 0 MB, and would have kept Steam running and the phone awake. Lesson: read the
   state Steam keeps for the game (`StateFlags`), not only whether its folders exist; and a command Steam
   may refuse ("VerifyApp ... Completed with "0"") needs its answer read, not only its success awaited.
+- **A fix for one path of the same action (stage 4.8).** In 4.3 the prefix update (`wineboot -u`) got
+  "no window" (display drivers off); making a new prefix (`wineboot -i`) did not, so a game's first start
+  still showed Wine's setup window. And the starting page timed out because Steam calls a game started
+  before UTDeck's tool has prepared Wine. Lessons: when fixing one call of a tool, search for its other
+  calls; and a step that can take minutes tells the app it is running.
+- **A control that already handles a key, pressed a second time (stage 4.8).** Main.qml pressed the
+  focused control on Return (`trigger()`), but Lomiri's buttons, switches and list rows press themselves
+  when Return is released (`UCAbstractButton` and `UCListItem`'s `keyReleaseEvent`). A button only
+  emitted an extra, unused signal; a switch toggled twice and never moved. Lesson: before adding a key
+  handler above a toolkit's controls, check what the controls already do with that key (press and
+  release).
+- **Input that goes around the compositor does not keep the phone awake (stage 4.8).** The controller
+  is read through SDL from the kernel's devices, not through Lomiri, so repowerd (the phone's power
+  service) saw no activity and turned the screen off while the app was used with a controller. repowerd
+  has no "the user is active" call; a short screen hold after each use does the same, since ending a
+  hold restarts repowerd's full timeout (checked on stone: off 61 s after the release with a 60 s
+  setting).
+- **On a phone toolkit, focus on a text field means the keyboard (stage 4.8).** Lomiri's text fields open
+  the on-screen keyboard whenever their input gets the focus (`InputHandler.qml`), which is right for a
+  tap and wrong for a D-pad passing through a settings page. Found by reading Lomiri's code before the
+  test, not after. Lesson: for each kind of control a new input method reaches, read what the control
+  does on focus, not only on press; and a model reset (the library's refresh) also resets a view's
+  selection, so a selection meant to last has to be found again by its id.
+- **Memory a program leaves behind outside its own processes (stage 4.9).** Looking for UTDeck's files
+  outside the home folder for the uninstall, `/dev/shm` (shared memory, kept in RAM) held 328 MB of
+  Steam's, 272 MB of it used by no running process: what earlier Steam runs left. Measuring a program's
+  memory by its processes (PSS, stage 3.4) never sees this. Lesson: when counting what a program costs
+  in memory, also look at the RAM-backed folders it writes to (`/dev/shm`, `/tmp` on tmpfs), and check
+  what is left there after it exits.
+- **A path helper that assumed every path was under home (stage 4.9).** The uninstall's list showed
+  `/tmp/steam` as `~/tmp/steam` (it cut the home folder off and put `~` in front, for any path). Caught
+  on the phone's first plan, since the test home had no `/tmp` items. Lesson: a test home tests what is
+  inside it; whatever a script touches outside it needs a look on the real phone (read-only, as here).
+- **A progress count that included what was already there (stage 4.9).** The setup showed Steam's
+  download as the size of Steam's whole folder, every 3 s. After an uninstall that kept the games, that
+  folder already held 18 GB of them, so the count started at 18,000 MB (and `du` walked 18 GB of files
+  each time). Now the kept folders (`steamapps`, `userdata`) are left out. Lesson: a progress number
+  measured from a folder's size counts only what the step writes, so whatever an earlier install left
+  in that folder is excluded.
+- **"Signed in" is not "the sign-in is saved" (stage 4.9).** The setup took Steam's "Logged On" (its
+  connection log) as the sign-in being done, and its next step stopped Steam 2 s later to set the
+  default tool. Steam saves the sign-in (`config/loginusers.vdf`) only when its login reaches "Success"
+  (`steamui_login.txt`), a few seconds after "Logged On": stopped before that, it started again signed
+  out and the QR code had to be scanned twice (the Nothing Phone (1), the first setup after the
+  uninstall). Now the step also waits for "Success". Lesson: before stopping a program
+  right after it reports a state change, check when it writes that state to disk, not only when it logs
+  it.
+- **Steam Input on a phone that has `/dev/uinput`, with Steam hidden (after stage 4.9).** On the
+  Nothing Phone (1) a DualShock 4 clone worked in Plants vs. Zombies but not in Ys IX. Ys IX opts in to
+  Steam Input ("Opted-in Controller Mask ... fffd" in Steam's `controller.txt`), so Steam hides the real
+  pad from the game (the game's SDL saw only "Steam Virtual Gamepad", `28de`) and feeds the virtual one
+  from its active layout. Steam activated only its desktop layout (app 413080) and never the game's: it
+  tells which game is in front from its own X display, and UTDeck's Steam runs hidden on Xvfb while the
+  game's window is on Lomiri. So the pad drove Steam's invisible desktop and the game got nothing.
+  Stone never showed it: without `/dev/uinput` Steam cannot make virtual pads, so games always read the
+  real pad (stage 4.4's `controllers.reg`). Tried first: Steam's own per-game "Disable Steam Input"
+  (`UseSteamControllerConfig` "0" in `localconfig.vdf`, the value read from Steam's UI code). Steam kept
+  the value but still applied the game's opt-in, so the place or the way Steam reads it is something
+  else; removed again. Solved in `utdeck-compat`, which already passed the real pads on stone (stage
+  3.2b): whenever Steam tells a game to ignore the real pads, the game gets them anyway and Steam's
+  virtual pad (`28de:11ff`) is hidden from it instead. Ys IX then saw the "Wireless Controller" and
+  responded (the maintainer, 2026-11-23). Lessons: a feature tested on one phone can take another path
+  on a phone with one more device node, so list the nodes a program uses (here `uinput`, `hidraw`) on
+  each test phone; and fix a cause at the point all its cases pass through (the game's launch), rather
+  than in a setting the program may read from elsewhere.
+- **A picture list that looked only where pictures are not (stage 4.5, fixed after 4.9).** An own game's
+  cover could only be one of the pictures UTDeck found itself: in the game's folder and at the top of
+  `~/Pictures`. On Ubuntu Touch, `~/Pictures` keeps its pictures in folders (`Screenshots`, the
+  camera's `camera.ubports`), so nothing of the user's showed, and there was no way to pick one
+  elsewhere. Now the list also looks one folder down, and "Choose a picture..." asks Gallery or File
+  Manager for one through Content Hub (Ubuntu Touch's service for passing files between apps); the
+  picture is copied into the game's folder, since Content Hub leaves it in the app's cache. Lesson: on
+  a phone, choosing a file goes through the system's picker, not only a list the app builds; and check
+  where the system's own apps actually save (here, one level down).

@@ -26,6 +26,7 @@
 #include "SteamGames.h"
 #include "Setup.h"
 #include "SteamLaunch.h"
+#include "Uninstall.h"
 
 namespace
 {
@@ -118,6 +119,21 @@ int main(int argc, char** argv)
   // Steam's own tasks: the user's Steam library, installing, downloads, uninstalling (stage 4.7).
   SteamGames steam_games(&steam_launch);
   KeepAwake keep_awake;
+  // Uninstalling UTDeck (stage 4.9).
+  Uninstall uninstall;
+  // Stage 4.8: the controller read through SDL is not seen by the phone as use (only touches are), so
+  // the screen went off while the app was driven with a controller. Each use holds the screen on;
+  // 15 s after the last one the hold ends, and repowerd then counts its own screen timeout again from
+  // the start (checked on stone: off 61 s after the release with a 60 s timeout), as after a touch.
+  QTimer controller_idle;
+  controller_idle.setSingleShot(true);
+  controller_idle.setInterval(15000);
+  QObject::connect(&controllers, &Controllers::used, &app, [&] {
+    keep_awake.hold(QStringLiteral("controller"));
+    controller_idle.start();
+  });
+  QObject::connect(&controller_idle, &QTimer::timeout, &app,
+                   [&] { keep_awake.release(QStringLiteral("controller")); });
 
   QQmlApplicationEngine engine;
   engine.rootContext()->setContextProperty(QStringLiteral("library"), &library);
@@ -128,6 +144,7 @@ int main(int argc, char** argv)
   engine.rootContext()->setContextProperty(QStringLiteral("gameSettings"), &game_settings);
   engine.rootContext()->setContextProperty(QStringLiteral("steamGames"), &steam_games);
   engine.rootContext()->setContextProperty(QStringLiteral("keepAwake"), &keep_awake);
+  engine.rootContext()->setContextProperty(QStringLiteral("uninstall"), &uninstall);
   engine.addImageProvider(QStringLiteral("steamdialog"), new SteamDialogImageProvider(&steam_launch));
   engine.addImageProvider(QStringLiteral("qr"), new QrImageProvider(&setup));
   engine.addImageProvider(QStringLiteral("steamscreen"), new ScreenImageProvider(&setup));

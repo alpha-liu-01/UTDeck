@@ -1,7 +1,7 @@
 # UTDeck's app (stage 4, docs/ut-deck/stage4-roadmap.md): a Qt 6 QML frontend in Lomiri's native
 # look. Built in the utdeck-app-cross container by tools/app-build/build.sh.
 cmake_minimum_required(VERSION 3.25)
-project(utdeck VERSION 0.3.44 LANGUAGES CXX)
+project(utdeck VERSION 0.3.50 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -36,6 +36,8 @@ qt_add_executable(utdeck
   src/SteamGames.h
   src/KeepAwake.cpp
   src/KeepAwake.h
+  src/Uninstall.cpp
+  src/Uninstall.h
   src/XScreen.cpp
   src/XScreen.h
 )
@@ -54,9 +56,12 @@ qt_add_qml_module(utdeck
     qml/ControllersPage.qml
     qml/AddGamePage.qml
     qml/EditGamePage.qml
+    qml/CoverChooser.qml
+    qml/CoverPickerPage.qml
     qml/GameSettingsPage.qml
     qml/SteamLibraryPage.qml
     qml/DownloadsPage.qml
+    qml/UninstallPage.qml
 )
 
 target_compile_definitions(utdeck PRIVATE UTDECK_VERSION="${PROJECT_VERSION}")

@@ -12,6 +12,51 @@ Page {
 
     Component.onCompleted: steamGames.refresh()
 
+    // Stage 4.8, with a controller: the focus starts on the list (the search field would bring up the
+    // on-screen keyboard); the list moves with the arrows itself (Lomiri's list rows).
+    function focusFirst() {
+        if (list.count === 0) {
+            list.forceActiveFocus()
+            return
+        }
+        list.currentIndex = Math.max(0, list.currentIndex)
+        if (list.currentItem)
+            list.currentItem.forceActiveFocus(controllers.controllerUsed ? Qt.TabFocusReason : Qt.OtherFocusReason)
+    }
+
+    // LB / RB: the first game of the previous or next first letter (the list is sorted by name).
+    function letter(i) {
+        const name = list.model[i].name
+        return name.length > 0 ? name.charAt(0).toUpperCase() : ""
+    }
+
+    function jump(from, forward) {
+        const n = list.model.length
+        if (n === 0)
+            return
+        let i = Math.max(0, Math.min(n - 1, from))
+        if (forward) {
+            const l = letter(i)
+            while (i < n - 1 && letter(i) === l)
+                ++i
+        } else {
+            // To the start of this letter, or if already there, the start of the one before.
+            if (i > 0 && letter(i - 1) === letter(i)) {
+                while (i > 0 && letter(i - 1) === letter(i))
+                    --i
+            } else if (i > 0) {
+                --i
+                while (i > 0 && letter(i - 1) === letter(i))
+                    --i
+            }
+        }
+        page.chosen = ""
+        list.positionViewAtIndex(i, ListView.Beginning)
+        list.currentIndex = i
+        if (list.currentItem)
+            list.currentItem.forceActiveFocus(Qt.TabFocusReason)
+    }
+
     header: PageHeader {
         id: pageHeader
 
@@ -52,6 +97,8 @@ Page {
     }
 
     ListView {
+        id: list
+
         anchors {
             top: top.bottom
             left: parent.left
@@ -68,11 +115,32 @@ Page {
             id: item
 
             required property var modelData
+            required property int index
             readonly property bool open: page.chosen === modelData.appId
 
             width: ListView.view.width
             height: row.height + (open ? details.height : 0) + units.gu(2)
-            onClicked: page.chosen = open ? "" : modelData.appId
+            onClicked: {
+                page.chosen = open ? "" : modelData.appId
+                // With a controller or a keyboard, on to the row's Install button.
+                if (page.chosen !== "" && controllers.controllerUsed && installButton.visible && installButton.enabled)
+                    Qt.callLater(() => installButton.forceActiveFocus(Qt.TabFocusReason))
+            }
+            // B on an open row closes it, back to the row.
+            Keys.onEscapePressed: (event) => {
+                if (!item.open) {
+                    event.accepted = false
+                    return
+                }
+                page.chosen = ""
+                item.forceActiveFocus(Qt.TabFocusReason)
+            }
+            Keys.onPressed: (event) => {
+                if (event.key === Qt.Key_PageUp || event.key === Qt.Key_PageDown) {
+                    page.jump(index, event.key === Qt.Key_PageDown)
+                    event.accepted = true
+                }
+            }
 
             Row {
                 id: row
@@ -141,6 +209,8 @@ Page {
                 }
 
                 Button {
+                    id: installButton
+
                     text: i18n.tr("Install")
                     color: theme.palette.normal.positive
                     enabled: item.modelData.windows && steamGames.task.appId === undefined

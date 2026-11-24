@@ -53,6 +53,9 @@ docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$root:/src" -w /src utde
   mkdir -p '$stage/setup'
   cp tools/ut-probe/utdeck-setup.sh '$stage/setup/'
   chmod 755 '$stage/setup/utdeck-setup.sh'
+  # Stage 4.9: the uninstall, run from the click (it removes the home folder's copy of UTDeck).
+  cp tools/ut-probe/utdeck-uninstall.sh '$stage/setup/'
+  chmod 755 '$stage/setup/utdeck-uninstall.sh'
   sh tools/ut-probe/home-files.sh '$stage/setup/home'
   echo '$version' > '$stage/setup/home/VERSION'
   chmod 755 '$stage/launcher.sh' '$stage/utdeck'

@@ -395,6 +395,21 @@ void SteamLaunch::scroll(qreal fx, qreal fy, int steps)
   captureDialog();
 }
 
+void SteamLaunch::cancel()
+{
+  QImage dialog;
+  int x = 0, y = 0;
+  {
+    QMutexLocker lock(&m_mutex);
+    dialog = m_dialog;
+    x = m_dialog_x;
+    y = m_dialog_y;
+  }
+  if (m_waiting_for_user && !dialog.isNull())
+    XPressKeyAt(kSteamDisplay, x + dialog.width() / 2, y + dialog.height() / 2, "Escape");
+  dismiss();
+}
+
 void SteamLaunch::tap(qreal fx, qreal fy)
 {
   QImage dialog;

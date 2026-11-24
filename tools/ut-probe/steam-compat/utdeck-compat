@@ -77,6 +77,16 @@ fi
 TOOL=$(cd "$(dirname "$0")" && pwd)
 STEAM=${STEAM_COMPAT_CLIENT_INSTALL_PATH:-$HOME/.local/share/Steam}
 
+# What the preparation is doing, for UTDeck's starting page (stage 4.8): "APPID what" in
+# $XDG_RUNTIME_DIR/utdeck/preparing while a step runs, removed before the game starts. Steam reports a
+# game as started once it has run this script, so a first start that prepares Wine for minutes (else
+# Heart.Break(): 2 min 50 s) looked like a launch that failed.
+PREP=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/utdeck/preparing
+preparing() {
+    [ "$APPID" = 0 ] && return
+    mkdir -p "${PREP%/*}" && printf '%s %s\n' "$APPID" "$1" > "$PREP.tmp" && mv -f "$PREP.tmp" "$PREP"
+}
+
 # prepare_prefix: make the prefix if needed (as game-run.sh would), then the Steam parts. The
 # registry file is imported again when it changes (its checksum is kept in the prefix).
 prepare_prefix() {
@@ -85,7 +95,12 @@ prepare_prefix() {
         # Made: Wine's registry is there. Not drive_c alone: since stage 4.7 Steam itself creates
         # pfx/drive_c/users/steamuser/... when it brings a game's cloud saves before its first start.
         if [ ! -f "$WINEPREFIX/system.reg" ]; then
-            wineboot -i > /dev/null 2>&1; wineserver -w
+            preparing "making the game's Windows folder"
+            # Without any window (stage 4.8): Wine's "setting up" window showed over the phone's
+            # wallpaper at else Heart.Break()'s first start; the display drivers are off for this step,
+            # as for the update below.
+            WINEDLLOVERRIDES="winewayland.drv,winex11.drv=d;mscoree,mshtml=;winemenubuilder.exe=d" \
+                wineboot -i > /dev/null 2>&1; wineserver -w
             echo "  prefix made" >> "$LOG"
         fi
         # The Windows user folder (stage 4.7, utdeck-profile.py): one per game, in
@@ -108,6 +123,7 @@ prepare_prefix() {
         mark=$WINEPREFIX/utdeck-prefix-dlls
         [ -f "$mark" ] || [ "$(cat "$DATA/utdeck-prefix-dlls" 2>/dev/null)" != "$rt" ] || echo "$rt" > "$mark"
         if [ "$(cat "$mark" 2>/dev/null)" != "$rt" ]; then
+            preparing "bringing it up to the runtime, with DirectX for Vulkan"
             # The prefix brought up to this runtime first, without any window (stage 4.3: after a
             # runtime update Wine's "The Wine configuration is being updated" notice came up over
             # UTDeck's starting page, at the game's start): Wine's display drivers off for this step.
@@ -124,6 +140,7 @@ prepare_prefix() {
         if [ ! -d "$WINEPREFIX/drive_c/windows/mono" ]; then
             M=$(ls "$(dirname "$(command -v wine)")"/../share/wine/mono/wine-mono-*.msi 2>/dev/null | tail -1)
             if [ -n "$M" ]; then
+                preparing "Wine Mono, for .NET (about half a minute)"
                 t=$(date +%s)
                 WINEDLLOVERRIDES="mshtml=;winemenubuilder.exe=d" wine msiexec /i "$(winepath -w "$M" 2>/dev/null)" /qn > /dev/null 2>&1
                 wineserver -w
@@ -217,6 +234,7 @@ fix_vc_runtime() {
             for a in x64 x86; do
                 for mode in install repair; do
                     [ $mode = repair ] && vc_complete $a && break
+                    preparing "the Visual C++ runtime ($a)"
                     HODLL=libwow64fex.dll timeout 600 wine "$(winepath -w "$V/VC_redist.$a.exe")" /$mode /quiet /norestart \
                         > /dev/null 2>&1
                     echo "  Visual C++ 2022 $a /$mode: exit $?" >> "$LOG"
@@ -253,14 +271,22 @@ unset VK_INSTANCE_LAYERS TU_DEBUG_FILE
 SC=${STEAM_COMPAT_SHADER_PATH:-$STEAM/steamapps/shadercache/${STEAM_COMPAT_APP_ID:-${SteamAppId:-0}}}
 export MESA_SHADER_CACHE_DIR=${MESA_SHADER_CACHE_DIR:-$SC} MESA_DISK_CACHE_SINGLE_FILE=${MESA_DISK_CACHE_SINGLE_FILE:-1}
 unset MESA_DISK_CACHE_READ_ONLY_FOZ_DBS
-# Steam Input: for a game that uses it (Stray), Steam makes a virtual Xbox controller through the
-# kernel's uinput and tells the game to ignore the real ones (SDL_GAMECONTROLLER_IGNORE_DEVICES, read
-# by Wine's SDL controller backend). On Ubuntu Touch /dev/uinput belongs to an Android system user,
-# so the virtual controller is never made and the game saw no controller at all. Without uinput,
-# the game gets the real controller, as in games without Steam Input (no Steam remapping then).
-if [ ! -w /dev/uinput ] && [ -n "${SDL_GAMECONTROLLER_IGNORE_DEVICES:-}" ]; then
-    unset SDL_GAMECONTROLLER_IGNORE_DEVICES SteamVirtualGamepadInfo
-    echo "  Steam Input: no uinput, so the real controllers are passed to the game" >> "$LOG"
+# Steam Input: for a game that uses it (Stray, Ys IX), Steam makes a virtual Xbox controller through
+# the kernel's uinput and tells the game to ignore the real ones (SDL_GAMECONTROLLER_IGNORE_DEVICES,
+# read by Wine's SDL controller backend). It never works here, so the game always gets the real
+# controllers (as in games without Steam Input; no Steam remapping then):
+# - without uinput (stone: /dev/uinput belongs to an Android system user) the virtual controller is
+#   never made, and the game saw no controller at all (stage 3.2b);
+# - with uinput (the Nothing Phone (1)) it is made, but Steam fills it from the layout of the game it
+#   thinks is in front, and hidden on Xvfb it never sees the game's window (on Lomiri): it keeps its
+#   desktop layout and the virtual controller stays silent (after stage 4.9). It is hidden from the
+#   game too (Steam's virtual gamepad, 28de:11ff), or it would take the first controller slot.
+# Steam's own per-game "Disable Steam Input" (localconfig.vdf, UseSteamControllerConfig) was tried
+# first and did not change what Steam passed to Ys IX.
+if [ -n "${SDL_GAMECONTROLLER_IGNORE_DEVICES:-}" ] || [ -n "${SteamVirtualGamepadInfo:-}" ]; then
+    export SDL_GAMECONTROLLER_IGNORE_DEVICES=0x28de/0x11ff
+    unset SteamVirtualGamepadInfo
+    echo "  Steam Input: the real controllers are passed to the game, Steam's virtual one hidden" >> "$LOG"
 fi
 
 case "$VERB" in
@@ -288,6 +314,7 @@ run|waitforexitandrun)
     [ "$APPID" = 0 ] && export UTDECK_PAUSE=0 UTDECK_SETUP_RUN=1
     prepare_prefix
     case "$1" in */iscriptevaluator.exe) ;; *) fix_vc_runtime ;; esac
+    rm -f "$PREP"
     # game-run.sh sets the rest of the environment (env.sh, Wayland, overrides) and the logs, in
     # wine/games/steam-<appid>-<time>.*. It starts in Steam's working folder, as Proton does: Steam
     # sets it to the game's folder for games, and gives paths relative to it for its install

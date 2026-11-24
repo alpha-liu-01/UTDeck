@@ -71,7 +71,15 @@ done_service() { pgrep -x -u "$(id -u)" steam > /dev/null; }
 signin_state() {
     grep -o '^\[[^]]*\] \[[A-Za-z ]*,' "$STEAM/logs/connection_log.txt" 2>/dev/null | tail -1 | sed 's/.*\[//; s/,$//'
 }
-done_signin()  { done_service && [ "$(signin_state)" = "Logged On" ]; }
+# Signed in and saved: Steam saves the sign-in (config/loginusers.vdf) only once its login reaches
+# "Success" (steamui_login.txt), a few seconds after "Logged On". The tool step stops Steam right after
+# this one, and stopped before that, Steam forgot the sign-in: the QR code had to be scanned twice
+# (stage 4.9, the Nothing Phone (1): Logged On 21:28:35, stopped 21:28:37, Success never reached).
+signin_saved() {
+    grep -o 'SetLoginState: [A-Za-z]*' "$STEAM/logs/steamui_login.txt" 2>/dev/null | tail -1 |
+        grep -qx 'SetLoginState: Success'
+}
+done_signin()  { done_service && [ "$(signin_state)" = "Logged On" ] && signin_saved; }
 TOOL=$STEAM/compatibilitytools.d/utdeck
 done_tool()    {
     python3 "$TOOL/set-default.py" --show 2> /dev/null |
@@ -80,11 +88,17 @@ done_tool()    {
 
 # label STEP TEXT: what the step does now, for the ticker.
 label() { mkdir -p "$ST" && echo "$2" > "$ST/.label-$1" && put "$1" running "$2"; }
-# ticker STEP PATH: while a download or unpacking runs, "LABEL, N MB" every 3 s from PATH's size.
-# Started in the background; stopped with kill.
+# ticker STEP PATH [NAME...]: while a download or unpacking runs, "LABEL, N MB" every 3 s from PATH's
+# size, leaving out PATH's folders NAME (Steam's games and settings, kept by an uninstall: counted, they
+# made Steam's download start at 18,000 MB, stage 4.9). Started in the background; stopped with kill.
 ticker() {
+    t_step=$1 t_path=$2
+    shift 2
+    t_skip=
+    for n in "$@"; do t_skip="$t_skip --exclude=./$n"; done
     while sleep 3; do
-        put "$1" running "$(cat "$ST/.label-$1" 2>/dev/null), $(du -sm "$2" 2>/dev/null | cut -f1) MB"
+        # shellcheck disable=SC2086 # t_skip: one word per folder left out
+        put "$t_step" running "$(cat "$ST/.label-$t_step" 2>/dev/null), $(cd "$t_path" 2>/dev/null && du -sm $t_skip . 2>/dev/null | cut -f1) MB"
     done
 }
 
@@ -181,7 +195,7 @@ run)
         case $s in
             xvfb)    label xvfb "downloading Xvfb"; ticker xvfb "$W/xvfb" & T=$! ;;
             runtime) label runtime "downloading and unpacking the Wine runtime"; ticker runtime "$W/wine" & T=$! ;;
-            steam)   label steam "downloading Steam"; ticker steam "$STEAM" & T=$! ;;
+            steam)   label steam "downloading Steam"; ticker steam "$STEAM" steamapps userdata & T=$! ;;
             signin)  put signin running "waiting for the QR code to be scanned"; T= ;;
             tool)    put tool running "making UTDeck's runtime Steam's choice for Windows games"; T= ;;
             *)       put "$s" running; T= ;;

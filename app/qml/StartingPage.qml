@@ -50,6 +50,20 @@ Page {
         page.failEndable = !!endable
     }
 
+    // Stage 4.8: a failed start puts the focus on what can be done about it (A presses it; B goes back
+    // to the library, as "Back to the library").
+    onFailTitleChanged: {
+        if (page.failTitle === "" || !controllers.controllerUsed)
+            return
+        Qt.callLater(() => {
+            for (const b of [retryButton, endButton, settingsButton])
+                if (b.visible) {
+                    b.forceActiveFocus(Qt.TabFocusReason)
+                    return
+                }
+        })
+    }
+
     function retry() {
         page.failTitle = ""
         page.failDetail = ""
@@ -76,6 +90,12 @@ Page {
         }
         if (page.gameSeen)
             return
+        // UTDeck's tool still prepares Wine for the game: not a failed launch, and the 45 s wait for
+        // the game after Steam's "Completed" starts over when it is done.
+        if (page.preparing !== "") {
+            page.completedAt = 0
+            return
+        }
         const waited = (Date.now() - page.startedAt) / 1000
         if (page.own) {
             // No Steam: own-run.sh prepares the prefix (about two minutes the first time), then starts it.
@@ -113,7 +133,12 @@ Page {
         return null
     }
 
+    // Stage 4.8: what UTDeck's tool prepares before the game can start (its first start: minutes).
+    property string preparing: ""
+
     function stepText() {
+        if (page.preparing !== "" && library.runningGame !== page.appId)
+            return i18n.tr("Preparing Wine for this game: %1...").arg(page.preparing)
         if (library.runningGame === page.appId)
             return i18n.tr("Starting the game...")
         if (page.own)
@@ -155,6 +180,8 @@ Page {
     }
 
     function hintText() {
+        if (page.preparing !== "" && library.runningGame !== page.appId)
+            return i18n.tr("A game's first start prepares its own Windows folder (DirectX for Vulkan, .NET): a few minutes. Later starts skip this.")
         if (page.own)
             return page.firstStart && library.runningGame !== page.appId
                    ? i18n.tr("The first start of a game prepares its own Windows folder (DirectX for Vulkan, .NET): about two minutes.")
@@ -189,6 +216,7 @@ Page {
         running: page.failTitle === ""
         onTriggered: {
             page.elapsed = Math.round((Date.now() - page.startedAt) / 1000)
+            page.preparing = page.own ? "" : library.preparing(page.appId)
             page.checkFailure()
         }
     }
@@ -306,6 +334,8 @@ Page {
                 spacing: units.gu(2)
 
                 Button {
+                    id: retryButton
+
                     visible: page.failTitle !== "" && !page.failSignIn && !page.failEndable
                     text: i18n.tr("Try again")
                     color: theme.palette.normal.positive
@@ -313,6 +343,8 @@ Page {
                 }
 
                 Button {
+                    id: endButton
+
                     visible: page.failEndable
                     text: i18n.tr("End the game")
                     color: theme.palette.normal.negative
@@ -320,6 +352,8 @@ Page {
                 }
 
                 Button {
+                    id: settingsButton
+
                     visible: page.failSignIn
                     text: i18n.tr("Settings")
                     color: theme.palette.normal.positive

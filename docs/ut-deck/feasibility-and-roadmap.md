@@ -42,7 +42,7 @@ them blocks upstream Wine on Lomiri outright.
      patch unnecessary later. Stage 2 below.
   2. **Wine's Wayland driver has no touch input at all** (no `wl_touch` anywhere in
      `winewayland.drv`). Touch controls, and touch as a mouse, have to come from UTDeck itself.
-     Stage 5.
+     Stage 6.
   3. **The vendor Vulkan drivers are too old for DXVK 2.x**, which needs Vulkan 1.3 (stone's blob
      is 1.1.128). So Turnip is not an extra here, it is the base of the product. Supported devices
      are therefore Adreno phones that Turnip supports, at first.
@@ -87,7 +87,8 @@ What turned out differently from the plan above:
 2. **The next game round inside stage 4**, not before it: adding three or more games through the
    new library brings the table to ten (stage 3's exit) and is stage 4's own test. Stage 3's
    leftovers for a game round (32-bit emulator choice, shader stutter, the open crashes) go with it.
-3. Stage 5 (input) after 4; then packaging (6). Stage 8's stronger device brings back 3.9 (Vulkan
+3. After stage 4: performance and resources (5), then touch controls and the in-game menu (6), then
+   packaging (7) (the order since 2026-11-23). Stage 9's stronger device brings back 3.9 (Vulkan
    games) and the GPU-bound games.
 
 ## Terms used in this document
@@ -266,7 +267,7 @@ as nothing. So:
 
 - **Touch controls** (an on-screen gamepad, as in DroidDeck and Winlator) and **touch as a mouse**
   for launchers and menus have to be produced by UTDeck.
-- Proposed design, to be tested in stage 5:
+- Proposed design, to be tested in stage 6:
   - an **input service** in the click that reads the touchscreen and gamepads from `/dev/input`
     (phablet is in `android_input`, and the click is unconfined), and turns touches into a virtual
     controller and mouse events;
@@ -339,7 +340,13 @@ click, and later other emulators packaged the same way.
 
 ## Roadmap
 
-Each stage has a goal, steps and an exit check, as in the Dolphin and stone-ut notes. Later stages
+Each stage has a goal, steps and an exit check, as in the Dolphin and stone-ut notes.
+
+**Renumbered 2026-11-23 (the maintainer):** a new stage 5, performance and resources, comes before the
+touch controls and the in-game menu (now stage 6): what that menu adjusts (a frame limiter, Steam's
+memory) and shows (a performance overlay) is built and measured first, and the overlay is the first
+piece of the drawing layer stage 6 builds on. Packaging, stores and more devices move up one (7, 8, 9).
+Notes written before that date use the old numbers (stage 5 for touch and the in-game menu). Later stages
 get their own documents in this folder. Development device: stone (Redmi Note 12 5G, Adreno
 619v2, Ubuntu Touch 24.04-2.x, Halium 14, kernel 5.4), because the whole port is ours and its
 kernel can be rebuilt. Second device: the Nothing Phone (1) (Adreno 642L, 24.04-1.x), see
@@ -471,8 +478,9 @@ hidden as a service, 3.2b the table, 3.3 two Wine bases, 3.4 defaults in one fil
 (closed until a stronger device). Two runtime releases are on GitHub (Proton's base, downloaded on
 request). Open items go to a game round (crashes in Ys IX, Goat Simulator on our base, Aperture Desk
 Job's lock-up, 32-bit emulator choice, shader stutter, DirectShow movies), to stage 4 (orientation,
-hidden Steam's dialogs, a starting screen, Linux-build forcing), stage 5 (controller hot-plug, the
-on-screen keyboard) and stage 8 (Vulkan games, the Nothing Phone).
+hidden Steam's dialogs, a starting screen, Linux-build forcing), stage 6 (controller hot-plug, the
+on-screen keyboard) and stage 9 (Vulkan games, the Nothing Phone) (stage numbers as renumbered on
+2026-11-23).
 
 #### Status (2026-11-18): 3.1 done
 
@@ -528,13 +536,41 @@ the game launched), per-game `utdeck-env` and `defaults.env`. What stage 3 left 
 7. **The next game round** through the new library: three or more games bring stage 3's table to
    ten, with stage 3's leftovers for a game round (see its notes).
 
-### Stage 5. Touch controls, in-game menu, overlay
+### Stage 5. Performance and resources
+
+Added 2026-11-23 (the maintainer's choice of order). Goal: games get as much of the phone as possible,
+measured before and after each change, and the user can see and limit what a game uses.
+
+1. **Steam's memory during a game.** Hidden Steam takes about 1 GB (PSS) even idle; its own options did
+   not lower it (stage 3.4), and Steam's switch only helps between games. To measure on stone: the
+   kernel asked to push Steam's memory out to compressed RAM while a game runs (`memory.reclaim` on its
+   unit's cgroup, if the user's systemd may write it), and Steam's web helper paused during the game
+   (Steam restarts a helper it thinks hung; `-cef-disable-hang-timeouts` exists). What each does to the
+   game's memory, Steam's state afterwards, and the game's start, cloud saves and quitting.
+2. **A frame limiter per game**: steadier frame times, less heat and battery; in the game's settings
+   page. DXVK's own limit, or the overlay's (item 3), whichever paces better on Lomiri.
+3. **A performance overlay** in the game's picture: frame rate and frame time, CPU and GPU load and
+   clocks, temperatures, memory. Candidate: MangoHud (an open source Vulkan layer, the base of the Steam
+   Deck's own overlay, with a frame limiter), built for ARM64; the GPU's numbers read from the KGSL
+   driver (Halium's), which MangoHud does not know. Its way of drawing is what stage 6's menu and touch
+   controls build on.
+4. **Other losses found on the way** (memory or CPU UTDeck's own helpers take during a game). Found in
+   4.9's step 1 (the Nothing Phone (1)): Steam's shared memory left in `/dev/shm` after it exits (272 MB
+   of RAM used by no process after two days), and the old default runtime kept on disk after an update
+   (1.2 GB). Every
+   change that touches the hardware stays within the vendor's values (CLAUDE.md).
+
+Exit: on stone, one game run with Steam's memory lowered (measured), the frame limiter and the overlay
+switched on from the app, with the numbers before and after written down.
+
+### Stage 6. Touch controls and the in-game menu
 
 Goal: games are playable with touch only, and the menu works during a game.
 
 1. Input service and virtual controller (see "Touch, in a driver that has none").
 2. The Vulkan layer: on-screen controls with edit mode, scale and opacity; the in-game menu
-   (pause, settings, quit, screenshot); a performance HUD.
+   (pause, settings, quit, screenshot, stage 5's frame limiter and overlay switched live); the
+   performance HUD itself comes from stage 5.
 3. Touch as a mouse for launchers and menus: tap, drag, right click by long press.
 4. Haptics through hfd-service, as Dolphin does.
 
@@ -556,7 +592,19 @@ Moved 2026-11-22 (the maintainer): **real controllers are stage 4.4**
 keeps the touch controls, the virtual controller, the in-game menu, the overlay and the on-screen
 keyboard.
 
-### Stage 6. Packaging and release
+Added 2026-11-23 (the maintainer, after 4.9): **Steam Input, telling Steam which game is in front.**
+The "unavailable" above holds on stone only: the Nothing Phone (1) gives phablet `/dev/uinput`, so Steam
+makes its virtual pad there, hides the real pad from games that opt in to Steam Input (Ys IX), and feeds
+the virtual pad from the layout of the game it thinks is in front. Hidden on Xvfb, Steam never sees the
+game's window (it is on Lomiri), keeps its desktop layout, and the game gets no input
+([lessons-learned.md](../lessons-learned.md)). For stage 4 (way A), `utdeck-compat` gives every game
+the real pads and hides Steam's virtual one, as on stone (Steam's own per-game "Disable Steam Input"
+setting, written in its file, did not take). Here, way B, to research: a stand-in window on
+Steam's hidden display, marked with the running game's app ID and made the active window while the game
+is in front, so that Steam activates the game's layout. Worth it if Steam accepts it: the community
+layouts, gyro as a mouse, and possibly a base for item 1's virtual controller on phones with `uinput`.
+
+### Stage 7. Packaging and release
 
 1. Click, unconfined, with the justification for the OpenStore review (gamepads, Wine's process
    model).
@@ -574,7 +622,7 @@ Wine base (`get-runtime.sh`: GitHub releases, SHA-256 checked, `runtimes.list`);
 carry the default runtime and Mesa. Hidden Steam, its Xvfb and the per-game helpers run as systemd
 user services today: how they fit a click is part of this stage.
 
-### Stage 7. Stores and Steam
+### Stage 8. Stores and Steam
 
 1. DRM-free first: GOG (offline installers, then a GOG login through an existing open client such
    as gogdl), itch.io.
@@ -596,7 +644,7 @@ moves into stage 3 (stage 3.S), so the compatibility table can use the maintaine
 Status after stage 3 (2026-11-21): step 3 is done the first way (Valve's ARM64 client, hidden). Left
 here: GOG, itch.io and Epic; Steam's overlay (K8) and pipeline cache.
 
-### Stage 8. More devices
+### Stage 9. More devices
 
 1. A device profile file: GPU family, Turnip support, the DXVK pin, known quirks, thermal notes.
 2. The Halium porting guide from stone-ut, linked as "how to bring your phone".
@@ -676,7 +724,7 @@ This repository is ARMDeck. Most of it does not apply to a Halium product:
 
 Where these stand after stage 3 (2026-11-21): 3 (devices): stone is the development device, as
 recommended. 4 (runtime base): both, as two Steam compatibility tools (3.3). 5 (runtime delivery):
-downloading from GitHub releases works for the second base; the choice for the click is stage 6's.
+downloading from GitHub releases works for the second base; the choice for the click is stage 7's.
 6 (Steam scope): Steam came first, in stage 3. 1, 2 and 7 are not recorded here as decided.
 
 ## Sources
