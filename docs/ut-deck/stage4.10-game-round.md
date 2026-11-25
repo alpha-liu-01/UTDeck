@@ -283,6 +283,56 @@ short of the mode, in a game's frames file, is that case).
 - patches 0022-0024 (`win32u.so`, `services.exe`) and 0021 (`ntdll.so`) are swapped into the phone's
   runtime by hand (the originals kept as `*.before-00NN`), until the next runtime release.
 
+## Keyboard, mouse and touch: test programs (2026-11-25)
+
+The maintainer's choice: input is checked with test programs first, not game by game. Two of our own
+(`tools/ut-probe/win/kbmtest.c`, `touchtest.c`, built by `build.sh`, x86-64 as games are), each a
+full-screen borderless window that shows what a Windows game receives and writes every event to the
+run's log (`wine/games/own-kbmtest-<time>.log`, `own-touchtest-<time>.log`):
+- **Keyboard and mouse test**: keys (`WM_KEYDOWN`/`UP`, `WM_SYSKEYDOWN`/`UP`: name, virtual key, scan
+  code, repeat), `WM_CHAR`, the keys held; the cursor, five buttons, double clicks, both wheels; raw
+  input (`WM_INPUT`, what most 3D games read for the mouse); a mouse-look mode (F2), the cursor
+  hidden, held in the window and put back in the middle after each move, as shooters do (Lomiri has
+  no pointer locking, `zwp_pointer_constraints_v1`, so this is where it shows).
+- **Touch test** (the test program stage 5.5 asked for): pointer messages (`WM_POINTERDOWN`/
+  `UPDATE`/`UP`), `WM_TOUCH` (its Mode button), `WM_GESTURE`, mouse messages marked "from touch" when
+  Windows made them from a touch; taps and swipes with direction, length and time; numbered circles
+  and trails per contact, the most contacts at once; five targets (bottom corners, both edges, the
+  middle) for where a touch lands. Today our base turns only the first finger into the mouse (patch
+  0002) and sends no pointer or touch messages: the test's first run is the baseline.
+
+Installed on the Nothing Phone (1) as two own games (`wine/own/kbmtest`, `wine/own/touchtest`), their
+files in `Documents/UTDeck/Games/UTDeck input tests`.
+
+**First runs** (the maintainer, 17:31-17:39, our base):
+- Keyboard: every key as expected, raw keys too (129 raw key events).
+- Mouse: the cursor (about 200 moves a second), buttons and raw buttons work; **raw input gets no
+  motion** ("0 raw moves", raw total 0, 0). Wine's Wayland driver makes raw motion only from the
+  relative pointer protocol (`zwp_relative_pointer_manager_v1`), which Lomiri does not offer; plain
+  cursor moves reach raw input as zero moves. A game that turns its camera with raw input would not
+  turn. Mouse-look, the wheels and X1/X2 were not tried yet.
+- Touch: a drag shows only where the finger lands and where it lifts, in both modes; no pointer or
+  `WM_TOUCH` message, only the mouse from the first finger (patch 0002), not marked "from touch";
+  `SM_DIGITIZER` reports no touch screen and `SM_MAXIMUMTOUCHES` 0. Where the finger's motion is lost
+  is traced next (Wine's `cursor` channel; a first trace was taken on the wrong channel,
+  `waylanddrv`, and showed nothing of it).
+
+**Where they are lost** (the touch test with `trace+cursor`, 17:43): Lomiri sends a finger's motion
+in full (2022 moves in the run, a few pixels apart), and the driver passes each on. Since Wine 10,
+win32u keeps mouse motion back and sends the newest position only when the driver flushes it; the
+driver flushes after each group of pointer events (`pointer_handle_frame`), and patch 0002 left the
+touch frame empty, so a finger's moves waited for its release. Raw motion: wineserver takes it from
+the driver, and the driver supplies it only from relative pointer events. Fixed with patches 0025 (the
+touch frame flushes) and 0026 (without the relative pointer protocol, raw motion is the difference
+between the compositor's absolute positions on the same surface; it stops at the screen's edge,
+which only pointer locking, also missing in Lomiri, would avoid). Runtime 11.16-20261125.5 (0001-0026).
+
+**Checked** (the maintainer, 17:50-17:52, `winewayland.so` with 0025-0026 swapped in by hand, the old
+one kept as `winewayland.so.before-0025`): a finger's drag draws curves (swipes logged with their
+whole path, e.g. 1487 px right in 3.8 s); raw input counts the mouse's moves (200-700 a second) and
+its total follows them; mouse-look works (the cursor held at the middle, 1200, 540, while the raw
+total moves); right and middle buttons work. Not seen in any run yet: a wheel event, X1/X2.
+
 ## Then
 
 - Each new game with the overlay (Full) for its numbers, a keyboard and a mouse tried in each.

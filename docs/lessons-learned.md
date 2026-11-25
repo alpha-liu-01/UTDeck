@@ -1706,3 +1706,11 @@ Problems met while building UTDeck on the Redmi Note 12 5G (stone). Details in `
   on. Cause still open. Lesson: when an installer chain stops at 0 % CPU, read each step's own log
   (Microsoft's `dd_vcredist_*.log` in the prefix's Temp) to find the step that already finished, before
   suspecting the one that is running.
+- **Batched mouse motion that nobody flushed (stage 4.10, 2026-11-25).** A finger's drag reached
+  programs as two points, where it landed and where it lifted. The trace had all of Lomiri's touch
+  moves; win32u (since Wine 10) keeps mouse motion back until the driver says a group of events is
+  complete, which the Wayland driver did for the mouse but not for touch (our patch 0002 had left that
+  handler empty). Fixed with patch 0025. On the way, a first trace was taken on the wrong channel
+  (`waylanddrv`; the pointer code logs to `cursor`) and cost the maintainer a run. Lessons: before a
+  traced run, read the file's `WINE_DEFAULT_DEBUG_CHANNEL`; and when an upstream path is copied for a
+  new input (touch from the mouse), copy its closing step (the frame) too.

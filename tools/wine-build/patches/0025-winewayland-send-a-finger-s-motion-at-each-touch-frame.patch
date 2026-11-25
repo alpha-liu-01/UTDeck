@@ -1,0 +1,35 @@
+From: UTDeck
+Subject: [PATCH] winewayland: send a finger's motion at each touch frame
+
+Since Wine 10, win32u keeps mouse motion back (accum_mouse_motion) and sends the newest position when
+the driver flushes it with an input of only MOUSEEVENTF_MOVE_NOCOALESCE, or with the next button.
+The Wayland driver flushes in pointer_handle_frame, after each group of pointer events. Patch 0002
+(the first finger as the mouse) left touch_handle_frame empty, so a finger's moves were held until
+its release: a drag reached the program as a press where the finger landed and a release where it
+lifted, nothing in between (UTDeck's touch test and keyboard and mouse test: straight lines from
+landing to lifting; Wine's trace showed Lomiri's touch motion arriving in full, the Nothing Phone
+(1), stage 4.10).
+
+The touch frame now flushes the same way while the first finger is down.
+---
+diff --git a/dlls/winewayland.drv/wayland_pointer.c b/dlls/winewayland.drv/wayland_pointer.c
+--- a/dlls/winewayland.drv/wayland_pointer.c
++++ b/dlls/winewayland.drv/wayland_pointer.c
+@@ -506,6 +506,17 @@
+ 
+ static void touch_handle_frame(void *data, struct wl_touch *wl_touch)
+ {
++    /* UTDeck: win32u keeps mouse motion until the driver flushes it (pointer_handle_frame does it
++     * for the mouse); without this a finger's moves were only sent with its release. */
++    static const INPUT input = { .type = INPUT_MOUSE, .mi.dwFlags = MOUSEEVENTF_MOVE_NOCOALESCE };
++    struct wayland_pointer *pointer = &process_wayland.pointer;
++    BOOL active;
++
++    pthread_mutex_lock(&pointer->mutex);
++    active = pointer->touch_active;
++    pthread_mutex_unlock(&pointer->mutex);
++
++    if (active) NtUserSendHardwareInput(NULL, SEND_HWMSG_RAWINPUT, &input, 0);
+ }
+ 
+ static void touch_handle_cancel(void *data, struct wl_touch *wl_touch)

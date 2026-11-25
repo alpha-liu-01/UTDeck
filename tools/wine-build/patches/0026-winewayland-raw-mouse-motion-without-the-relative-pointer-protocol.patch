@@ -1,0 +1,135 @@
+From: UTDeck
+Subject: [PATCH] winewayland: raw mouse motion without the relative pointer protocol
+
+The Wayland driver sends every mouse input with SEND_HWMSG_RAWINPUT, so wineserver takes raw input's
+motion from the driver; the driver supplies it only from zwp_relative_pointer_v1 events. Lomiri has no
+relative pointer protocol: raw input (WM_INPUT) got the buttons and the wheel, but every move as zero.
+A game that turns its camera with raw input, as most 3D games do, did not turn (UTDeck's keyboard and
+mouse test: about 200 cursor moves a second, "0 raw moves"; the Nothing Phone (1), stage 4.10).
+
+Without the protocol, raw motion is now the difference between the compositor's absolute positions on
+the same surface (sub-pixel parts carried over), started again at each enter. It does not follow the
+Windows cursor, which a game may put back in the middle after each move; it ends where the pointer
+meets the screen's edge, which only pointer locking (also missing in Lomiri) would avoid. Touch keeps
+no raw motion, as on Windows.
+---
+diff --git a/dlls/winewayland.drv/waylanddrv.h b/dlls/winewayland.drv/waylanddrv.h
+--- a/dlls/winewayland.drv/waylanddrv.h
++++ b/dlls/winewayland.drv/waylanddrv.h
+@@ -120,6 +120,8 @@
+     struct wayland_cursor cursor;
+     double accum_x;
+     double accum_y;
++    BOOL raw_have_last;       /* UTDeck: raw motion from absolute moves, without relative pointer */
++    double raw_last_x, raw_last_y, raw_accum_x, raw_accum_y;
+     struct wl_touch *wl_touch;   /* the first finger acts as the left mouse button */
+     int32_t touch_id;
+     BOOL touch_active;
+diff --git a/dlls/winewayland.drv/wayland_pointer.c b/dlls/winewayland.drv/wayland_pointer.c
+--- a/dlls/winewayland.drv/wayland_pointer.c
++++ b/dlls/winewayland.drv/wayland_pointer.c
+@@ -122,7 +122,7 @@
+     return hwnd;
+ }
+ 
+-static void pointer_handle_motion_internal(wl_fixed_t sx, wl_fixed_t sy)
++static void pointer_handle_motion_internal(wl_fixed_t sx, wl_fixed_t sy, const struct raw_mouse *raw)
+ {
+     INPUT input = {0};
+     RECT *window_rect;
+@@ -178,7 +178,7 @@
+           hwnd, wl_fixed_to_double(sx), wl_fixed_to_double(sy),
+           screen.x, screen.y);
+ 
+-    NtUserSendHardwareInput(hwnd, SEND_HWMSG_RAWINPUT, &input, 0);
++    NtUserSendHardwareInput(hwnd, SEND_HWMSG_RAWINPUT, &input, (LPARAM)raw);
+ }
+ 
+ static void pointer_handle_motion(void *data, struct wl_pointer *wl_pointer,
+@@ -186,10 +186,38 @@
+ {
+     struct wayland_pointer *pointer = &process_wayland.pointer;
+ 
++    struct raw_mouse raw = {0};
++
+     /* Ignore absolute motion events if in relative mode. */
+     if (pointer->relative_mode) return;
+ 
+-    pointer_handle_motion_internal(sx, sy);
++    /* UTDeck: without the relative pointer protocol (Lomiri has none) raw input got no motion at
++     * all, as the driver sends it only from relative events: games that turn their camera with
++     * WM_INPUT did not turn. Raw motion is now the difference between the compositor's absolute
++     * positions on the same surface (not the Windows cursor, which a game may put back in the
++     * middle after each move); it stops where the pointer meets the screen's edge. */
++    if (!process_wayland.zwp_relative_pointer_manager_v1)
++    {
++        double x = wl_fixed_to_double(sx), y = wl_fixed_to_double(sy);
++
++        pthread_mutex_lock(&pointer->mutex);
++        if (pointer->raw_have_last)
++        {
++            pointer->raw_accum_x += x - pointer->raw_last_x;
++            pointer->raw_accum_y += y - pointer->raw_last_y;
++            raw.data[0].x = round(pointer->raw_accum_x);
++            raw.data[0].y = round(pointer->raw_accum_y);
++            pointer->raw_accum_x -= raw.data[0].x;
++            pointer->raw_accum_y -= raw.data[0].y;
++            if (raw.data[0].x || raw.data[0].y) raw.count = 1;
++        }
++        pointer->raw_last_x = x;
++        pointer->raw_last_y = y;
++        pointer->raw_have_last = TRUE;
++        pthread_mutex_unlock(&pointer->mutex);
++    }
++
++    pointer_handle_motion_internal(sx, sy, raw.count ? &raw : NULL);
+ }
+ 
+ static void wayland_set_cursor(HWND hwnd, HCURSOR hcursor, BOOL use_hcursor);
+@@ -213,6 +241,11 @@
+     pthread_mutex_lock(&pointer->mutex);
+     pointer->focused_hwnd = hwnd;
+     pointer->enter_serial = serial;
++    /* UTDeck: raw motion starts again from here (positions are per surface) */
++    pointer->raw_last_x = wl_fixed_to_double(sx);
++    pointer->raw_last_y = wl_fixed_to_double(sy);
++    pointer->raw_accum_x = pointer->raw_accum_y = 0;
++    pointer->raw_have_last = TRUE;
+     pthread_mutex_unlock(&pointer->mutex);
+ 
+     /* The cursor is undefined at every enter, so we set it again with
+@@ -222,7 +255,7 @@
+     /* Handle the enter as a motion, to account for cases where the
+      * window first appears beneath the pointer and won't get a separate
+      * motion event. */
+-    pointer_handle_motion_internal(sx, sy);
++    pointer_handle_motion_internal(sx, sy, NULL);
+ }
+ 
+ static void pointer_handle_leave(void *data, struct wl_pointer *wl_pointer,
+@@ -239,6 +272,7 @@
+     pthread_mutex_lock(&pointer->mutex);
+     pointer->focused_hwnd = NULL;
+     pointer->enter_serial = 0;
++    pointer->raw_have_last = FALSE;
+     pthread_mutex_unlock(&pointer->mutex);
+ }
+ 
+@@ -463,7 +497,7 @@
+ 
+     TRACE("hwnd=%p id=%d %.2f,%.2f\n", hwnd, id, wl_fixed_to_double(x), wl_fixed_to_double(y));
+ 
+-    pointer_handle_motion_internal(x, y);
++    pointer_handle_motion_internal(x, y, NULL);
+     touch_send_button(hwnd, MOUSEEVENTF_LEFTDOWN);
+ }
+ 
+@@ -501,7 +535,7 @@
+     ours = pointer->touch_active && pointer->touch_id == id;
+     pthread_mutex_unlock(&pointer->mutex);
+ 
+-    if (ours) pointer_handle_motion_internal(x, y);
++    if (ours) pointer_handle_motion_internal(x, y, NULL);
+ }
+ 
+ static void touch_handle_frame(void *data, struct wl_touch *wl_touch)

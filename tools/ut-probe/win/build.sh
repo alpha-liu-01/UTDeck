@@ -5,7 +5,8 @@
 #                                    build/win/d3d9test-{i686,x86_64}.exe, build/win/gptest.exe (x86-64),
 #                                    build/win/d3d12test.exe, build/win/sndtest.exe (x86-64),
 #                                    build/win/setmode.exe (ARM64), build/win/vidtest.exe (i686),
-#                                    build/win/syncbench-{arm64,x86_64}.exe
+#                                    build/win/syncbench-{arm64,x86_64}.exe,
+#                                    build/win/kbmtest.exe, build/win/touchtest.exe (x86-64)
 # llvm-mingw (mstorsjo/llvm-mingw 20261104, ucrt, Ubuntu 22.04 x86-64 host) and the Khronos Vulkan
 # headers (1.4.335) are downloaded into build/toolchains/ the first time.
 set -eu
@@ -48,6 +49,10 @@ done
     -lstrmiids -lole32
 for t in aarch64:arm64 x86_64:x86_64; do
     "$TC/bin/${t%%:*}-w64-mingw32-clang" -O2 -Wall -o "$OUT/syncbench-${t##*:}.exe" "$REPO_DIR/tools/ut-probe/win/syncbench.c"
+done
+# the input tests (stage 4.10): keyboard and mouse, touch; GUI programs, their events on standard output
+for t in kbmtest touchtest; do
+    "$TC/bin/x86_64-w64-mingw32-clang" -O2 -Wall -mwindows -o "$OUT/$t.exe" "$REPO_DIR/tools/ut-probe/win/$t.c"
 done
 # setmode.exe: native ARM64; installed with UTDeck's Steam compatibility tool (steam-push.sh)
 "$TC/bin/aarch64-w64-mingw32-clang" -O2 -Wall -o "$OUT/setmode.exe" "$REPO_DIR/tools/ut-probe/win/setmode.c"
