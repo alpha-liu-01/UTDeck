@@ -126,9 +126,12 @@ QVariantMap GameSettings::load(const QString& app_id) const
                                      ? QStringLiteral("proton") : QStringLiteral("utdeck");
   s[QStringLiteral("args")] = env.value(QStringLiteral("GAME_ARGS"));
   s[QStringLiteral("resolution")] = value(QStringLiteral("UTDECK_RESOLUTION"), QStringLiteral("native"));
-  s[QStringLiteral("translator")] =
-      value(QStringLiteral("HODLL"), QString()).contains(QLatin1String("fex"), Qt::CaseInsensitive) ? QStringLiteral("fex")
-                                                                                                    : QStringLiteral("box64");
+  // 32-bit code (stage 4.10): "auto" (no HODLL: Box64, or FEX for a 32-bit .NET program, game-run.sh),
+  // "box64" (HODLL=wowbox64.dll, Box64 even for .NET) or "fex".
+  const QString hodll = value(QStringLiteral("HODLL"), QString());
+  s[QStringLiteral("translator")] = hodll.contains(QLatin1String("fex"), Qt::CaseInsensitive)     ? QStringLiteral("fex")
+                                    : hodll.contains(QLatin1String("box64"), Qt::CaseInsensitive) ? QStringLiteral("box64")
+                                                                                                    : QStringLiteral("auto");
   s[QStringLiteral("boost")] = value(QStringLiteral("UTDECK_BOOST"), QStringLiteral("0")) != QLatin1String("0");
   s[QStringLiteral("pause")] = value(QStringLiteral("UTDECK_PAUSE"), QStringLiteral("0")) == QLatin1String("1");
   s[QStringLiteral("awake")] = value(QStringLiteral("UTDECK_KEEP_AWAKE"), QStringLiteral("0")) == QLatin1String("1");
@@ -172,8 +175,10 @@ bool GameSettings::save(const QString& app_id, const QVariantMap& s)
   const QString resolution = s.value(QStringLiteral("resolution")).toString();
   want[QStringLiteral("UTDECK_RESOLUTION")] =
       QRegularExpression(QStringLiteral("^\\d{3,4}x\\d{3,4}$")).match(resolution).hasMatch() ? resolution : QString();
-  want[QStringLiteral("HODLL")] = s.value(QStringLiteral("translator")).toString() == QLatin1String("fex")
-                                      ? QStringLiteral("libwow64fex.dll") : QString();
+  const QString translator = s.value(QStringLiteral("translator")).toString();
+  want[QStringLiteral("HODLL")] = translator == QLatin1String("fex")     ? QStringLiteral("libwow64fex.dll")
+                                  : translator == QLatin1String("box64") ? QStringLiteral("wowbox64.dll")
+                                                                         : QString();
   unless_default(QStringLiteral("UTDECK_BOOST"), s.value(QStringLiteral("boost")).toBool() ? QStringLiteral("1024") : QStringLiteral("0"), QStringLiteral("0"));
   unless_default(QStringLiteral("UTDECK_PAUSE"), s.value(QStringLiteral("pause")).toBool() ? QStringLiteral("1") : QStringLiteral("0"), QStringLiteral("0"));
   unless_default(QStringLiteral("UTDECK_KEEP_AWAKE"), s.value(QStringLiteral("awake")).toBool() ? QStringLiteral("1") : QStringLiteral("0"), QStringLiteral("0"));
@@ -235,7 +240,7 @@ bool GameSettings::reset(const QString& app_id)
   const QHash<QString, QString> d = ReadEnv(Wine() + QStringLiteral("/defaults.env"));
   QVariantMap s;
   s[QStringLiteral("runtime")] = QStringLiteral("utdeck");
-  s[QStringLiteral("translator")] = QStringLiteral("box64");
+  s[QStringLiteral("translator")] = QStringLiteral("auto");
   s[QStringLiteral("resolution")] = QStringLiteral("native");
   s[QStringLiteral("boost")] = d.value(QStringLiteral("UTDECK_BOOST"), QStringLiteral("0")) != QLatin1String("0");
   s[QStringLiteral("pause")] = d.value(QStringLiteral("UTDECK_PAUSE")) == QLatin1String("1");

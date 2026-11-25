@@ -37,7 +37,7 @@ cp "$T/wine-env.sh" "$P/wine/env.sh"
 mkdir -p "$P/wine/padprobe"
 cp "$REPO_DIR/build/win/gptest.exe" "$P/wine/padprobe/"
 for f in prefix-dlls.sh get-runtime.sh runtimes.list defaults.env game-run.sh utdeck-boost.py \
-         uclamp-show.py utdeck-pause.py utdeck-awake.py utdeck-setupwatch.py lifecycle-watch.sh controllers.reg padlayout.py own-run.sh gamecheck.py; do
+         uclamp-show.py utdeck-pause.py utdeck-awake.py utdeck-setupwatch.py lifecycle-watch.sh controllers.reg padlayout.py own-run.sh gamecheck.py dotnet32.py; do
     cp "$T/$f" "$P/wine/"
 done
 cp "$T/steam-compat/utdeck-profile.py" "$P/wine/"   # own-run.sh's user folders (stage 4.7)

@@ -69,6 +69,28 @@ if [ -z "${UTDECK_APP_ID+x}" ] && [ "${UTDECK_SETUP_RUN:-0}" != 1 ]; then
         fi
     done
 fi
+# 32-bit .NET programs on FEX (stage 4.10): our Wine runs 32-bit x86 code with Box64 unless HODLL says
+# otherwise, and Box64 under Wine Mono failed Mono's check of its threads' states (Celeste: "Cannot
+# transition thread ... from RUNNING with DONE_BLOCKING"); on FEX, Proton's Wine's default on ARM64, it
+# plays. So a game whose program is 32-bit x86 and imports mscoree.dll (.NET's loader; dotnet32.py)
+# gets FEX, unless its own settings name a translator (HODLL; HODLL=wowbox64.dll keeps Box64). The
+# program is the first .exe among the command (for a Steam game, the path Steam passes after steam.exe).
+if [ -z "${HODLL:-}" ] && [ "${UTDECK_SETUP_RUN:-0}" != 1 ]; then
+    for a in "$EXE" "$@"; do
+        case "$a" in *steam.exe|*STEAM.EXE) continue ;; *.exe|*.EXE) ;; *) continue ;; esac
+        case "$a" in
+        /*) p=$a ;;
+        [Zz]:\\*) p=$(echo "${a#?:}" | tr '\\' /) ;;   # Wine's Z: is the Linux root
+        [A-Za-z]:\\*) p= ;;                              # another drive: not looked at
+        *) p=$DIR/$a ;;
+        esac
+        if [ -n "$p" ] && [ -f "$p" ] && [ "$(python3 -I $W/dotnet32.py "$p")" = yes ]; then
+            export HODLL=libwow64fex.dll
+            DOTNET32="${p##*/}"
+        fi
+        break
+    done
+fi
 # DXVK and VKD3D-Proton as native DLLs (not a choice: our runtime's Direct3D), then the defaults'
 # DLL choices (UTDECK_DLL_DEFAULTS: Gecko and winemenubuilder off), then the game's own.
 export WINEDLLOVERRIDES="d3d11,dxgi,d3d10core,d3d9,d3d8=n;d3d12,d3d12core=n${UTDECK_DLL_DEFAULTS:+;$UTDECK_DLL_DEFAULTS}${GAME_OVERRIDES:+;$GAME_OVERRIDES}"
@@ -85,7 +107,8 @@ fi
 { printf 'game: %s, in %s: %s %s\n' "$LABEL" "$DIR" "$EXE" "$*"; echo "runtime: $(command -v wine), prefix $WINEPREFIX";
   echo "overrides: $WINEDLLOVERRIDES"; echo "extra: ${GAME_ENV:-}"; echo "defaults:$DEFAULTS";
   [ -n "$USERSET" ] && echo "user settings:$USERSET"
-  echo "app: ${UTDECK_APP_ID:-none (UTDeck not running)}"; } > $B.log
+  echo "app: ${UTDECK_APP_ID:-none (UTDeck not running)}"
+  [ -n "${DOTNET32:-}" ] && echo "32-bit .NET program ($DOTNET32): FEX for its 32-bit code"; } > $B.log
 # The performance overlay (stage 5.1) and the frame rate limit (stage 5.2), both MangoHud's, from the
 # game's settings or the user's (user.env):
 #   UTDECK_OVERLAY = off, fps, frametime or full; UTDECK_OVERLAY_POSITION = top-left, top-center or

@@ -1642,3 +1642,18 @@ Problems met while building UTDeck on the Redmi Note 12 5G (stone). Details in `
   longer cuts a measurement short. To try if it goes on: a powered USB hub, or `adb` over Wi-Fi with
   the phone on a charger. Lesson: a long measurement should not depend on the cable staying up; run
   it on the phone and only collect its results over `adb`.
+- **A 32-bit game out of address space on our Wine base (stage 4.10, 2026-11-25).** Celeste froze
+  seconds into play on our base and ran at a stable 60 fps on Proton's. Its log: Wine's "out of memory
+  for allocation" and Wine Mono's assertion in `mono-mmap-windows.c`, with gigabytes of RAM free: a
+  32-bit program without the "large address aware" flag gets 2 GB of address space, and Proton's Wine
+  gives every 32-bit program 4 GB by default (`WINE_LARGE_ADDRESS_AWARE`), Hangover's does not. Fixed
+  with Wine patch 0021 (the same switch and default). Lesson: "out of memory" in a 32-bit process is
+  usually its address space, not the phone's RAM; and when a game works on Proton's base and not on
+  ours, Proton's defaults (its `proton` script and its Wine's environment switches) are the first
+  place to look.
+- **Celeste: Box64 and Mono's thread states (stage 4.10, 2026-11-25).** With patch 0021 the address
+  space was no longer the problem, and Celeste still stopped: Mono's check of its threads' states
+  failed (`Cannot transition thread ... from RUNNING with DONE_BLOCKING`). On FEX (Proton's Wine's
+  default for 32-bit code on ARM64; ours is Box64) it plays. Lesson: when a game works on one base
+  and not the other, list every default that differs (here two: the address space and the 32-bit
+  translator), and test them one at a time; fixing the first one uncovered the second.

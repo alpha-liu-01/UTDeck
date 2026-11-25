@@ -1,0 +1,59 @@
+From: UTDeck
+Subject: [PATCH] ntdll: 32-bit programs large address aware by default, as on Proton
+
+A 32-bit Windows program gets 2 GB of address space unless its executable carries the "large address
+aware" flag; then it gets 4 GB. Proton's Wine counts every program as large address aware unless
+WINE_LARGE_ADDRESS_AWARE=0 (Proton turns it off only for a few games, "noforcelgadd"). Ours followed
+the flag alone, so Celeste (32-bit .NET, no flag) ran out of its 2 GB within seconds of play under Wine
+Mono ("allocate_virtual_memory out of memory", then an assertion in mono-mmap-windows.c, the game
+frozen), while it plays at a stable 60 fps on UTDeck's Proton base (the Nothing Phone (1), stage 4.10).
+
+The same switch with the same default here; the reserved area at the top of the 4 GB range that upstream
+keeps for large address aware programs stays.
+---
+diff --git a/dlls/ntdll/unix/virtual.c b/dlls/ntdll/unix/virtual.c
+index 21513d2f..c91295b2 100644
+--- a/dlls/ntdll/unix/virtual.c
++++ b/dlls/ntdll/unix/virtual.c
+@@ -5083,6 +5083,23 @@ static void virtual_release_address_space(void)
+ #endif  /* _WIN64 */
+ 
+ 
++/* UTDeck: a 32-bit program gets the whole 4 GB address space, as on Proton (whose Wine has the
++ * same switch, on by default): WINE_LARGE_ADDRESS_AWARE unset or 1 counts every program as large
++ * address aware, 0 leaves it to the program's own flag. Celeste, a 32-bit .NET program without the
++ * flag, ran out of its 2 GB within seconds of play under Wine Mono (an assertion in
++ * mono-mmap-windows.c, the game frozen) and plays at a stable 60 fps on Proton's base. */
++static BOOL large_address_aware(void)
++{
++    static int forced = -1;
++
++    if (forced == -1)
++    {
++        const char *str = getenv( "WINE_LARGE_ADDRESS_AWARE" );
++        forced = !str || atoi( str ) == 1;
++    }
++    return forced || (main_image_info.ImageCharacteristics & IMAGE_FILE_LARGE_ADDRESS_AWARE);
++}
++
+ /***********************************************************************
+  *           virtual_set_large_address_space
+  *
+@@ -5101,7 +5118,7 @@ void virtual_set_large_address_space(void)
+                 free_reserved_memory( 0, (char *)0x7ffe0000 );
+ #endif
+         }
+-        else if (main_image_info.ImageCharacteristics & IMAGE_FILE_LARGE_ADDRESS_AWARE)
++        else if (large_address_aware())
+         {
+             user_space_wow_limit = limit_4g - 1;
+             /* reserve space for top-down allocations; some apps break if the entire high 2G is available */
+@@ -5111,7 +5128,7 @@ void virtual_set_large_address_space(void)
+     }
+     else
+     {
+-        if (!(main_image_info.ImageCharacteristics & IMAGE_FILE_LARGE_ADDRESS_AWARE)) return;
++        if (!large_address_aware()) return;
+         free_reserved_memory( (char *)0x80000000, address_space_limit );
+     }
+     user_space_limit = working_set_limit = address_space_limit;

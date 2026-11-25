@@ -10,7 +10,7 @@
 // own-run.sh): one NAME=value per line, read at each start, winning over defaults.env.
 //
 // load() gives the settings the page shows: runtime ("utdeck" or "proton"), args, resolution ("native"
-// or WxH), translator ("box64" or "fex", for 32-bit code), overlay (the performance overlay's level,
+// or WxH), translator ("auto", "box64" or "fex", for 32-bit code), overlay (the performance overlay's level,
 // stage 5.1: "off", "fps", "frametime", "full", or "" for the one in Settings), fpsLimit (the frame
 // rate limit, stage 5.2: "off", "28", "30", "40", "45", "48", "60", or "" for the one in Settings),
 // and the switches

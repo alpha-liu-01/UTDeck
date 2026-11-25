@@ -51,7 +51,7 @@ Page {
             runtime: runtimeSelector.selectedIndex === 1 ? "proton" : "utdeck",
             args: argsField.text,
             resolution: page.resolutions[resolutionSelector.selectedIndex],
-            translator: translatorSelector.selectedIndex === 1 ? "fex" : "box64",
+            translator: ["auto", "box64", "fex"][translatorSelector.selectedIndex],
             overlay: page.overlayLevels[overlaySelector.selectedIndex],
             fpsLimit: page.fpsLimits[fpsLimitSelector.selectedIndex],
             boost: switches.boost,
@@ -69,7 +69,7 @@ Page {
         page.s = settings
         runtimeSelector.selectedIndex = settings.runtime === "proton" ? 1 : 0
         resolutionSelector.selectedIndex = Math.max(0, page.resolutions.indexOf(settings.resolution))
-        translatorSelector.selectedIndex = settings.translator === "fex" ? 1 : 0
+        translatorSelector.selectedIndex = Math.max(0, ["auto", "box64", "fex"].indexOf(settings.translator))
         overlaySelector.selectedIndex = Math.max(0, page.overlayLevels.indexOf(settings.overlay || ""))
         fpsLimitSelector.selectedIndex = Math.max(0, page.fpsLimits.indexOf(settings.fpsLimit || ""))
         switches.boost = !!settings.boost
@@ -196,14 +196,14 @@ Page {
                 id: translatorSelector
 
                 text: i18n.tr("32-bit code")
-                model: [i18n.tr("Box64 (default)"), i18n.tr("FEX")]
+                model: [i18n.tr("Automatic (Box64; FEX for .NET games)"), i18n.tr("Box64"), i18n.tr("FEX")]
             }
 
             Label {
                 width: parent.width
                 wrapMode: Text.Wrap
                 color: theme.palette.normal.backgroundSecondaryText
-                text: i18n.tr("Only for 32-bit games and programs: try FEX if one does not start or hangs (installers often need it).")
+                text: i18n.tr("Only for 32-bit games and programs. Automatic uses Box64, the faster one, and FEX for 32-bit games written in .NET, which Box64 has trouble with. Try FEX if a game does not start or hangs (installers often need it).")
             }
 
             // --- The performance overlay (stage 5.1) ---
