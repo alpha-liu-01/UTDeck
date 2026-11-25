@@ -3,4 +3,4 @@
 # KIND VERSION SHA256 URL. The URL is a release asset of this repository; the checksum is the
 # file's from build-runtime.sh, written here when a release is made.
 proton proton11.0-20261124 9433697e2308469166e1fa7473aa1d2226e1820efd92cd16c91707d5641cf891 https://github.com/alpha-liu-01/UTDeck/releases/download/runtime-proton11.0-20261124/utdeck-runtime-proton11.0-20261124.tar.xz
-default 11.16-20261124 8ce21fc488510c901e24bfa2608f1206576d6c7085f6a6568ad1fa53c4807962 https://github.com/alpha-liu-01/UTDeck/releases/download/runtime-11.16-20261124/utdeck-runtime-11.16-20261124.tar.xz
+default 11.16-20261124.2 2357cb71412f067c80d39755db17ca2012c4bef019cafba574ec8d611673e530 https://github.com/alpha-liu-01/UTDeck/releases/download/runtime-11.16-20261124.2/utdeck-runtime-11.16-20261124.2.tar.xz

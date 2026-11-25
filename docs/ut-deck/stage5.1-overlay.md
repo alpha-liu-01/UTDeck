@@ -439,3 +439,23 @@ App 0.3.52 (the maintainer's OK) on the Nothing Phone (1), checked in PvZ:
 
 Still for step 4: the fixed `game-run.sh` (top right) is on the phone by hand and goes into the next
 click.
+
+## Step 5: tests (2026-11-24)
+
+**Runtime `11.16-20261124.2`** (the overlay part; a second runtime on the same day, named with
+`RUNTIME_VERSION`, which `build-runtime.sh` now takes): compared file by file with the published
+`11.16-20261124`, only `lib/gpu/layers/` (new: `libMangoHud.so`, `MangoHud.json`, `BUILD-INFO`) and the
+top-level `BUILD-INFO` differ; every other file and link is the same. Archive SHA-256
+`2357cb71412f067c80d39755db17ca2012c4bef019cafba574ec8d611673e530`.
+
+**The Nothing Phone (1)**, app 0.3.53 and runtime `11.16-20261124.2` (the maintainer's OK; installed
+with `install-click.sh` and `runtime-push.sh`), the thermal profile `high.perf`:
+
+| Check | Result |
+| --- | --- |
+| Stray (Direct3D 12, VKD3D-Proton), Full, top right: the overlay against the sampler at the same moment (a screenshot) | frame rate 26 fps, 38.5 ms (the frame log: 24.2-26 fps); CPU 29 %, 2515 MHz, 63 °C (33 %, the fastest core 2515 MHz, 64 °C); GPU 81 %, 608 MHz, 57 °C (82 %, 608 MHz, 57 °C); battery 81 %, charging (81 %, charging). MangoHud names the engine "DXVK": VKD3D-Proton uses DXVK's `dxgi.dll`; only a label |
+| PvZ (Direct3D 11, DXVK) started and quit 5 times, Full | each run: "overlay: full, top-right", its settings file, a frame log, `exit 0`, no MangoHud errors; Steam's preparation run before each start without the overlay (as meant); afterwards no Wine process, no `game-run.sh`, no sampler, no MangoHud socket left |
+| PvZ, each level from Settings | Frame rate and frame time, Frame rate: shown as meant (the maintainer), logged as such; Off: nothing set, no socket |
+
+Left for step 5: stone (app 0.3.53 and runtime `11.16-20261124.2`, then the same checks on its two
+CPU clusters and Adreno 619); an OpenGL game when one is installed.
