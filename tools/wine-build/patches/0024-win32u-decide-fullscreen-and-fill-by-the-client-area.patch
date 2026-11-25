@@ -1,0 +1,51 @@
+From: UTDeck
+Subject: [PATCH] win32u: decide fullscreen and fill by the window's client area
+
+Patches 0006 and 0010 decide how a game's swapchain is shown by comparing the window's rect with its
+monitor: equal is a fullscreen game (scaled over the monitor, the window left as it is), smaller is
+fill (the window made fullscreen over a black buffer, the picture fitted into it). A window with a
+title bar exactly the monitor's size counted as fullscreen, although its picture is smaller.
+
+Need for Speed Most Wanted (2012) on our base, at 1280x720 (an emulated mode): Lomiri put another
+window in front for a moment, DXVK left fullscreen, and the game came back as a window with a title
+bar, 1280x720 outside and 1280x700 inside (its swapchain recreated at 1280x700). It was taken for a
+fullscreen game: the picture under a title bar Wayland does not draw (a stripe of the wallpaper on
+top) and the wallpaper left and right instead of black bars (the Nothing Phone (1), stage 4.10).
+
+Both checks now use the client area (in screen coordinates): a borderless fullscreen window is
+unchanged; a window with a frame is shown by fill, as a smaller window already is.
+---
+diff --git a/dlls/win32u/vulkan.c b/dlls/win32u/vulkan.c
+--- a/dlls/win32u/vulkan.c
++++ b/dlls/win32u/vulkan.c
+@@ -1942,7 +1942,10 @@
+     return mode;
+ }
+ 
+-/* Whether hwnd covers its whole monitor (a fullscreen game); if so, the monitor in raw coordinates. */
++/* Whether hwnd's picture (its client area) covers its whole monitor (a fullscreen game); if so, the
++ * monitor in raw coordinates. The client area, not the window: a window with a title bar exactly the
++ * monitor's size (a game dropped out of fullscreen at an emulated mode, Need for Speed Most Wanted
++ * 2012 at 1280x720: its picture 1280x700) is not fullscreen, and is shown by fill instead. */
+ static BOOL window_covers_monitor( HWND hwnd, RECT *raw_monitor )
+ {
+     UINT ctx = set_thread_dpi_awareness_context( NTUSER_DPI_PER_MONITOR_AWARE );
+@@ -1951,7 +1954,7 @@
+     RECT window;
+     BOOL ret;
+ 
+-    ret = get_window_rect( hwnd, &window, dpi ) && EqualRect( &window, &info.rcMonitor );
++    ret = get_client_rect_rel( hwnd, COORDS_SCREEN, &window, dpi ) && EqualRect( &window, &info.rcMonitor );
+     if (ret) *raw_monitor = get_monitor_physical_rect( info.rcMonitor, dpi );
+     set_thread_dpi_awareness_context( ctx );
+     return ret;
+@@ -2006,7 +2009,8 @@
+     ctx = set_thread_dpi_awareness_context( NTUSER_DPI_PER_MONITOR_AWARE );
+     dpi = get_thread_dpi();
+     info = monitor_info_from_window( hwnd, MONITOR_DEFAULTTONEAREST );
+-    ret = get_window_rect( hwnd, &window, dpi ) && !EqualRect( &window, &info.rcMonitor ) &&
++    /* the client area, as in window_covers_monitor: a title bar does not make a window fullscreen */
++    ret = get_client_rect_rel( hwnd, COORDS_SCREEN, &window, dpi ) && !EqualRect( &window, &info.rcMonitor ) &&
+           window.right - window.left <= info.rcMonitor.right - info.rcMonitor.left &&
+           window.bottom - window.top <= info.rcMonitor.bottom - info.rcMonitor.top;
+     if (ret) *raw_monitor = get_monitor_physical_rect( info.rcMonitor, dpi );

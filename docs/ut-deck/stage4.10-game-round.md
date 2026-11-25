@@ -18,7 +18,7 @@ rule):
 | --- | --- | --- | --- |
 | Stardew Valley | MonoGame (OpenGL), .NET, 64-bit | (Steam's own copy; tried in 5.1/5.2) | plays (5.1: about 51-55 fps, through zink) |
 | Celeste | .NET Framework, 32-bit (`Celeste.exe` imports only `mscoree.dll`), FMOD | none; `steam_api.dll` signed by Valve | **freezes a few seconds into the game on our Wine base; stable 60 fps on Proton 11's** |
-| Need for Speed Most Wanted (2012) | `NFS13.exe`, 32-bit; EA's `Core/ActivationUI.exe` (Qt 4, WebKit) and the EA app's installer (`EAappInstaller.exe`, 263 MB) | none; the overlay's `steam_api.dll` signed by Valve | **does not start**: the EA app and its sign-in stand before the game, and could not be seen or used |
+| Need for Speed Most Wanted (2012) | `NFS13.exe`, 32-bit; EA's `Core/ActivationUI.exe` (Qt 4, WebKit) and the EA app's installer (`EAappInstaller.exe`, 263 MB) | none; the overlay's `steam_api.dll` signed by Valve | **does not start**: the EA app and its sign-in stand before the game, and could not be seen or used. Later the same day: runs on both bases, 14-18 fps, CPU-bound (one thread); on ours with patches 0022-0024 and FEX for its 32-bit code |
 
 That makes ten. On the way: Steam installed Proton Experimental, its FEX and Steam Linux Runtime 4.0
 by itself (about 2.2 GB, unused by UTDeck): a leftover for 5.4.
@@ -198,6 +198,91 @@ Lomiri's state (the first run was right after the EA app's sign-in). Left open, 
 game's picture stays black until a trip to the app switcher again, its log and the window's state are
 taken right then.
 
+## (E) Need for Speed on our base: the blank window (2026-11-25)
+
+**Not the EA app.** The 00:40 run's log read again: the EA app did hand over to the game, and DXVK's
+`Game: NFS13.exe` lines come just before the crash. The game's own Direct3D 11 swapchain (2400x1080,
+5 images) failed: `err:vulkan:vkGetSwapchainImagesKHR Exception 0xc0000005 in Unix call`, so its
+window stayed blank. Patch 0021 was not in yet (swapped in at 01:08), and 32-bit Direct3D games had
+already worked on our base (Ys: Memories of Celceta, Goat Simulator).
+
+**Where** (the maintainer's run at 16:21, our base, Box64, Fit, the overlay on, `WINEDEBUG_GAME` with
+`trace+seh` for one run): this time c0000005 in `vkCreateSwapchainKHR`, and `handle_syscall_fault`
+gave the fault address equal to the program counter: Wine called a function where no code was mapped.
+
+**Why**: patch 0006 replaces `vkGetSwapchainImagesKHR` in each device's table and kept the host's
+function from the first device in a global. The Vulkan loader unloads the driver (turnip) and its
+layers (MangoHud) when a program destroys its last instance, and loads them again, at other
+addresses, for the next one; neither is built to stay loaded. The game (and the EA app's overlay
+helper `IGOProxy32.exe`) creates and destroys several Direct3D devices, so the kept pointer led
+nowhere: in the scaler's call when the swapchain was scaled (`vkCreateSwapchainKHR`), in the plain
+pass-through otherwise (`vkGetSwapchainImagesKHR`). Proton's base has no such hook, and ran the game.
+
+**The fix**: patch 0022, the host function looked up from the device each time (only used around a
+swapchain's creation). Runtime 11.16-20261125.2 (0001-0022) built; its `win32u.so` swapped into the
+phone's runtime by hand (the maintainer's OK, the old one kept as `win32u.so.before-0022`, next to
+0021's `ntdll.so`), to be checked with the game.
+
+**Checked** (the maintainer, 16:28, the same settings): the game's picture shows on our base, no
+Vulkan error; quit right after.
+
+**The run that does not end**: at every start the EA app runs Microsoft's Visual C++ 2012 installer
+(`vc_redist-11.0.61030.x86.exe /install /quiet`, a 32-bit installer with its elevated child
+`vcredist_x86.exe`). On our base it never finishes, and while it runs the prefix's Wine stays up:
+after the game is quit, only the wallpaper and the top bar are seen, with two UTDeck entries in
+Lomiri's app switcher (seen at 16:21 and 16:33; the run ended from outside both times). One of its
+threads uses a whole core in its own code, with no system calls (a busy wait for something that never
+comes); the others sleep. It runs on Box64 (`wowbox64.dll`). In Proton's prefix (FEX) the same
+runtime is installed (`Wow6432Node\Microsoft\VisualStudio\11.0\VC\Runtimes\x86`, `Installed`=1);
+in our base's prefix it was never registered, so the EA app tries again at each start.
+
+**With FEX for 32-bit code** (the maintainer, 16:37, only that changed): the game ran, the picture
+showed, and the run was stuck again after quitting: the installer was still on Box64
+(`wowbox64.dll` in its memory map), although every process's Linux environment had
+`HODLL=libwow64fex.dll`. Wine reads `HODLL` from the Windows environment, and `services.exe` starts
+each service with a fresh one made from the registry (`CreateEnvironmentBlock`), copying only
+`WINEBOOTSTRAPMODE`. The EA Background Service is a service, so it and the installers it starts
+always get Box64, whatever the game's setting. Stage 3.S had already found that Box64 spins in
+Microsoft's "burn" installers and FEX runs them (Steam's install scripts run under FEX since then).
+Fixed with patch 0023 (services keep `HODLL` and `HODLL64`), runtime 11.16-20261125.3 (0001-0023).
+**Checked** (the maintainer, 16:49, FEX, `services.exe` swapped in by hand, the old one kept as
+`services.exe.before-0023`): the installer finished, Visual C++ 2012 and 2013 x86 are now registered in
+our base's prefix, and the run ended by itself after the game was quit (`exit 0`).
+
+**Fit broken in the same run**: the wallpaper left and right of the picture and a stripe of it on top.
+The game set 1280x720 (an emulated mode); at 16:49:55 Lomiri put another window in front for a
+moment, DXVK left fullscreen (`Restoring display mode`, `Nested LeaveFullscreenMode`) and set the mode
+again, and the game's swapchain was recreated at 1280x700: the game had come back as a window with a
+title bar, 1280x720 outside, 1280x700 inside. Patches 0006 and 0010 compared the whole window with the
+monitor: equal, so a fullscreen game (no fill, no black buffer), and the picture sat under a title bar
+Wayland does not draw. On Proton's base the mode was set once and the window stayed fullscreen.
+Fixed with patch 0024 (both checks use the client area), runtime 11.16-20261125.4 (0001-0024).
+
+**The next start hung in "Preparing Wine for this game"** (16:56, `win32u.so` with 0022 and 0024
+swapped in by hand): with its installers now running on FEX, the EA app had put Visual C++ 2015-2022
+14.34 (its own copy) into the prefix at 16:49, so `utdeck-compat` found the Visual C++ files mixed and
+ran Steam's 2022 installer. That one removes an older bundle first; the removal's own log ended
+"Apply complete, result: 0x0" and "Exit code: 0x0" at 16:56:35, but its process never ended: one
+thread left, waiting on a futex (a lock) forever, at 0 % CPU, under FEX. Ended by hand at 17:06 (the
+maintainer's OK); Steam's installer then finished (`x86 /install: exit 0`, "Microsoft's complete set")
+and the game started. Open: why a finished 32-bit process can hang at its exit under FEX; if it comes
+again, the process's state is taken before it is ended.
+
+**Checked** (the maintainer, 17:06 and 17:11, `win32u.so` with 0022 and 0024): 1280x720 with Fit, black
+bars, no wallpaper, `exit 0`; a trip to the app switcher kept the bars. Neither run dropped out of
+fullscreen (no 1280x700 picture in the logs; the second changed to 1440x900 in between), so 0024's
+own case is reasoned from the 16:49 log, not yet seen working: watched (a picture a title bar's height
+short of the mode, in a game's frames file, is that case).
+
+**(E) closed** (the maintainer, 2026-11-25). Need for Speed keeps FEX for its 32-bit code (its
+`utdeck-env`, `HODLL=libwow64fex.dll`; (D) measured the same speed on both). Left open:
+- other EA games on our base: the EA app's Visual C++ installers spin under Box64 (Automatic) on a
+  prefix's first start; FEX automatically for games started through the EA app, or Microsoft's
+  installers always on FEX, is the maintainer's choice, not made yet;
+- the finished installer that hung at its exit under FEX (above);
+- patches 0022-0024 (`win32u.so`, `services.exe`) and 0021 (`ntdll.so`) are swapped into the phone's
+  runtime by hand (the originals kept as `*.before-00NN`), until the next runtime release.
+
 ## Then
 
 - Each new game with the overlay (Full) for its numbers, a keyboard and a mouse tried in each.
@@ -214,3 +299,8 @@ taken right then.
 - 2026-11-25: (B) fill on Proton's base (patches-proton 0022-0024: smaller windows and emulated
   display modes, Fit/Stretch/Centered), checked with Need for Speed; touch through it moved to stage
   5.5. (C) not seen again. Next: (E), the EA app on our base.
+- 2026-11-25: (E) Need for Speed on our base: not the EA app but three Wine problems, fixed with
+  patches 0022 (a driver function kept after the driver was unloaded: the blank window), 0023 (services
+  lost the game's x86 translator: the EA app's installers spun under Box64) and 0024 (a window with a
+  title bar the size of the screen taken for fullscreen); 0022 and 0023 checked, 0024's own case
+  watched. (E) closed. Next: the rest of the round (below, "Then").

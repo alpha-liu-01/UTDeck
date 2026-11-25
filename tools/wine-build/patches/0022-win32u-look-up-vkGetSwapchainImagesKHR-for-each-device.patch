@@ -1,0 +1,85 @@
+From: UTDeck
+Subject: [PATCH] win32u: look up vkGetSwapchainImagesKHR for each device, never keep it
+
+Patch 0006 replaces vkGetSwapchainImagesKHR in each device's table and kept the host's function from
+the first device in a global, used for every later device. The Vulkan loader unloads the driver
+(turnip) and its layers (MangoHud) when a program destroys its last instance, and loads them again,
+at other addresses, for the next one. A program that makes and destroys Direct3D devices one after
+another then calls a function that is no longer mapped: Need for Speed Most Wanted (2012) on our base
+got c0000005 in vkGetSwapchainImagesKHR (overlay off) and in vkCreateSwapchainKHR (the scaler's call,
+overlay on), the fault address equal to the program counter; its window stayed blank (the Nothing
+Phone (1), stage 4.10). Proton's base has no such hook and ran it.
+
+The host function is now looked up from the device each time (vkGetDeviceProcAddr, from the loader,
+which stays loaded); it is only used around a swapchain's creation.
+---
+diff --git a/dlls/win32u/vulkan.c b/dlls/win32u/vulkan.c
+--- a/dlls/win32u/vulkan.c
++++ b/dlls/win32u/vulkan.c
+@@ -163,7 +163,7 @@
+ };
+ 
+ /* UTDeck scaler, defined further down (before win32u_vkCreateSwapchainKHR). */
+-static PFN_vkGetSwapchainImagesKHR host_vkGetSwapchainImagesKHR;
++static PFN_vkGetSwapchainImagesKHR host_get_swapchain_images( VkDevice host_device );
+ static VkResult scaler_vkGetSwapchainImagesKHR( VkDevice host_device, VkSwapchainKHR host_swapchain,
+                                                 uint32_t *count, VkImage *images );
+ 
+@@ -866,11 +866,7 @@
+ #undef USE_VK_FUNC
+ 
+     /* UTDeck: scaled swapchains hand out their own images (see scaler_vkGetSwapchainImagesKHR). */
+-    if (device->p_vkGetSwapchainImagesKHR)
+-    {
+-        if (!host_vkGetSwapchainImagesKHR) host_vkGetSwapchainImagesKHR = device->p_vkGetSwapchainImagesKHR;
+-        device->p_vkGetSwapchainImagesKHR = scaler_vkGetSwapchainImagesKHR;
+-    }
++    if (device->p_vkGetSwapchainImagesKHR) device->p_vkGetSwapchainImagesKHR = scaler_vkGetSwapchainImagesKHR;
+ 
+     for (i = 0; i < create_info->queueCreateInfoCount; i++) init_device_queues( device, create_info->pQueueCreateInfos + i, client_device );
+ 
+@@ -2146,7 +2142,7 @@
+     list_init( &scaler->entry );
+ 
+     scaler->count = SCALER_MAX_IMAGES;
+-    if (host_vkGetSwapchainImagesKHR( host, host_swapchain, &scaler->count, scaler->host_images ) < 0) goto failed;
++    if (host_get_swapchain_images( host )( host, host_swapchain, &scaler->count, scaler->host_images ) < 0) goto failed;
+ 
+     instance->p_vkGetPhysicalDeviceMemoryProperties( physical_device->host.physical_device, &props );
+     for (i = 0; i < scaler->count; i++)
+@@ -2206,6 +2202,17 @@
+     return NULL;
+ }
+ 
++/* The host's vkGetSwapchainImagesKHR for this device, looked up each time: never kept across
++ * devices. The Vulkan loader unloads the driver and its layers when a program destroys its last
++ * instance, and loads them again (at other addresses) for the next one; a pointer kept from an
++ * earlier device then points at unmapped memory (Need for Speed Most Wanted 2012 and the EA app's
++ * IGOProxy32 create and destroy several Direct3D devices: c0000005 in vkCreateSwapchainKHR and
++ * vkGetSwapchainImagesKHR). Only used around a swapchain's creation, so the lookup costs nothing. */
++static PFN_vkGetSwapchainImagesKHR host_get_swapchain_images( VkDevice host_device )
++{
++    return (PFN_vkGetSwapchainImagesKHR)p_vkGetDeviceProcAddr( host_device, "vkGetSwapchainImagesKHR" );
++}
++
+ /* Replaces the host's vkGetSwapchainImagesKHR in each device's table (the thunks call it with host
+  * handles): a scaled swapchain hands out the application-sized images. */
+ static VkResult scaler_vkGetSwapchainImagesKHR( VkDevice host_device, VkSwapchainKHR host_swapchain,
+@@ -2219,7 +2226,7 @@
+         if (scaler->host_swapchain == host_swapchain) { found = scaler; break; }
+     pthread_mutex_unlock( &scalers_lock );
+ 
+-    if (!found) return host_vkGetSwapchainImagesKHR( host_device, host_swapchain, count, images );
++    if (!found) return host_get_swapchain_images( host_device )( host_device, host_swapchain, count, images );
+     if (!images)
+     {
+         *count = found->count;
+@@ -2412,7 +2419,7 @@
+     else if (!get_surface_rect( surface->hwnd, &target_rect, raw_dpi )) SetRectEmpty( &target_rect );
+     if (!IsRectEmpty( &target_rect ) &&
+         !extents_equals( &create_info_host.imageExtent, &target_rect ) &&
+-        get_scaler_mode() != SCALER_OFF && host_vkGetSwapchainImagesKHR &&
++        get_scaler_mode() != SCALER_OFF && device->p_vkGetSwapchainImagesKHR &&
+         !host_surface_can_scale( physical_device, surface, create_info->presentMode ))
+     {
+         /* UTDeck: the host cannot scale; Wine does (see scaler_create). */

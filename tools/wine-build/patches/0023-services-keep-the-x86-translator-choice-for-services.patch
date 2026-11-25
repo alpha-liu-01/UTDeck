@@ -1,0 +1,52 @@
+From: UTDeck
+Subject: [PATCH] services: keep the x86 translator choice (HODLL, HODLL64) for services
+
+services.exe starts each service with an environment made from the registry (CreateEnvironmentBlock),
+and only WINEBOOTSTRAPMODE is copied over from its own. HODLL (the translator wow64 loads for 32-bit
+x86 code: wowbox64.dll, Hangover's default, or libwow64fex.dll) and HODLL64 (ntdll's, for x86-64
+code) are lost there, so a service and every program it starts get the default, whatever the game's
+setting says.
+
+The EA app's background service (EABackgroundService.exe) starts Microsoft's Visual C++ 2012 x86
+installer at every game start until it is installed. Under Box64 its WiX "burn" engine waits at full
+CPU forever (as Steam's Visual C++ 2015 installer did in stage 3.S); the game's FEX setting
+(HODLL=libwow64fex.dll) did not reach it, and the game's prefix stayed up after the game was quit
+(Need for Speed Most Wanted 2012 on our base, the Nothing Phone (1), stage 4.10).
+
+Both names are now kept as WINEBOOTSTRAPMODE is.
+---
+diff --git a/programs/services/services.c b/programs/services/services.c
+--- a/programs/services/services.c
++++ b/programs/services/services.c
+@@ -1033,15 +1033,25 @@
+ 
+     if (!environment && OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY | TOKEN_DUPLICATE, &token))
+     {
+-        WCHAR val[16];
++        /* UTDeck: HODLL and HODLL64 (the x86 translator wow64 and ntdll load) are kept too, so a
++         * service and the programs it starts use the game's choice, not the default (Box64). */
++        static const WCHAR *const kept[] = { L"WINEBOOTSTRAPMODE", L"HODLL", L"HODLL64" };
++        WCHAR val[MAX_PATH];
++        unsigned int i;
++
+         CreateEnvironmentBlock(&environment, token, FALSE);
+-        if (GetEnvironmentVariableW( L"WINEBOOTSTRAPMODE", val, ARRAY_SIZE(val) ))
++        for (i = 0; i < ARRAY_SIZE(kept); i++)
+         {
+-            UNICODE_STRING name = RTL_CONSTANT_STRING(L"WINEBOOTSTRAPMODE");
+-            UNICODE_STRING value;
++            DWORD len = GetEnvironmentVariableW( kept[i], val, ARRAY_SIZE(val) );
++
++            if (len && len < ARRAY_SIZE(val))
++            {
++                UNICODE_STRING name, value;
+ 
+-            RtlInitUnicodeString( &value, val );
+-            RtlSetEnvironmentVariable( (WCHAR **)&environment, &name, &value );
++                RtlInitUnicodeString( &name, kept[i] );
++                RtlInitUnicodeString( &value, val );
++                RtlSetEnvironmentVariable( (WCHAR **)&environment, &name, &value );
++            }
+         }
+         CloseHandle(token);
+     }

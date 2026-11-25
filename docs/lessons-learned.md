@@ -1674,3 +1674,35 @@ Problems met while building UTDeck on the Redmi Note 12 5G (stone). Details in `
   what is left. Fixed with Proton patch 0024 (fill takes emulated modes as well). Lesson: a picture
   path is tested with a size of another shape than the screen's too; the screen's own shape hides
   every scaling mistake.
+- **A driver function kept after the driver was unloaded (stage 4.10, 2026-11-25).** Need for Speed
+  Most Wanted (2012) on our base showed a blank window: Wine logged c0000005 in
+  `vkGetSwapchainImagesKHR` (and, in a later run, in `vkCreateSwapchainKHR`). First read as the EA
+  app's problem, it was the game's own swapchain. `trace+seh` showed the fault address equal to the
+  program counter: a call into memory where no code was mapped. Patch 0006 kept the host's
+  `vkGetSwapchainImagesKHR` from the first device in a global; the Vulkan loader unloads the driver
+  and its layers when a program destroys its last instance and loads them again elsewhere for the
+  next, and this game creates and destroys several Direct3D devices. Fixed with patch 0022 (looked up
+  for each device). Lessons: a Vulkan function pointer belongs to its device, never to the process;
+  "pc equals the fault address" means a call through a stale function pointer; and DXVK's `Game:`
+  lines say which program was drawing, which need not be the launcher on the screen.
+- **A Windows service does not inherit the game's settings (stage 4.10, 2026-11-25).** Need for
+  Speed's "32-bit code" was set to FEX (`HODLL=libwow64fex.dll`), and the Visual C++ installer that
+  the EA app's background service starts still ran on Box64 and spun, as in stage 3.S. Every process
+  had the variable in its Linux environment; Wine's `services.exe` gives each service a new Windows
+  environment from the registry and keeps only `WINEBOOTSTRAPMODE`. Fixed with patch 0023 (`HODLL`
+  and `HODLL64` kept). Lesson: a setting passed by environment reaches only what the game starts
+  itself; a launcher's service (EA, Ubisoft, Rockstar) starts its programs in another environment,
+  and the process's memory map, not its settings, says which translator it really runs on.
+- **A title bar the size of the screen (stage 4.10, 2026-11-25).** Need for Speed at 1280x720 on our
+  base dropped out of fullscreen when Lomiri put another window in front for a moment, and came back
+  as a window with a title bar exactly the emulated mode's size; Wine's scaling took it for a
+  fullscreen game, as it compared the whole window with the monitor, and the picture showed with the
+  wallpaper around it. Fixed with patch 0024 (the client area decides). Lesson: what the game draws
+  into is the client area; every size decision about its picture is made on that, never on the
+  window's outer rect.
+- **A finished installer that never exits (stage 4.10, 2026-11-25).** Steam's Visual C++ 2022 installer
+  waited ten minutes on the removal of an older bundle whose log said it had finished with exit code 0:
+  the process was still there, one thread waiting on a futex, under FEX. Ending it let everything go
+  on. Cause still open. Lesson: when an installer chain stops at 0 % CPU, read each step's own log
+  (Microsoft's `dd_vcredist_*.log` in the prefix's Temp) to find the step that already finished, before
+  suspecting the one that is running.
