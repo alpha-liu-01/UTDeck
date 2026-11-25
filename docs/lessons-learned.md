@@ -1505,13 +1505,17 @@ Problems met while building UTDeck on the Redmi Note 12 5G (stone). Details in `
   picture is copied into the game's folder, since Content Hub leaves it in the app's cache. Lesson: on
   a phone, choosing a file goes through the system's picker, not only a list the app builds; and check
   where the system's own apps actually save (here, one level down).
-- **A sampler written for one phone's CPU layout (found 2026-11-24, open until 5.1).** `game-run.sh`
+- **A sampler written for one phone's CPU layout (found 2026-11-24, fixed in 5.1 step 2).** `game-run.sh`
   reads the big cores' clock limit from `cpufreq/policy6`: stone's layout (6 small and 2 big cores).
   The Nothing Phone (1) has `policy0`, `policy4` and `policy7`, so the read failed, the shell's
   arithmetic on the empty value ended the whole sampler, and every `.sensors` file there (19 runs) is
   empty; nobody noticed, since only stone's were read. Lesson: device paths are found on the phone
   (by listing, by name), never written in for one phone; and one failed reading must not end the
-  others (each read with a fallback).
+  others (each read with a fallback). Fixed 2026-11-24: one awk process finds the clusters
+  (`policy*`) and the zones (by name) at the start and reads each file with a fallback (`?` for a
+  missing or unreadable one, such as the Nothing Phone (1)'s `policy0/scaling_max_freq`); per-cluster
+  load and clocks, the board sensor of that phone's thermal profiles, the battery's current; 3 small
+  processes per sample instead of about 25. Checked on the Nothing Phone (1) and on stone, in PvZ.
 - **An overlay that costs more than it should (stage 5.1, found 2026-11-24, open).** MangoHud as it is
   measured no cost in PvZ (held at 28 fps by a full GPU), but on wiliwili's home page (about 97 fps) it
   took 16-17 % of the frame rate at the full level and 11 % with only the frame rate shown (runs on,
@@ -1604,3 +1608,15 @@ Problems met while building UTDeck on the Redmi Note 12 5G (stone). Details in `
   daemon kept the old profile; the property is read at the next boot. Lessons: on a Halium port,
   check that a service really restarted (its start time), not only that init was asked to; and look
   for the vendor's own choices (here nine profiles) before thinking of going past the vendor's values.
+- **A sensor named by a guess (stage 5.1, 2026-11-24).** Step 1 said MangoHud's CPU temperature came
+  from "the small cores' cluster" (`cpuss-0-usr`), and a patch was built to show the hottest of the 14
+  CPU zones instead. Read side by side, `cpuss-0-usr` was on average 0.3 °C below the hottest zone
+  (at most 4 °C for a moment), and sometimes the hottest itself: a CPU subsystem sensor that follows
+  the hot spot. The patch was taken out again. Lesson: read a sensor next to its neighbours at the
+  same moment before deciding what it measures; a name like `cpuss-0` says less than it seems.
+- **An offset that points the other way on the right (stage 5.1, 2026-11-24).** The overlay's
+  settings moved it 100 pixels in from the side to clear the rounded screen corners; on the left it
+  worked, on the right it went further into the corner. MangoHud adds `offset_x` to the position in
+  every corner (on the right: the screen's width minus the panel's width plus the offset), so the
+  right side needs a negative one. Lesson: read how a program uses a setting in each case (here each
+  corner) before choosing one value for all of them; and check each case on the screen.

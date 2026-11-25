@@ -19,7 +19,15 @@ const QRegularExpression kDigits(QStringLiteral("^\\d+$"));
 const QStringList kKnown = {QStringLiteral("UTDECK_RUNTIME"), QStringLiteral("GAME_ARGS"),
                             QStringLiteral("UTDECK_RESOLUTION"), QStringLiteral("HODLL"),
                             QStringLiteral("UTDECK_BOOST"), QStringLiteral("UTDECK_PAUSE"), QStringLiteral("UTDECK_KEEP_AWAKE"),
-                            QStringLiteral("FEX_X87REDUCEDPRECISION"), QStringLiteral("UTDECK_FILL")};
+                            QStringLiteral("FEX_X87REDUCEDPRECISION"), QStringLiteral("UTDECK_FILL"),
+                            QStringLiteral("UTDECK_OVERLAY")};
+
+// The performance overlay's levels (stage 5.1; game-run.sh turns them into MangoHud's settings) and
+// its places on the screen.
+const QStringList kOverlayLevels = {QStringLiteral("off"), QStringLiteral("fps"), QStringLiteral("frametime"),
+                                    QStringLiteral("full")};
+const QStringList kOverlayPositions = {QStringLiteral("top-left"), QStringLiteral("top-center"),
+                                       QStringLiteral("top-right")};
 
 QString Wine()
 {
@@ -123,6 +131,9 @@ QVariantMap GameSettings::load(const QString& app_id) const
   s[QStringLiteral("awake")] = value(QStringLiteral("UTDECK_KEEP_AWAKE"), QStringLiteral("0")) == QLatin1String("1");
   s[QStringLiteral("x87")] = value(QStringLiteral("FEX_X87REDUCEDPRECISION"), QStringLiteral("0")) == QLatin1String("1");
   s[QStringLiteral("fill")] = value(QStringLiteral("UTDECK_FILL"), QStringLiteral("0")) == QLatin1String("1");
+  // The game's own overlay level, or "" for the one in Settings (user.env).
+  const QString overlay = env.value(QStringLiteral("UTDECK_OVERLAY"));
+  s[QStringLiteral("overlay")] = kOverlayLevels.contains(overlay) ? overlay : QString();
   // The other NAME=value lines, as the advanced text.
   QStringList advanced;
   QFile file(path);
@@ -162,6 +173,8 @@ bool GameSettings::save(const QString& app_id, const QVariantMap& s)
   unless_default(QStringLiteral("UTDECK_KEEP_AWAKE"), s.value(QStringLiteral("awake")).toBool() ? QStringLiteral("1") : QStringLiteral("0"), QStringLiteral("0"));
   unless_default(QStringLiteral("FEX_X87REDUCEDPRECISION"), s.value(QStringLiteral("x87")).toBool() ? QStringLiteral("1") : QStringLiteral("0"), QStringLiteral("0"));
   unless_default(QStringLiteral("UTDECK_FILL"), s.value(QStringLiteral("fill")).toBool() ? QStringLiteral("1") : QStringLiteral("0"), QStringLiteral("0"));
+  const QString overlay = s.value(QStringLiteral("overlay")).toString();
+  want[QStringLiteral("UTDECK_OVERLAY")] = kOverlayLevels.contains(overlay) ? overlay : QString();
 
   // The old file: comments and blank lines stay; a setting's line is replaced where it was.
   QStringList out;
@@ -222,6 +235,38 @@ bool GameSettings::reset(const QString& app_id)
   s[QStringLiteral("x87")] = d.value(QStringLiteral("FEX_X87REDUCEDPRECISION")) == QLatin1String("1");
   s[QStringLiteral("fill")] = d.value(QStringLiteral("UTDECK_FILL")) == QLatin1String("1");
   return save(app_id, s);
+}
+
+QVariantMap GameSettings::loadGlobal() const
+{
+  const QHash<QString, QString> user = ReadEnv(Wine() + QStringLiteral("/user.env"));
+  const QString overlay = user.value(QStringLiteral("UTDECK_OVERLAY"));
+  const QString position = user.value(QStringLiteral("UTDECK_OVERLAY_POSITION"));
+  QVariantMap g;
+  g[QStringLiteral("overlay")] = kOverlayLevels.contains(overlay) ? overlay : QStringLiteral("off");
+  g[QStringLiteral("overlayPosition")] = kOverlayPositions.contains(position) ? position : QStringLiteral("top-left");
+  return g;
+}
+
+bool GameSettings::saveGlobal(const QVariantMap& settings)
+{
+  const QString overlay = settings.value(QStringLiteral("overlay")).toString();
+  const QString position = settings.value(QStringLiteral("overlayPosition")).toString();
+  QStringList out;
+  out << QStringLiteral("# UTDeck: the user's settings for all games (the app's Settings page); a game's own")
+      << QStringLiteral("# settings (its utdeck-env) win over these, and these over defaults.env.");
+  if (kOverlayLevels.contains(overlay) && overlay != QLatin1String("off"))
+    out << QStringLiteral("UTDECK_OVERLAY=") + overlay;
+  if (kOverlayPositions.contains(position) && position != QLatin1String("top-left"))
+    out << QStringLiteral("UTDECK_OVERLAY_POSITION=") + position;
+  const QString path = Wine() + QStringLiteral("/user.env");
+  QFile file(path + QStringLiteral(".new"));
+  if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text))
+    return false;
+  file.write((out.join(QLatin1Char('\n')) + QLatin1Char('\n')).toUtf8());
+  file.close();
+  QFile::remove(path);
+  return QFile::rename(path + QStringLiteral(".new"), path);
 }
 
 bool GameSettings::protonInstalled() const

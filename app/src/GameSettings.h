@@ -10,8 +10,10 @@
 // own-run.sh): one NAME=value per line, read at each start, winning over defaults.env.
 //
 // load() gives the settings the page shows: runtime ("utdeck" or "proton"), args, resolution ("native"
-// or WxH), translator ("box64" or "fex", for 32-bit code), and the switches boost, pause, x87, fill
-// (true = on; the default comes from defaults.env, so a switch at its default writes no line), plus
+// or WxH), translator ("box64" or "fex", for 32-bit code), overlay (the performance overlay's level,
+// stage 5.1: "off", "fps", "frametime", "full", or "" for the one in Settings), and the switches
+// boost, pause, x87, fill (true = on; the default comes from defaults.env, so a switch at its default
+// writes no line), plus
 // advanced: the file's other NAME=value lines as text. save() writes them back: comments and blank lines
 // stay where they were, a setting's line is replaced in place (or dropped at its default), and the
 // advanced lines follow at the end. Written to a new file renamed over the old one.
@@ -35,6 +37,12 @@ public:
   Q_INVOKABLE bool save(const QString& app_id, const QVariantMap& settings);
   // An empty utdeck-env: every setting back to its default (comments kept).
   Q_INVOKABLE bool reset(const QString& app_id);
+  // The settings for all games (stage 5.1), in wine/user.env, which game-run.sh reads between a
+  // game's own settings and defaults.env (defaults.env is replaced with each app update, user.env
+  // stays): overlay ("off", "fps", "frametime" or "full") and overlayPosition ("top-left",
+  // "top-center" or "top-right"). A value at its default writes no line.
+  Q_INVOKABLE QVariantMap loadGlobal() const;
+  Q_INVOKABLE bool saveGlobal(const QVariantMap& settings);
   Q_INVOKABLE bool protonInstalled() const;
   Q_INVOKABLE void downloadProton();
   // The last run's log: {summary, log (its last lines), compat (Steam's utdeck-compat.log, last lines),

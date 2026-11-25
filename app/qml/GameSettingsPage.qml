@@ -29,6 +29,10 @@ Page {
     }
 
     readonly property var resolutions: ["native", "1200x540", "1600x720", "1920x864", "2000x900"]
+    // The performance overlay (stage 5.1): "" is the level set for all games in Settings.
+    readonly property var overlayLevels: ["", "off", "fps", "frametime", "full"]
+    readonly property var overlayNames: ({off: i18n.tr("Off"), fps: i18n.tr("Frame rate"),
+                                          frametime: i18n.tr("Frame rate and frame time"), full: i18n.tr("Full")})
     readonly property var switchRows: [
         {id: "boost", title: i18n.tr("CPU boost"), subtitle: i18n.tr("Higher CPU clocks for the game: a few frames per second more, a little warmer.")},
         {id: "pause", title: i18n.tr("Pause when not in front"), subtitle: i18n.tr("Freezes the game while the phone is locked or another app is in front.")},
@@ -43,6 +47,7 @@ Page {
             args: argsField.text,
             resolution: page.resolutions[resolutionSelector.selectedIndex],
             translator: translatorSelector.selectedIndex === 1 ? "fex" : "box64",
+            overlay: page.overlayLevels[overlaySelector.selectedIndex],
             boost: switches.boost,
             pause: switches.pause,
             awake: switches.awake,
@@ -59,6 +64,7 @@ Page {
         runtimeSelector.selectedIndex = settings.runtime === "proton" ? 1 : 0
         resolutionSelector.selectedIndex = Math.max(0, page.resolutions.indexOf(settings.resolution))
         translatorSelector.selectedIndex = settings.translator === "fex" ? 1 : 0
+        overlaySelector.selectedIndex = Math.max(0, page.overlayLevels.indexOf(settings.overlay || ""))
         switches.boost = !!settings.boost
         switches.pause = !!settings.pause
         switches.awake = !!settings.awake
@@ -191,6 +197,22 @@ Page {
                 wrapMode: Text.Wrap
                 color: theme.palette.normal.backgroundSecondaryText
                 text: i18n.tr("Only for 32-bit games and programs: try FEX if one does not start or hangs (installers often need it).")
+            }
+
+            // --- The performance overlay (stage 5.1) ---
+            OptionSelector {
+                id: overlaySelector
+
+                text: i18n.tr("Performance overlay")
+                model: [i18n.tr("As in Settings (%1)").arg(page.overlayNames[gameSettings.loadGlobal().overlay]),
+                        page.overlayNames.off, page.overlayNames.fps, page.overlayNames.frametime, page.overlayNames.full]
+            }
+
+            Label {
+                width: parent.width
+                wrapMode: Text.Wrap
+                color: theme.palette.normal.backgroundSecondaryText
+                text: i18n.tr("Numbers over the game's picture: its frame rate, and in Full also the CPU and GPU load, clocks and temperatures, memory and the battery. Showing them costs a little speed (about 0.5 ms for each picture at Frame rate); Off costs nothing.")
             }
 
             // --- Switches ---

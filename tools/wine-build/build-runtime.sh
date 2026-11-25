@@ -5,6 +5,7 @@
 #   tools/wine-build/build-runtime.sh            -> build/runtime/utdeck-runtime/ + BUILD-INFO
 #                                                   + build/runtime/utdeck-runtime-<version>.tar.xz
 #   PARTS="dxvk vkd3d" tools/wine-build/build-runtime.sh   rebuilds only those parts, then repacks
+#   RUNTIME_VERSION=11.16-20261124.2 tools/wine-build/build-runtime.sh   another name than the date's
 #   WINE_FLAVOR=proton tools/wine-build/build-runtime.sh   the same runtime on Proton 11's Wine
 #                                                   (stage 3.3), into build/runtime-proton/, with its own
 #                                                   source, build folders and patches (patches-proton/);
@@ -30,6 +31,11 @@
 #          is libhybris'). Stage 1.4's layout: vulkan/ (driver, icd.json), gl/ (zink's EGL, its
 #          egl_vendor.json), loader/; manifests with relative paths, so the folder works wherever it is.
 #          Until stage 4.3 this lived in ~/utdeck-probe/zink and ~/utdeck-probe/vk, put there by hand.
+#   overlay (default runtime only, stage 5.1) the performance overlay, in lib/gpu/layers/: MangoHud
+#          (tools/mangohud-build/build-mangohud.sh, with tools/mangohud-build/patches/) as a Vulkan
+#          layer, with its layer file (a relative path, like lib/gpu's other manifests). wine-env.sh
+#          only lists the folder for the Vulkan loader (VK_ADD_LAYER_PATH): a layer found that way is
+#          loaded only when a game enables it by name, so a game without the overlay runs as before.
 #   media  GStreamer plugins for games' videos and sounds, which Wine plays through the phone's
 #          GStreamer 1.24 (winegstreamer): gst-libav (FFmpeg's decoders: WMV, WMA, H.264, VP9, ...)
 #          with a small FFmpeg linked in, and asfdemux from gst-plugins-ugly (the reader for .wmv
@@ -50,7 +56,7 @@ OUT="$REPO_DIR/build/runtime"
 TC_VER=20261104
 TC="$REPO_DIR/build/toolchains/llvm-mingw-$TC_VER-ucrt-ubuntu-22.04-x86_64"
 IMAGE=utdeck-wine-cross
-PARTS=${PARTS:-wine fex box64 dxvk vkd3d mono steam media gpu}
+PARTS=${PARTS:-wine fex box64 dxvk vkd3d mono steam media gpu overlay}
 
 # The Wine base (stage 3.3): Hangover's (the default) or Proton 11's. Each has its own source folder,
 # build folders (suffix WS inside build/runtime-obj) and output folder.
@@ -209,6 +215,13 @@ if has gpu && [ "$WINE_FLAVOR" = hangover ]; then
     fi
     echo "$VKLOADER_SHA256  $deb" | sha256sum -c - > /dev/null || { echo "checksum mismatch: $deb" >&2; rm -f "$deb"; exit 1; }
     rm -rf "$OBJ/vkloader" && dpkg-deb -x "$deb" "$OBJ/vkloader"
+fi
+# overlay: only for the default runtime, like gpu (both Wine bases use its lib/gpu).
+if has overlay && [ "$WINE_FLAVOR" = hangover ]; then
+    echo "overlay: building MangoHud with tools/mangohud-build/build-mangohud.sh (log: build/runtime-obj/mangohud-build.log)"
+    mkdir -p "$OBJ"
+    OUT="$OBJ/mangohud" "$REPO_DIR/tools/mangohud-build/build-mangohud.sh" > "$OBJ/mangohud-build.log" 2>&1 \
+        || { tail -30 "$OBJ/mangohud-build.log" >&2; exit 1; }
 fi
 if has mono; then
     [ -f "$MONO_MSI" ] || curl -fsSL -o "$MONO_MSI" "$MONO_URL"
@@ -416,8 +429,23 @@ if [ "$WINE_FLAVOR" = hangover ] && [ -f "$M/lib/aarch64-linux-gnu/libvulkan_fre
     printf '{\n    "file_format_version" : "1.0.0",\n    "ICD" : {\n        "library_path" : "./libEGL_mesa.so.0"\n    }\n}\n' > "$G/gl/egl_vendor.json"
     cp "$OBJ/mesa/BUILD-INFO" "$G/BUILD-INFO"
 fi
+# The performance overlay (part overlay), into lib/gpu/layers: the layer and its file, named like the
+# layer MangoHud registers (VK_LAYER_MANGOHUD_overlay_aarch64), with the library next to it.
+H="$OBJ/mangohud/stage/usr"
+if [ "$WINE_FLAVOR" = hangover ] && [ -f "$H/lib/aarch64-linux-gnu/libMangoHud.so" ]; then
+    L="$RT/lib/gpu/layers"
+    rm -rf "$L" && mkdir -p "$L"
+    cp -L "$H/lib/aarch64-linux-gnu/libMangoHud.so" "$L/"
+    sed 's#"library_path": *"[^"]*"#"library_path": "./libMangoHud.so"#' \
+        "$H"/share/vulkan/implicit_layer.d/MangoHud.*.json > "$L/MangoHud.json"
+    grep -q '"library_path": "./libMangoHud.so"' "$L/MangoHud.json" || { echo "overlay: layer file not rewritten" >&2; exit 1; }
+    cp "$OBJ/mangohud/BUILD-INFO" "$L/BUILD-INFO"
+fi
 
-VERSION="$VERSION_BASE-$(date -u +%Y%m%d)"
+# The runtime's name: the Wine base's version and the build date. RUNTIME_VERSION=... names it
+# otherwise, for a second release on one day (11.16-20261124.2: get-runtime.sh takes a default
+# runtime whose name starts with a digit, a Proton one whose name starts with "proton").
+VERSION=${RUNTIME_VERSION:-"$VERSION_BASE-$(date -u +%Y%m%d)"}
 {
     echo "UTDeck runtime $VERSION"
     echo "built: $(date -u +%Y-%m-%dT%H:%M:%SZ), llvm-mingw $TC_VER, $IMAGE (Ubuntu 24.04, arm64 libraries from noble + UBports 24.04-2.x)"
@@ -434,6 +462,9 @@ VERSION="$VERSION_BASE-$(date -u +%Y%m%d)"
         echo "gpu: Mesa $(sed -n 's/^mesa version: //p' "$RT/lib/gpu/BUILD-INFO") ($(sed -n 's/^source: //p' "$RT/lib/gpu/BUILD-INFO") $(sed -n 's/^commit: \([0-9a-f]*\).*/\1/p' "$RT/lib/gpu/BUILD-INFO")), Turnip and zink, patches: $(sed -n 's/^extra patches: //p' "$RT/lib/gpu/BUILD-INFO")"
         echo "  Khronos Vulkan loader: libvulkan1 $VKLOADER_VERSION ($VKLOADER_URL) sha256 $VKLOADER_SHA256"
     fi
+    if [ -f "$RT/lib/gpu/layers/BUILD-INFO" ]; then
+        echo "overlay: MangoHud $(sed -n 's/^mangohud version: //p' "$RT/lib/gpu/layers/BUILD-INFO") ($(sed -n 's/^source: //p' "$RT/lib/gpu/layers/BUILD-INFO")), patches: $(sed -n 's/^extra patches: //p' "$RT/lib/gpu/layers/BUILD-INFO")"
+    fi
     [ -f "$RT/lib/wine/aarch64-unix/lsteamclient.so" ] && echo "lsteamclient, steam.exe: $PROTON_URL $PROTON_COMMIT (proton-11.0-2e)"
     if [ -f "$RT/lib/gstreamer-1.0/libgstlibav.so" ]; then
         echo "gstreamer plugins: gst-libav and asfdemux (gst-plugins-ugly) $GST_VERSION, FFmpeg $FFMPEG_VERSION linked in"
@@ -446,7 +477,7 @@ VERSION="$VERSION_BASE-$(date -u +%Y%m%d)"
         lib/wine/aarch64-unix/winewayland.so lib/wine/aarch64-windows/libarm64ecfex.dll \
         lib/wine/aarch64-windows/libwow64fex.dll lib/wine/aarch64-windows/wowbox64.dll \
         lib/dxvk/arm64ec/d3d11.dll lib/vkd3d-proton/arm64x/d3d12core.dll \
-        $(cd "$RT" && ls lib/gpu/vulkan/*.so lib/gpu/gl/*.so* lib/gpu/loader/*.so* 2>/dev/null) | sed 's/^/  /')
+        $(cd "$RT" && ls lib/gpu/vulkan/*.so lib/gpu/gl/*.so* lib/gpu/loader/*.so* lib/gpu/layers/*.so 2>/dev/null) | sed 's/^/  /')
 } > "$RT/BUILD-INFO"
 rm -f "$OUT"/utdeck-runtime-*.tar.xz
 tar -C "$OUT" -cJf "$OUT/utdeck-runtime-$VERSION.tar.xz" utdeck-runtime

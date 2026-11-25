@@ -1,0 +1,48 @@
+UTDeck (stage 5.1): a phone's battery.
+
+MangoHud took only power supplies with "BAT" in their name (laptops' BAT0); a phone's is called
+"battery", so the overlay found none. A supply the kernel marks as type "Battery" is taken too,
+except a device's own (a controller's battery has scope "Device"). MangoHud keeps two batteries and
+did not check that limit; it does now. Its power figure preferred power_now, which on the Nothing
+Phone (1) is in another unit (67.5 W while charging at 0.35 A and 4.28 V, which is 1.5 W): current
+times voltage comes first now, power_now only without them.
+
+diff --git a/src/battery.cpp b/src/battery.cpp
+index 1612bff..f822c8e 100644
+--- a/src/battery.cpp
++++ b/src/battery.cpp
+@@ -1,6 +1,7 @@
+ #include <spdlog/spdlog.h>
+ #include <filesystem.h>
+ #include "battery.h"
++#include "file_utils.h"
+ 
+ namespace fs = ghc::filesystem;
+ using namespace std;
+@@ -13,7 +14,12 @@ void BatteryStats::numBattery() {
+     fs::path path("/sys/class/power_supply/");
+     for (auto& p : fs::directory_iterator(path)) {
+         string fileName = p.path().filename();
+-        if (fileName.find("BAT") != std::string::npos) {
++        // UTDeck: a phone's battery is "battery", not "BAT0"; the kernel marks it with type
++        // "Battery". A controller's battery has that type too, with scope "Device": left out.
++        bool battery = fileName.find("BAT") != std::string::npos ||
++            (read_line(p.path().string() + "/type") == "Battery" &&
++             read_line(p.path().string() + "/scope") != "Device");
++        if (battery && batteryCount < 2) {   // battPath holds two
+             battPath[batteryCount] = p.path();
+             batteryCount += 1;
+         }
+@@ -111,8 +117,10 @@ float BatteryStats::getPower() {
+             return 0.0f;
+         }
+ 
+-        // Prefer power_now (µW) when available.
+-        if (fs::exists(power_now)) {
++        // UTDeck: current times voltage first, power_now (µW) only without them: a phone's
++        // power_now can be in another unit (the Nothing Phone (1) reported 67.5 W while charging
++        // at 0.35 A and 4.28 V, which is 1.5 W).
++        if (!(fs::exists(current_now) && fs::exists(voltage_now)) && fs::exists(power_now)) {
+             std::ifstream input(power_now);
+             std::string line;
+             if (std::getline(input, line)) {

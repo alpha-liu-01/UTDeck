@@ -1,0 +1,59 @@
+UTDeck (stage 5.1): the GPU through KGSL whenever it is there.
+
+On a Halium phone the Adreno GPU runs under Android's kernel driver, KGSL, whose figures are in
+/sys/class/kgsl/kgsl-3d0. MangoHud already reads them (init_kgsl), but reached that code only through
+a DRM render node whose driver is named "msm_drm", which is Android's display driver, not the GPU's.
+It happens to have that name on the Nothing Phone (1) and stone; a phone whose display driver is
+named otherwise got no GPU figures at all. A KGSL GPU is now added whenever the folder exists and no
+"msm_drm" node was found. And as the game has no DRM GPU file open on KGSL (Turnip opens
+/dev/kgsl-3d0), MangoHud's scan of all the game's open files, every 10 s, is skipped there.
+
+diff --git a/src/gpu.cpp b/src/gpu.cpp
+index 3c00a69..dd412e4 100644
+--- a/src/gpu.cpp
++++ b/src/gpu.cpp
+@@ -95,6 +95,27 @@ GPUS::GPUS(const overlay_params* early_params) {
+         }
+     }
+ 
++    // UTDeck: an Adreno GPU under Android's kernel driver (KGSL, on Halium phones) is read from
++    // /sys/class/kgsl/kgsl-3d0. MangoHud reached it only through a DRM render node whose driver is
++    // named "msm_drm", and that node belongs to Android's display driver, not to the GPU: a phone
++    // whose display driver has another name got no GPU figures at all. KGSL is now used whenever it
++    // is there (the "msm_drm" name keeps MangoHud's own KGSL code paths).
++    bool have_kgsl = false;
++    for (const auto& gpu : available_gpus)
++        if (gpu->driver == "msm_drm")
++            have_kgsl = true;
++
++    if (!have_kgsl) {
++        try {
++            if (fs::exists("/sys/class/kgsl/kgsl-3d0")) {
++                available_gpus.emplace_back(std::make_shared<GPU>("kgsl-3d0", 0, 0, "", "msm_drm"));
++                SPDLOG_INFO("GPU Found: KGSL (/sys/class/kgsl/kgsl-3d0)");
++            }
++        } catch (fs::filesystem_error& ex) {
++            SPDLOG_DEBUG("kgsl: {}", ex.what());
++        }
++    }
++
+     if (total_active < 2)
+         return;
+ 
+diff --git a/src/gpu_fdinfo.cpp b/src/gpu_fdinfo.cpp
+index 0fdd99e..f91a3db 100644
+--- a/src/gpu_fdinfo.cpp
++++ b/src/gpu_fdinfo.cpp
+@@ -11,6 +11,12 @@ void GPU_fdinfo::find_fd()
+     fdinfo.clear();
+     fdinfo_data.clear();
+ 
++    // UTDeck: KGSL's figures come from sysfs (init_kgsl); the game has no DRM GPU file open to
++    // read (Turnip on KGSL opens /dev/kgsl-3d0), so the scan of all its open files, every 10 s,
++    // finds nothing and is skipped.
++    if (module == "msm_drm")
++        return;
++
+     auto dir = std::string("/proc/") + std::to_string(pid) + "/fdinfo";
+     auto path = fs::path(dir);
+ 

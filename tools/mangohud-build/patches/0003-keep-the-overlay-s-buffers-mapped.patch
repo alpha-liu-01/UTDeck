@@ -1,0 +1,74 @@
+UTDeck (stage 5.1): the overlay's vertex and index buffers stay mapped.
+
+MangoHud mapped both buffers, copied the overlay's vertices into them and unmapped them again on
+every frame. Turnip unmaps for real (munmap), so each frame paid for two mmaps, two munmaps and a
+page fault on every page the copy touched. Measured with a timing build in PvZ on the Nothing Phone
+(1), recording the overlay's drawing took about 0.3-0.4 ms a frame, more than the panel itself at the
+frame-rate-only level. The buffers are now mapped once, when they are made, and stay mapped until
+their memory is freed (which unmaps it; Vulkan allows freeing mapped memory). The flush before the
+GPU reads them stays (the memory is cached and not coherent).
+
+diff --git a/src/vulkan.cpp b/src/vulkan.cpp
+index 7030d29..57963b9 100644
+--- a/src/vulkan.cpp
++++ b/src/vulkan.cpp
+@@ -144,6 +144,10 @@ struct overlay_draw {
+    VkBuffer index_buffer;
+    VkDeviceMemory index_buffer_mem;
+    VkDeviceSize index_buffer_size;
++
++   /* UTDeck: the buffers stay mapped (render_swapchain_display) */
++   void *vertex_map;
++   void *index_map;
+ };
+ 
+ /* Mapped from VkSwapchainKHR */
+@@ -892,6 +896,7 @@ static struct overlay_draw *render_swapchain_display(struct swapchain_data *data
+    size_t vertex_size = draw_data->TotalVtxCount * sizeof(ImDrawVert);
+    size_t index_size = draw_data->TotalIdxCount * sizeof(ImDrawIdx);
+    if (draw->vertex_buffer_size < vertex_size) {
++      draw->vertex_map = NULL;   /* its memory is freed and replaced */
+       CreateOrResizeBuffer(device_data,
+                            &draw->vertex_buffer,
+                            &draw->vertex_buffer_mem,
+@@ -899,6 +904,7 @@ static struct overlay_draw *render_swapchain_display(struct swapchain_data *data
+                            vertex_size, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+    }
+    if (draw->index_buffer_size < index_size) {
++      draw->index_map = NULL;
+       CreateOrResizeBuffer(device_data,
+                            &draw->index_buffer,
+                            &draw->index_buffer_mem,
+@@ -907,12 +913,17 @@ static struct overlay_draw *render_swapchain_display(struct swapchain_data *data
+    }
+ 
+    /* Upload vertex & index data */
+-   ImDrawVert* vtx_dst = NULL;
+-   ImDrawIdx* idx_dst = NULL;
+-   VK_CHECK(device_data->vtable.MapMemory(device_data->device, draw->vertex_buffer_mem,
+-                                          0, draw->vertex_buffer_size, 0, (void**)(&vtx_dst)));
+-   VK_CHECK(device_data->vtable.MapMemory(device_data->device, draw->index_buffer_mem,
+-                                          0, draw->index_buffer_size, 0, (void**)(&idx_dst)));
++   /* UTDeck: the buffers are mapped once and stay mapped (freeing the memory unmaps it). MangoHud
++    * mapped and unmapped both every frame; Turnip unmaps for real (munmap), so each frame paid
++    * for two mmaps, two munmaps and a page fault on every page the copy touched. */
++   if (!draw->vertex_map)
++      VK_CHECK(device_data->vtable.MapMemory(device_data->device, draw->vertex_buffer_mem,
++                                             0, draw->vertex_buffer_size, 0, &draw->vertex_map));
++   if (!draw->index_map)
++      VK_CHECK(device_data->vtable.MapMemory(device_data->device, draw->index_buffer_mem,
++                                             0, draw->index_buffer_size, 0, &draw->index_map));
++   ImDrawVert* vtx_dst = (ImDrawVert*)draw->vertex_map;
++   ImDrawIdx* idx_dst = (ImDrawIdx*)draw->index_map;
+    for (int n = 0; n < draw_data->CmdListsCount; n++)
+       {
+          const ImDrawList* cmd_list = draw_data->CmdLists[n];
+@@ -929,8 +940,6 @@ static struct overlay_draw *render_swapchain_display(struct swapchain_data *data
+    range[1].memory = draw->index_buffer_mem;
+    range[1].size = VK_WHOLE_SIZE;
+    VK_CHECK(device_data->vtable.FlushMappedMemoryRanges(device_data->device, 2, range));
+-   device_data->vtable.UnmapMemory(device_data->device, draw->vertex_buffer_mem);
+-   device_data->vtable.UnmapMemory(device_data->device, draw->index_buffer_mem);
+ 
+    /* Bind pipeline and descriptor sets */
+    device_data->vtable.CmdBindPipeline(draw->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, data->pipeline);

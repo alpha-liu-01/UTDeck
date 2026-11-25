@@ -8,8 +8,9 @@
 # Started from a Lomiri desktop file (landscape) or from a shell. Writes into wine/games/:
 #   LABEL-<time>.log      Wine's errors and the game's output
 #   LABEL-<time>.frames   one line per second from win32u (patch 0007): fps, frame times, size
-#   LABEL-<time>.sensors  every 2 s: CPU busy, big-core clock, GPU busy and clock, CPU and GPU
-#                         temperature, free memory, the game's resident memory
+#   LABEL-<time>.sensors  every 2 s: CPU load (overall and per cluster), clocks and their allowed
+#                         maximums, GPU load and clock, temperatures, the battery, free memory, the
+#                         game's resident memory (the sampler below)
 set -u
 LABEL=$1 DIR=$2 EXE=$3; shift 3
 W=/home/phablet/utdeck-probe/wine
@@ -26,7 +27,20 @@ for v in ${GAME_ENV:-}; do export "$v"; done
 # each with the measurement that decided it. A value already set (the game's utdeck-env, GAME_ENV,
 # the caller) wins. Among them: MAILBOX presentation, the landscape monitor, fill mode (UTDECK_FILL=0
 # turns it off for a game), the game's Wine log level.
-DEFAULTS=
+# Before them, the user's own choices for all games (stage 5.1), from user.env, which the app's
+# Settings page writes (defaults.env is replaced with each app update, user.env stays): only UTDeck's
+# own names (UTDECK_*). So: the game's own setting, then the user's, then the defaults.
+DEFAULTS= USERSET=
+if [ -f $W/user.env ]; then
+    while IFS= read -r line; do
+        case "$line" in
+        UTDECK_[A-Z_]*=*)
+            n=${line%%=*}
+            case "$n" in *[!A-Z0-9_]*) continue ;; esac   # a plain name only: it goes through eval
+            if eval "[ -z \"\${$n+x}\" ]"; then export "$line"; USERSET="$USERSET $line"; fi ;;
+        esac
+    done < $W/user.env
+fi
 if [ -f $W/defaults.env ]; then
     while IFS= read -r line; do
         case "$line" in
@@ -70,7 +84,50 @@ if [ ! -d "$WINEPREFIX/drive_c" ]; then
 fi
 { printf 'game: %s, in %s: %s %s\n' "$LABEL" "$DIR" "$EXE" "$*"; echo "runtime: $(command -v wine), prefix $WINEPREFIX";
   echo "overrides: $WINEDLLOVERRIDES"; echo "extra: ${GAME_ENV:-}"; echo "defaults:$DEFAULTS";
+  [ -n "$USERSET" ] && echo "user settings:$USERSET"
   echo "app: ${UTDECK_APP_ID:-none (UTDeck not running)}"; } > $B.log
+# The performance overlay (stage 5.1): UTDECK_OVERLAY = off, fps, frametime or full, from the game's
+# settings or the user's (user.env); UTDECK_OVERLAY_POSITION = top-left, top-center or top-right.
+# On, the runtime's MangoHud layer (lib/gpu/layers, listed by env.sh) is enabled by name, with a
+# settings file for this run next to its logs ($B.overlay.conf): legacy_layout=0 shows exactly the
+# listed items, in that order. Off (and for Steam's install scripts) nothing is set, so nothing is
+# loaded. Left out on purpose: the CPU power line (a phone has no source for it) and the VRAM lines
+# (a phone's GPU shares its memory). Left and right sit 100 pixels in from the side, clear of the
+# screen's rounded corners: MangoHud adds offset_x in every position, so the right side takes a
+# negative one (MangoHud reads it with strtol, and the sign survives its unsigned type: GCC converts
+# modulo, checked on the phone), and keeps its own 10-pixel margin there (-90 is 100 in all).
+overlay=${UTDECK_OVERLAY:-off}
+[ "${UTDECK_SETUP_RUN:-0}" = 1 ] && overlay=off
+case "$overlay" in
+fps|frametime|full)
+    if [ -f $W/runtime/lib/gpu/layers/MangoHud.json ]; then
+        pos=${UTDECK_OVERLAY_POSITION:-top-left}
+        case "$pos" in top-left) side=100 ;; top-right) side=-90 ;; top-center) side=0 ;; *) pos=top-left side=100 ;; esac
+        {
+            echo "# UTDeck: the performance overlay for this run ($overlay, $pos), written by game-run.sh"
+            echo "legacy_layout=0"
+            echo "position=$pos"
+            echo "offset_x=$side"
+            echo "background_alpha=0.4"
+            case "$overlay" in
+            fps) printf '%s
+' fps fps_only ;;
+            frametime) printf '%s
+' fps frametime frame_timing ;;
+            full) printf '%s
+' fps frametime frame_timing cpu_stats cpu_temp cpu_mhz gpu_stats gpu_temp \
+                      gpu_core_clock ram battery battery_watt throttling_status ;;
+            esac
+        } > $B.overlay.conf
+        export MANGOHUD=1 MANGOHUD_CONFIGFILE=$B.overlay.conf \
+            VK_LOADER_LAYERS_ENABLE=VK_LAYER_MANGOHUD_overlay_aarch64${VK_LOADER_LAYERS_ENABLE:+,$VK_LOADER_LAYERS_ENABLE}
+        echo "overlay: $overlay, $pos" >> $B.log
+    else
+        echo "overlay: $overlay asked, but this runtime has no overlay (lib/gpu/layers)" >> $B.log
+    fi ;;
+off) ;;
+*) echo "overlay: unknown setting \"$overlay\", left off" >> $B.log ;;
+esac
 # Controllers (stage 4.4). controllers.reg: Wine takes PlayStation and Nintendo pads through SDL, not
 # only through their raw nodes, which phablet cannot open (without it such a pad reaches no game);
 # imported into this prefix again whenever the file changes. padlayout.py: for a pad whose kernel
@@ -98,23 +155,105 @@ fi
 python3 -c 'import ctypes; ctypes.CDLL("libgstreamer-1.0.so.0").gst_init(None, None)' >> $B.log 2>&1 \
     || echo "gstreamer: plugin list not updated" >> $B.log
 K=/sys/class/kgsl/kgsl-3d0
-# Sensor paths, found once by name (zone numbers are not fixed): the little and the big cluster,
-# the GPU, the phone's skin. Stage 3.5 adds the allowed maximum clocks (the vendor's thermal service, mi_thermald,
-# lowers them when it steps in), the skin and battery temperatures and the charging state.
-zone() { for z in /sys/class/thermal/thermal_zone*; do [ "$(cat $z/type 2>/dev/null)" = "$1" ] && { echo $z/temp; return; }; done; echo /dev/null; }
-ZC=$(zone cpuss-0-usr) ZB=$(zone cpuss-1-usr) ZG=$(zone gpuss-0-usr) ZS=$(zone sdm-skin-therm-usr) BAT=/sys/class/power_supply/battery
-CF=/sys/devices/system/cpu/cpufreq
-( prev=$(head -1 /proc/stat)
-  while :; do
-    sleep 2
-    cur=$(head -1 /proc/stat)
-    busy=$(echo "$prev
-$cur" | awk '{i=$5+$6; t=0; for(n=2;n<=NF;n++)t+=$n; if(NR==1){pi=i;pt=t}else printf "%d", 100*((t-pt)-(i-pi))/(t-pt)}')
-    prev=$cur
-    t=" cpu=$(($(cat $ZC 2>/dev/null || echo 0)/1000)) gpu=$(($(cat $ZG 2>/dev/null || echo 0)/1000)) big_t=$(($(cat $ZB 2>/dev/null || echo 0)/1000))"
-    rss=$(ps -eo rss,args | grep -i "[.]exe" | grep -v -i -E "services|winedevice|plugplay|svchost|explorer|rpcss|tabtip|conhost" | awk '{s+=$1} END{print int(s/1024)}')
-    echo "$(date +%T) cpu ${busy}% big $(($(cat /sys/devices/system/cpu/cpu7/cpufreq/scaling_cur_freq 2>/dev/null || echo 0)/1000))MHz gpu $(cat $K/gpu_busy_percentage | tr -d ' ') $(($(cat $K/gpuclk)/1000000))MHz$t mem_avail=$(awk '/MemAvailable/{print int($2/1024)}' /proc/meminfo)MB game_rss=${rss}MB swap_used=$(awk '/SwapTotal/{t=$2} /SwapFree/{f=$2} END{print int((t-f)/1024)}' /proc/meminfo)MB max=$(($(cat $CF/policy0/scaling_max_freq)/1000))/$(($(cat $CF/policy6/scaling_max_freq)/1000))/$(($(cat $K/max_gpuclk)/1000000))MHz skin=$(($(cat $ZS 2>/dev/null || echo 0)/1000)) bat=$(($(cat $BAT/temp 2>/dev/null || echo 0)/10)) $(cat $BAT/status 2>/dev/null | tr 'A-Z ' 'a-z_')"
-  done > $B.sensors ) &
+# The sensor sampler (stage 3.2, made phone-independent in stage 5.1): one line every 2 s into
+# $B.sensors. Nothing in it is written for one phone: the CPU clusters are the cpufreq policy* folders
+# (stone: policy0 and policy6; the Nothing Phone (1): policy0, policy4 and policy7), the thermal zones
+# are found by name once (their numbers are not fixed). Every reading has a fallback: a file that is
+# missing or not readable (the Nothing Phone (1)'s policy0/scaling_max_freq) gives "?" for that one
+# figure, where the old shell loop's arithmetic on the empty value ended the whole sampler (all 19 of
+# that phone's files were empty). One awk process does it all, so a sample starts 3 small processes
+# (sleep, date, ps) instead of about 25.
+# A line: time; CPU load overall, then per cluster (cpus, load, clock/allowed maximum in MHz: the
+# vendor's thermal service lowers the maximum when it steps in); GPU load and clock/maximum (KGSL);
+# temperatures in °C: the hottest CPU zone, the hottest GPU zone, the skin, the board sensor the
+# Nothing Phone (1)'s thermal profiles watch (quiet-therm) where there is one, the battery; the
+# battery's current in mA as the kernel reports it; free memory, the game's resident memory (all
+# its .exe processes but Wine's own), swap in use; the charging state.
+CF=/sys/devices/system/cpu/cpufreq BAT=/sys/class/power_supply/battery
+CL= ZC= ZG= ZS= ZQ=
+for p in $CF/policy*; do [ -d "$p" ] && CL="$CL${p##*/}:$(cat $p/related_cpus 2>/dev/null);"; done
+for z in /sys/class/thermal/thermal_zone*; do
+    case "$(cat $z/type 2>/dev/null)" in
+    cpu-*-usr|cpuss-*-usr) ZC="$ZC $z/temp" ;;
+    gpuss-*-usr) ZG="$ZG $z/temp" ;;
+    sdm-skin-therm-usr|msm-skin-therm-usr|skin-therm-usr) [ -z "$ZS" ] && ZS=$z/temp ;;
+    quiet-therm-usr) ZQ=$z/temp ;;
+    esac
+done
+echo "# sampler: clusters ${CL:-none}, $(echo $ZC | wc -w) CPU zones, $(echo $ZG | wc -w) GPU zones, skin ${ZS:-none}, board ${ZQ:-none}" > $B.sensors
+awk -v CL="$CL" -v ZC="$ZC" -v ZG="$ZG" -v ZS="$ZS" -v ZQ="$ZQ" -v K=$K -v CF=$CF -v BAT=$BAT '
+function rd(f,   l, r) { if (f == "") return ""; r = (getline l < f); close(f); return r > 0 ? l : "" }
+function num(f,   v) { v = rd(f); gsub(/[^0-9-]/, "", v); return v }
+function scaled(f, d,   v) { v = num(f); return v == "" ? "?" : int(v / d) }
+function temp(list,   n, a, i, v, m) {
+    n = split(list, a, " "); m = ""
+    for (i = 1; i <= n; i++) {
+        v = num(a[i]); if (v == "") continue
+        v += 0; if (v >= 1000 || v <= -1000) v /= 1000
+        if (v < -40 || v > 150) continue
+        if (m == "" || v > m) m = v
+    }
+    return m == "" ? "?" : int(m + 0.5)
+}
+function readstat(   f, l, a, n, i, t) {
+    f = "/proc/stat"
+    while ((getline l < f) > 0) {
+        n = split(l, a, " "); if (a[1] !~ /^cpu/) break
+        t = 0; for (i = 2; i <= n; i++) t += a[i]
+        T[a[1]] = t; I[a[1]] = a[5] + a[6]
+    }
+    close(f)
+}
+function load(keys,   n, k, i, dt, di) {
+    n = split(keys, k, " "); dt = 0; di = 0
+    for (i = 1; i <= n; i++) if ((k[i] in T) && (k[i] in PT)) { dt += T[k[i]] - PT[k[i]]; di += I[k[i]] - PI[k[i]] }
+    return dt > 0 ? int(100 * (dt - di) / dt + 0.5) "%" : "?"
+}
+function rss(   c, l, a, s) {
+    c = "ps -eo rss,args"; s = 0
+    while ((c | getline l) > 0) {
+        if (tolower(l) !~ /[.]exe/ || tolower(l) ~ /services|winedevice|plugplay|svchost|explorer|rpcss|tabtip|conhost/) continue
+        split(l, a, " "); s += a[1]
+    }
+    close(c); return int(s / 1024)
+}
+function meminfo(   f, l, a) {
+    f = "/proc/meminfo"; MA = "?"; ST = ""; SF = ""
+    while ((getline l < f) > 0) {
+        split(l, a, " ")
+        if (a[1] == "MemAvailable:") MA = int(a[2] / 1024)
+        else if (a[1] == "SwapTotal:") ST = a[2]
+        else if (a[1] == "SwapFree:") SF = a[2]
+    }
+    close(f)
+}
+BEGIN {
+    nc = split(CL, cl, ";")
+    for (i = 1; i <= nc; i++) {
+        if (cl[i] == "") continue
+        split(cl[i], pc, ":"); m = split(pc[2], cpus, " "); if (m == 0) continue
+        np++; PATH[np] = CF "/" pc[1]; LBL[np] = "c" cpus[1] (m > 1 ? "-" cpus[m] : ""); KEYS[np] = ""
+        for (j = 1; j <= m; j++) KEYS[np] = KEYS[np] " cpu" cpus[j]
+    }
+    readstat(); for (k in T) { PT[k] = T[k]; PI[k] = I[k] }
+    while (1) {
+        system("sleep 2")
+        d = "date +%T"; now = ""; d | getline now; close(d)
+        readstat()
+        line = now " cpu " load("cpu")
+        for (i = 1; i <= np; i++)
+            line = line " " LBL[i] " " load(KEYS[i]) " " scaled(PATH[i] "/scaling_cur_freq", 1000) "/" scaled(PATH[i] "/scaling_max_freq", 1000) "MHz"
+        b = num(K "/gpu_busy_percentage")
+        line = line " gpu " (b == "" ? "?" : b "%") " " scaled(K "/gpuclk", 1000000) "/" scaled(K "/max_gpuclk", 1000000) "MHz"
+        line = line " cpu=" temp(ZC) " gpu=" temp(ZG) " skin=" temp(ZS) (ZQ == "" ? "" : " board=" temp(ZQ))
+        bt = num(BAT "/temp"); line = line " bat=" (bt == "" ? "?" : int(bt / 10)) " bat_mA=" scaled(BAT "/current_now", 1000)
+        meminfo()
+        line = line " mem_avail=" MA "MB game_rss=" rss() "MB swap_used=" (ST == "" || SF == "" ? "?" : int((ST - SF) / 1024)) "MB"
+        st = rd(BAT "/status"); gsub(/ /, "_", st); line = line " " (st == "" ? "?" : tolower(st))
+        print line; fflush()
+        for (k in T) { PT[k] = T[k]; PI[k] = I[k] }
+    }
+}' >> $B.sensors 2>/dev/null &
 S=$!
 cd "$DIR"
 WINEDEBUG=${WINEDEBUG_GAME:--all} wine "$EXE" "$@" >> $B.log 2>&1 &

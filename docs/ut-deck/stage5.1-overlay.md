@@ -109,6 +109,20 @@ Phone (1), 2026-11-24):
 - 2026-11-24: planned. Found while planning, on the Nothing Phone (1): the sampler's empty files (the
   `policy6` read, [lessons-learned.md](../lessons-learned.md)), Android's display driver named like
   mainline's GPU driver, the KGSL files readable by the user.
+- 2026-11-24: **step 1 closed** (the maintainer). The overlay works through DXVK (Direct3D 11) and
+  VKD3D-Proton (Direct3D 12) on the Nothing Phone (1) and stone, its numbers match the phone's files,
+  a settings file reloads while the game runs, and its cost is measured (about 4 % in a light scene
+  on stone, mostly from being loaded). Moved on: an OpenGL game is tested when one is installed
+  (none on either phone); FEX's statistics go to step 3; the keyboard shortcut is dropped (the app
+  controls the overlay through the settings file). Found on the way: the wiliwili flashing on the
+  Nothing Phone (1) (parked, [lessons-learned.md](../lessons-learned.md)) and its thermal profile
+  ([stage5-roadmap.md](stage5-roadmap.md)). Step 2 added: where MangoHud's 0.6 ms a frame goes while
+  hidden. Step 2 begins with the sampler.
+- 2026-11-24: **step 2 done**. The sampler works on both phones; MangoHud patches 0001 (KGSL without
+  the display driver's name), 0002 (a phone's battery), 0003 (the overlay's buffers kept mapped,
+  about 0.2 ms a frame less); the CPU temperature patch taken out (the original zone was right).
+  MangoHud's time per frame measured: about 0.06 ms hidden, 0.55 ms at frame rate only, about 1 ms
+  full. Next: step 3, MangoHud in the runtime (and FEX's statistics).
 
 ## Step 1: MangoHud as it is (2026-11-24)
 
@@ -141,9 +155,9 @@ What it showed (`full`), against the phone's files read at the same time:
 | GPU load | 74 % | `kgsl-3d0/gpu_busy_percentage` 73-74 % | right |
 | GPU clock | 315 MHz | `gpuclk` 315 MHz | right |
 | GPU temperature | 45 °C | `kgsl-3d0/temp` 45.3-45.7 °C | right |
-| CPU temperature | 49 °C | `thermal_zone44` = `cpuss-0-usr` (the small cores' cluster) 49.8-51.8 °C | only one cluster |
+| CPU temperature | 49 °C | `thermal_zone44` = `cpuss-0-usr` 49.8-51.8 °C | right (first noted here as "only the small cores' cluster": wrong, see step 2) |
 | CPU per core | CPU0-3 691 MHz, CPU4-6 2400 MHz, CPU7 2515 MHz | three clusters | right |
-| CPU power | 0.0 W | no `/sys/class/powercap` | missing, and logged as an error every 0.5 s |
+| CPU power | 0.0 W | no `/sys/class/powercap` | missing; MangoHud looks 5 times (5 errors in the log), then stops |
 | Battery | none | `power_supply/battery` | not found ("No battery found") |
 | VRAM, process VRAM | 0 | phones share RAM | meaningless here |
 | RAM | 3.5 GB | | to compare |
@@ -296,3 +310,132 @@ Still open in step 1: an OpenGL game (none installed on the Nothing Phone (1): w
 draw through DXVK, Stray through VKD3D-Proton); a keyboard's Shift_R+F12; the overlay's cost (the
 wiliwili measurement could not go on on the Nothing Phone (1), see the flashing in
 [lessons-learned.md](../lessons-learned.md); to be measured on stone).
+
+## Step 2: the phone's numbers in MangoHud (2026-11-24)
+
+**The sampler** (`game-run.sh`) first, as planned: one awk process that finds the clusters
+(`policy*`) and the zones (by name) and reads each file with a fallback; on the Nothing Phone (1) it
+fills its `.sensors` files again (PvZ: 135 lines, all three clusters, the board sensor of the thermal
+profiles, the battery's current), and leaves no process behind. On stone too (2026-11-24, PvZ: 44
+lines, its two clusters `c0-5` and `c6-7`, 12 CPU zones, a `quiet-therm` board sensor as well; no
+process left). stone's battery reports 0 mA (its `current_now` stays 0, so its overlay will show no
+battery power).
+
+**MangoHud patches** (`tools/mangohud-build/patches/`), each checked against the phone's own files:
+
+| Patch | What it does | Result |
+| --- | --- | --- |
+| `0001-kgsl-gpu-without-the-display-driver-s-name` | the GPU through KGSL whenever `/sys/class/kgsl/kgsl-3d0` exists, not only when a DRM node is named `msm_drm` (Android's display driver, which only happens to carry that name on both our phones); no scan of all the game's open files every 10 s on KGSL | kept; nothing changes on screen on our phones (the KGSL path was already reached), it matters for a phone whose display driver has another name, and it stops a useless scan |
+| (CPU temperature from the hottest CPU zone) | read all 14 CPU zones and show the hottest instead of `cpuss-0-usr` | **taken out**: in PvZ the hottest zone was on average 0.3 °C above `cpuss-0-usr` (at most 4 °C for a moment, 15 readings), and in Stray `cpuss-0-usr` was itself the hottest listed. It is a CPU subsystem sensor that follows the hot spot, not "the small cores' cluster" as step 1 said |
+| `0002-a-phone-s-battery` | a supply of type `Battery` (scope not `Device`, so a controller's battery is left out) besides MangoHud's `BAT*` names; current times voltage before `power_now` | kept: the battery's percentage now shows (91 %, the phone's own figure); its power shows only while discharging (MangoHud's design): unplugged in PvZ's menu the overlay showed about 4.7 W, and the sampler recorded 1.09-1.33 A at about 3.9-4.0 V, 4.6-4.9 W |
+
+**Where MangoHud's time per frame goes.** A profiler on the phone (`simpleperf`) needs root
+(`perf_event_paranoid` 3), so a timing build was used instead (a test-only patch, not in the
+repository: counters around each part of MangoHud's present step and its hooks, averages written to
+the game's log every 600 frames). PvZ's menu on the Nothing Phone (1), about 25 fps:
+
+| Per frame | Full | Frame rate only | Hidden |
+| --- | --- | --- | --- |
+| reading the sensors, the keyboard check, the control socket | 0.15 ms | 0.11 ms | 0.045 ms (no sensors) |
+| building the panel (ImGui, the library MangoHud draws with) | 0.37-0.46 ms | 0.10 ms | none |
+| recording the overlay's drawing for the GPU | 0.40-0.46 ms | 0.29-0.31 ms | none |
+| the overlay's own GPU submission | 0.19-0.32 ms | 0.25-0.29 ms | none |
+| **MangoHud in all** | **about 1.2 ms** | **about 0.8 ms** | **about 0.06 ms** |
+| its hooks on the game's command buffers (8 calls a frame) | 0.011 ms | 0.010 ms | 0.010 ms |
+
+DXVK submits through `vkQueueSubmit2`, which MangoHud does not hook (its `vkQueueSubmit` hook saw no
+call). **Hidden, MangoHud costs about 0.06 ms a frame**, a tenth of the 0.6 ms the frame-rate runs on
+stone suggested: those runs cannot tell such small differences apart (runs A and E, both without
+MangoHud, already differed by 2.2 fps), and MangoHud's one-time changes do not explain more (DXVK
+already asks for `COLOR_ATTACHMENT` on its swapchain images).
+
+The recording was slow because MangoHud mapped and unmapped its vertex buffers every frame, and
+Turnip unmaps for real (`munmap`), so every frame paid two mmaps, two munmaps and page faults.
+`0003-keep-the-overlay-s-buffers-mapped` maps them once:
+
+| Recording per frame | Before | With 0003 |
+| --- | --- | --- |
+| full | 0.40-0.46 ms | 0.17-0.22 ms |
+| frame rate only | 0.29-0.31 ms | 0.10-0.12 ms |
+
+About 0.2 ms saved a frame; the frame-rate-only level costs about 0.55 ms instead of 0.8. The overlay
+drew normally all through (kept). Left as it is: the overlay's own GPU submission (any overlay layer
+needs one), the sensors (about 0.1 ms) and the panel.
+
+Not patched, left to UTDeck's own levels (step 4) instead: the CPU power line (no source on a phone;
+MangoHud gives up after 5 tries) and the VRAM lines (a phone shares its memory: the levels will not
+list them).
+
+## Step 3: into the runtime (2026-11-24)
+
+**The overlay part.** `build-runtime.sh` has a new part, `overlay` (default runtime only, like
+`gpu`; both Wine bases use the default runtime's `lib/gpu`): it runs `build-mangohud.sh` into
+`build/runtime-obj/mangohud` and puts `libMangoHud.so`, its layer file (`MangoHud.json`, the path
+made relative: `./libMangoHud.so`) and MangoHud's `BUILD-INFO` into `lib/gpu/layers/`; the runtime's
+`BUILD-INFO` names MangoHud's version and patches and lists the library's checksum. The build is
+reproducible: the runtime's `libMangoHud.so` has the same checksum (`51f4cf30...`) as the same
+patches built alone. `wine-env.sh` lists the folder for the Vulkan loader
+(`VK_ADD_LAYER_PATH=.../wine/runtime/lib/gpu/layers`, through the `runtime` link, so it follows the
+runtime in use; a folder the caller already listed comes first). A layer found that way is only
+loaded when a game enables it by name (`VK_LOADER_LAYERS_ENABLE=VK_LAYER_MANGOHUD_overlay_aarch64`,
+with `MANGOHUD=1`); our loader (1.3.275) has no `VK_ADD_IMPLICIT_LAYER_PATH`, as step 1 found.
+
+Checked on the Nothing Phone (1), the folder copied by hand into `runtime-11.16-20261124` and the
+new `env.sh` installed (the old one kept as `env.sh.before-5.1`):
+
+- **On**: PvZ with only `VK_LOADER_LAYERS_ENABLE`, `MANGOHUD=1` and a settings file in its
+  `utdeck-env`: the full overlay showed, and the game's process had loaded
+  `runtime-11.16-20261124/lib/gpu/layers/libMangoHud.so`; no errors in its log.
+- **Off**: PvZ without those settings: no overlay, no MangoHud socket, and neither the drawing
+  process (`Replanted.exe`) nor Wine's `explorer.exe` had MangoHud loaded, though both had the
+  folder listed (`VK_ADD_LAYER_PATH`).
+
+**FEX's statistics move out of 5.1** (the maintainer, 2026-11-24). They need FEX's Linux-side library
+(`libarm64ecfex.so`, from FEX's `Source/Windows/UnixLib`), and with it FEX also changes how it manages
+its memory: it controls transparent huge pages (2 MB pages) for its own memory and names its memory
+areas (besides the code-cache file mapper, off by default, and a CPU-number source the phones'
+kernels likely lack). The huge-page control can change speed and memory either way, so it is measured
+on its own: an item of 5.4, "FEX's Linux-side library", with the statistics. The overlay does not
+need them.
+
+**No runtime release for step 3 alone** (the maintainer, 2026-11-24): the overlay part only matters
+once the app can switch it on (step 4), and `env.sh` ships with the app; one runtime release with
+step 4's app version.
+
+## Step 4: in the app (2026-11-24)
+
+**The setting.** `UTDECK_OVERLAY` = `off`, `fps`, `frametime` or `full`; `UTDECK_OVERLAY_POSITION` =
+`top-left` (the default), `top-center` or `top-right`.
+- A game's own level: its settings page, "Performance overlay" (As in Settings / Off / Frame rate /
+  Frame rate and frame time / Full), a line in its `utdeck-env` only when it is not "As in Settings".
+- For all games: Settings, "Performance overlay" ("For all games", "Where it sits"), saved at once to
+  `wine/user.env` (`GameSettings::saveGlobal`). `defaults.env` is replaced with each app update,
+  `user.env` is the user's and stays (the click's files do not include it).
+- `game-run.sh` (own games and Steam games alike) reads `user.env` between the game's own settings and
+  `defaults.env` (only `UTDECK_*` names, each checked to be a plain name before it reaches `eval`),
+  and for a level other than Off writes a settings file for the run (`<log>.overlay.conf`) and enables
+  the runtime's layer. Off, and Steam's install scripts, set nothing. The game's log says which level
+  and place were used ("user settings: ...", "overlay: full, top-center").
+- The levels, all with `legacy_layout=0` (exactly the listed items, in order) and the background at
+  40 %: Frame rate = `fps`, `fps_only`; Frame rate and frame time = `fps`, `frametime`, `frame_timing`
+  (the graph); Full = those and `cpu_stats`, `cpu_temp`, `cpu_mhz`, `gpu_stats`, `gpu_temp`,
+  `gpu_core_clock`, `ram`, `battery`, `battery_watt`, `throttling_status`. No CPU power line (no source
+  on a phone), no VRAM lines (shared memory).
+- The place: left and right 100 pixels in from the side, clear of the rounded corners. MangoHud adds
+  `offset_x` in every position, so the right side takes -90 (MangoHud keeps its own 10-pixel margin
+  there): the first try, +100, pushed the panel further into the right corner. A MangoHud patch to
+  read the offsets as signed numbers changed nothing in the library (the same checksum: it reads them
+  with `strtol`, and the sign survives), so it is not kept.
+
+App 0.3.52 (the maintainer's OK) on the Nothing Phone (1), checked in PvZ:
+
+| Check | Result |
+| --- | --- |
+| the app puts the new `game-run.sh` and `env.sh` in place | both the same as the repository's |
+| Settings: Frame rate, top center | `user.env` written; the frame rate at the top center; the log: "user settings: UTDECK_OVERLAY=fps UTDECK_OVERLAY_POSITION=top-center", "overlay: fps, top-center" |
+| PvZ's own page: Full | its `utdeck-env` holds `UTDECK_OVERLAY=full`; the full panel at the top center (the level from the game, the place from Settings) |
+| PvZ's own page: Off | `UTDECK_OVERLAY=off` (it differs from the level for all games); no overlay file for the run, no MangoHud socket, MangoHud loaded in neither the game nor Wine's `explorer.exe` |
+| Full, top left and top right | both clear the rounded corners (top right after the -90 fix) |
+
+Still for step 4: the fixed `game-run.sh` (top right) is on the phone by hand and goes into the next
+click.

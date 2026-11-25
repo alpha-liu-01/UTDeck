@@ -27,6 +27,11 @@ if [ -f "$G/vulkan/icd.json" ]; then
     export LD_LIBRARY_PATH=$G/gl:$G/loader
     export VK_DRIVER_FILES=$G/vulkan/icd.json
     export __EGL_VENDOR_LIBRARY_FILENAMES=$G/gl/egl_vendor.json
+    # The performance overlay (stage 5.1): MangoHud's layer, listed for the Vulkan loader. A layer in
+    # such a folder is only loaded when a game enables it by name (VK_LOADER_LAYERS_ENABLE, set with
+    # MANGOHUD=1 when the overlay is on), so without the overlay nothing more is loaded. A folder the
+    # caller already listed comes first.
+    [ -f "$G/layers/MangoHud.json" ] && export VK_ADD_LAYER_PATH=${VK_ADD_LAYER_PATH:+$VK_ADD_LAYER_PATH:}$G/layers
 else
     export LD_LIBRARY_PATH=$P/zink/lib:$P/vk/lib
     export VK_DRIVER_FILES=$P/zink/turnip_icd.json

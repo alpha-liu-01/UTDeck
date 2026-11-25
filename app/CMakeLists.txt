@@ -1,7 +1,7 @@
 # UTDeck's app (stage 4, docs/ut-deck/stage4-roadmap.md): a Qt 6 QML frontend in Lomiri's native
 # look. Built in the utdeck-app-cross container by tools/app-build/build.sh.
 cmake_minimum_required(VERSION 3.25)
-project(utdeck VERSION 0.3.51 LANGUAGES CXX)
+project(utdeck VERSION 0.3.53 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
