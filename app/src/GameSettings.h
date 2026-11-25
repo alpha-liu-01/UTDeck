@@ -11,7 +11,9 @@
 //
 // load() gives the settings the page shows: runtime ("utdeck" or "proton"), args, resolution ("native"
 // or WxH), translator ("box64" or "fex", for 32-bit code), overlay (the performance overlay's level,
-// stage 5.1: "off", "fps", "frametime", "full", or "" for the one in Settings), and the switches
+// stage 5.1: "off", "fps", "frametime", "full", or "" for the one in Settings), fpsLimit (the frame
+// rate limit, stage 5.2: "off", "28", "30", "40", "45", "48", "60", or "" for the one in Settings),
+// and the switches
 // boost, pause, x87, fill (true = on; the default comes from defaults.env, so a switch at its default
 // writes no line), plus
 // advanced: the file's other NAME=value lines as text. save() writes them back: comments and blank lines
@@ -39,8 +41,9 @@ public:
   Q_INVOKABLE bool reset(const QString& app_id);
   // The settings for all games (stage 5.1), in wine/user.env, which game-run.sh reads between a
   // game's own settings and defaults.env (defaults.env is replaced with each app update, user.env
-  // stays): overlay ("off", "fps", "frametime" or "full") and overlayPosition ("top-left",
-  // "top-center" or "top-right"). A value at its default writes no line.
+  // stays): overlay ("off", "fps", "frametime" or "full"), overlayPosition ("top-left",
+  // "top-center" or "top-right") and fpsLimit ("off", "28", "30", "40", "45", "48" or "60"). A value
+  // at its default (off, top-left) writes no line.
   Q_INVOKABLE QVariantMap loadGlobal() const;
   Q_INVOKABLE bool saveGlobal(const QVariantMap& settings);
   Q_INVOKABLE bool protonInstalled() const;

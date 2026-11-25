@@ -5,12 +5,13 @@ import Lomiri.Components
 // its switch (on, hidden Steam runs while the app does; off, only while a Steam game runs, saving
 // about 1.3 GB of memory) and its state. Stage 4.4: the Controllers page. Stage 5.1: the performance
 // overlay for all games (each game's settings page can choose its own) and where it sits, saved to
-// wine/user.env at once.
+// wine/user.env at once. Stage 5.2: the frame rate limit for all games, saved the same way.
 Page {
     id: page
 
     readonly property var overlayLevels: ["off", "fps", "frametime", "full"]
     readonly property var overlayPositions: ["top-left", "top-center", "top-right"]
+    readonly property var fpsLimits: ["off", "28", "30", "40", "45", "48", "60"]
     // Set once the selectors show the saved values: a change before that is the page filling them in.
     property bool overlayReady: false
 
@@ -19,7 +20,8 @@ Page {
             return
         gameSettings.saveGlobal({
             overlay: page.overlayLevels[overlaySelector.selectedIndex],
-            overlayPosition: page.overlayPositions[positionSelector.selectedIndex]
+            overlayPosition: page.overlayPositions[positionSelector.selectedIndex],
+            fpsLimit: page.fpsLimits[fpsLimitSelector.selectedIndex]
         })
     }
 
@@ -35,6 +37,7 @@ Page {
         const g = gameSettings.loadGlobal()
         overlaySelector.selectedIndex = Math.max(0, page.overlayLevels.indexOf(g.overlay))
         positionSelector.selectedIndex = Math.max(0, page.overlayPositions.indexOf(g.overlayPosition))
+        fpsLimitSelector.selectedIndex = Math.max(0, page.fpsLimits.indexOf(g.fpsLimit))
         page.overlayReady = true
     }
 
@@ -98,6 +101,27 @@ Page {
                 wrapMode: Text.Wrap
                 color: theme.palette.normal.backgroundSecondaryText
                 text: i18n.tr("Numbers over the game's picture, from the game's next start. A game's own settings page can choose another level. Frame rate costs about 0.5 ms for each picture, Full about 1 ms; Off costs nothing.")
+            }
+
+            Label {
+                text: i18n.tr("Frame rate limit")
+                textSize: Label.Large
+            }
+
+            OptionSelector {
+                id: fpsLimitSelector
+
+                text: i18n.tr("For all games")
+                model: [i18n.tr("Off"), i18n.tr("%1 fps").arg(28), i18n.tr("%1 fps").arg(30), i18n.tr("%1 fps").arg(40),
+                        i18n.tr("%1 fps").arg(45), i18n.tr("%1 fps").arg(48), i18n.tr("%1 fps").arg(60)]
+                onSelectedIndexChanged: page.saveOverlay()
+            }
+
+            Label {
+                width: parent.width
+                wrapMode: Text.Wrap
+                color: theme.palette.normal.backgroundSecondaryText
+                text: i18n.tr("Games draw no more pictures a second than this, from their next start: steadier frame times, a cooler phone, a longer battery. 30 and 60 match the screen's 60 Hz exactly. A game's own settings page can choose another limit.")
             }
 
             Label {

@@ -123,6 +123,13 @@ Phone (1), 2026-11-24):
   about 0.2 ms a frame less); the CPU temperature patch taken out (the original zone was right).
   MangoHud's time per frame measured: about 0.06 ms hidden, 0.55 ms at frame rate only, about 1 ms
   full. Next: step 3, MangoHud in the runtime (and FEX's statistics).
+- 2026-11-24: **5.1 done** (the maintainer). Steps 3-5: the overlay in the runtime (released as
+  `runtime-11.16-20261124.2`), the setting in the app (0.3.53), tested on the Nothing Phone (1) in a
+  Direct3D 11 (PvZ), a Direct3D 12 (Stray) and an OpenGL game (Stardew Valley, through zink). Carried
+  into stage 5's exit run, which needs both phones anyway: stone with app 0.3.53 and the new runtime,
+  the overlay in one game there. FEX's statistics went to 5.4. Not to be fixed (the maintainer): a
+  game installed outside UTDeck (Steam Mobile) gets its Linux build; support for Linux games comes
+  before UTDeck ships as a product.
 
 ## Step 1: MangoHud as it is (2026-11-24)
 
@@ -457,5 +464,21 @@ with `install-click.sh` and `runtime-push.sh`), the thermal profile `high.perf`:
 | PvZ (Direct3D 11, DXVK) started and quit 5 times, Full | each run: "overlay: full, top-right", its settings file, a frame log, `exit 0`, no MangoHud errors; Steam's preparation run before each start without the overlay (as meant); afterwards no Wine process, no `game-run.sh`, no sampler, no MangoHud socket left |
 | PvZ, each level from Settings | Frame rate and frame time, Frame rate: shown as meant (the maintainer), logged as such; Off: nothing set, no socket |
 
-Left for step 5: stone (app 0.3.53 and runtime `11.16-20261124.2`, then the same checks on its two
-CPU clusters and Adreno 619); an OpenGL game when one is installed.
+**Released** (the maintainer's OK, 2026-11-24): `runtime-11.16-20261124.2`, a pre-release at commit
+`87bb210`, which carries `runtimes.list` pointing at it; downloaded again from GitHub, its checksum
+matches the list. The app's first-time setup installs it from now on.
+
+**OpenGL: Stardew Valley** (bought by the maintainer on 2026-11-24; its Windows build: MonoGame's
+DesktopGL, `SDL2.dll` and `soft_oal.dll`, .NET; first installed as the Linux build through Steam Mobile,
+see [lessons-learned.md](../lessons-learned.md)), Full, top right, on the title screen: the game's
+process has Wine's `opengl32`, Mesa's EGL and zink (`libgallium-26.2.5.so`), Turnip and
+`libMangoHud.so` loaded, and the overlay names the engine "ZINK". Against the sampler at the same
+moment (a screenshot): CPU 20 %, 2515 MHz, 45 °C (23 %, the fastest core 2515 MHz, 46 °C); GPU 48 %,
+315 MHz, 41 °C (47 %, 315 MHz, 42 °C); battery charging (charging); 51 fps, 19.5 ms. An OpenGL game
+gets no `.frames` file: Wine patch 0007 counts frames in Wine's own Vulkan path (winevulkan), and zink
+presents through Mesa's Vulkan WSI on the Unix side, past it. For OpenGL games the overlay is now the
+frame rate's only source; the frame log for them is left for later (5.4, or with the overlay's own
+logging).
+
+Left for step 5: stone (parked by the maintainer, 2026-11-24: app 0.3.53 and runtime
+`11.16-20261124.2`, then the same checks on its two CPU clusters and Adreno 619).

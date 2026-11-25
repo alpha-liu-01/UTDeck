@@ -86,48 +86,65 @@ fi
   echo "overrides: $WINEDLLOVERRIDES"; echo "extra: ${GAME_ENV:-}"; echo "defaults:$DEFAULTS";
   [ -n "$USERSET" ] && echo "user settings:$USERSET"
   echo "app: ${UTDECK_APP_ID:-none (UTDeck not running)}"; } > $B.log
-# The performance overlay (stage 5.1): UTDECK_OVERLAY = off, fps, frametime or full, from the game's
-# settings or the user's (user.env); UTDECK_OVERLAY_POSITION = top-left, top-center or top-right.
-# On, the runtime's MangoHud layer (lib/gpu/layers, listed by env.sh) is enabled by name, with a
-# settings file for this run next to its logs ($B.overlay.conf): legacy_layout=0 shows exactly the
-# listed items, in that order. Off (and for Steam's install scripts) nothing is set, so nothing is
-# loaded. Left out on purpose: the CPU power line (a phone has no source for it) and the VRAM lines
-# (a phone's GPU shares its memory). Left and right sit 100 pixels in from the side, clear of the
-# screen's rounded corners: MangoHud adds offset_x in every position, so the right side takes a
-# negative one (MangoHud reads it with strtol, and the sign survives its unsigned type: GCC converts
-# modulo, checked on the phone), and keeps its own 10-pixel margin there (-90 is 100 in all).
-overlay=${UTDECK_OVERLAY:-off}
-[ "${UTDECK_SETUP_RUN:-0}" = 1 ] && overlay=off
-case "$overlay" in
-fps|frametime|full)
+# The performance overlay (stage 5.1) and the frame rate limit (stage 5.2), both MangoHud's, from the
+# game's settings or the user's (user.env):
+#   UTDECK_OVERLAY = off, fps, frametime or full; UTDECK_OVERLAY_POSITION = top-left, top-center or
+#   top-right; UTDECK_FPS_LIMIT = off, 28, 30, 40, 45, 48 or 60 (each divides a refresh rate phones'
+#   panels offer: 144/5, 60/2, 120/3, 90/2, 144/3, 60).
+# Either one on: the runtime's MangoHud layer (lib/gpu/layers, listed by env.sh) is enabled by name,
+# with a settings file for this run next to its logs ($B.overlay.conf; it replaces one a game's own
+# settings may name). legacy_layout=0 shows exactly the listed items, in that order. A limit without
+# the overlay loads MangoHud hidden (no_display: about 0.06 ms a picture). The limit sleeps before the
+# picture is handed over (fps_limit_method=early): 3-15 times evener than MangoHud's default (late) and
+# DXVK's own limiter, at a lower CPU load (stage 5.2's measurements), and the same for every API
+# (Direct3D through DXVK and VKD3D-Proton, OpenGL through zink). Both off (and Steam's install
+# scripts): nothing is set, so nothing is loaded. Left out of the overlay on purpose: the CPU power
+# line (a phone has no source for it) and the VRAM lines (a phone's GPU shares its memory). Left and
+# right sit 100 pixels in from the side, clear of the screen's rounded corners: MangoHud adds
+# offset_x in every position, so the right side takes a negative one (MangoHud reads it with strtol,
+# and the sign survives its unsigned type: GCC converts modulo, checked on the phone), and keeps its
+# own 10-pixel margin there (-90 is 100 in all).
+overlay=${UTDECK_OVERLAY:-off} limit=${UTDECK_FPS_LIMIT:-off}
+[ "${UTDECK_SETUP_RUN:-0}" = 1 ] && overlay=off limit=off
+case "$overlay" in fps|frametime|full|off) ;; *) echo "overlay: unknown setting \"$overlay\", left off" >> $B.log; overlay=off ;; esac
+case "$limit" in 28|30|40|45|48|60|off) ;; *) echo "frame rate limit: unknown setting \"$limit\", left off" >> $B.log; limit=off ;; esac
+if [ "$overlay" != off ] || [ "$limit" != off ]; then
     if [ -f $W/runtime/lib/gpu/layers/MangoHud.json ]; then
         pos=${UTDECK_OVERLAY_POSITION:-top-left}
         case "$pos" in top-left) side=100 ;; top-right) side=-90 ;; top-center) side=0 ;; *) pos=top-left side=100 ;; esac
         {
-            echo "# UTDeck: the performance overlay for this run ($overlay, $pos), written by game-run.sh"
+            echo "# UTDeck: the performance overlay ($overlay, $pos) and the frame rate limit ($limit) for this run, written by game-run.sh"
             echo "legacy_layout=0"
-            echo "position=$pos"
-            echo "offset_x=$side"
-            echo "background_alpha=0.4"
+            if [ "$overlay" = off ]; then
+                echo "no_display=1"
+            else
+                echo "position=$pos"
+                echo "offset_x=$side"
+                echo "background_alpha=0.4"
+            fi
             case "$overlay" in
-            fps) printf '%s
-' fps fps_only ;;
-            frametime) printf '%s
-' fps frametime frame_timing ;;
-            full) printf '%s
-' fps frametime frame_timing cpu_stats cpu_temp cpu_mhz gpu_stats gpu_temp \
+            fps) printf '%s\n' fps fps_only ;;
+            frametime) printf '%s\n' fps frametime frame_timing ;;
+            full) printf '%s\n' fps frametime frame_timing cpu_stats cpu_temp cpu_mhz gpu_stats gpu_temp \
                       gpu_core_clock ram battery battery_watt throttling_status ;;
             esac
+            if [ "$limit" != off ]; then
+                echo "fps_limit=$limit"
+                echo "fps_limit_method=early"
+            fi
         } > $B.overlay.conf
-        export MANGOHUD=1 MANGOHUD_CONFIGFILE=$B.overlay.conf \
-            VK_LOADER_LAYERS_ENABLE=VK_LAYER_MANGOHUD_overlay_aarch64${VK_LOADER_LAYERS_ENABLE:+,$VK_LOADER_LAYERS_ENABLE}
-        echo "overlay: $overlay, $pos" >> $B.log
+        # The layer's name once, before any other layers already asked for.
+        layers=VK_LAYER_MANGOHUD_overlay_aarch64
+        for l in $(echo "${VK_LOADER_LAYERS_ENABLE:-}" | tr ',' ' '); do
+            [ "$l" = VK_LAYER_MANGOHUD_overlay_aarch64 ] || layers="$layers,$l"
+        done
+        export MANGOHUD=1 MANGOHUD_CONFIGFILE=$B.overlay.conf VK_LOADER_LAYERS_ENABLE=$layers
+        [ "$overlay" != off ] && echo "overlay: $overlay, $pos" >> $B.log
+        [ "$limit" != off ] && echo "frame rate limit: $limit" >> $B.log
     else
-        echo "overlay: $overlay asked, but this runtime has no overlay (lib/gpu/layers)" >> $B.log
-    fi ;;
-off) ;;
-*) echo "overlay: unknown setting \"$overlay\", left off" >> $B.log ;;
-esac
+        echo "overlay ($overlay) and frame rate limit ($limit) asked, but this runtime has no MangoHud (lib/gpu/layers)" >> $B.log
+    fi
+fi
 # Controllers (stage 4.4). controllers.reg: Wine takes PlayStation and Nintendo pads through SDL, not
 # only through their raw nodes, which phablet cannot open (without it such a pad reaches no game);
 # imported into this prefix again whenever the file changes. padlayout.py: for a pad whose kernel

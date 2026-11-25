@@ -20,7 +20,7 @@ const QStringList kKnown = {QStringLiteral("UTDECK_RUNTIME"), QStringLiteral("GA
                             QStringLiteral("UTDECK_RESOLUTION"), QStringLiteral("HODLL"),
                             QStringLiteral("UTDECK_BOOST"), QStringLiteral("UTDECK_PAUSE"), QStringLiteral("UTDECK_KEEP_AWAKE"),
                             QStringLiteral("FEX_X87REDUCEDPRECISION"), QStringLiteral("UTDECK_FILL"),
-                            QStringLiteral("UTDECK_OVERLAY")};
+                            QStringLiteral("UTDECK_OVERLAY"), QStringLiteral("UTDECK_FPS_LIMIT")};
 
 // The performance overlay's levels (stage 5.1; game-run.sh turns them into MangoHud's settings) and
 // its places on the screen.
@@ -28,6 +28,9 @@ const QStringList kOverlayLevels = {QStringLiteral("off"), QStringLiteral("fps")
                                     QStringLiteral("full")};
 const QStringList kOverlayPositions = {QStringLiteral("top-left"), QStringLiteral("top-center"),
                                        QStringLiteral("top-right")};
+// The frame rate limits (stage 5.2): each divides a refresh rate phones' panels offer.
+const QStringList kFpsLimits = {QStringLiteral("off"), QStringLiteral("28"), QStringLiteral("30"), QStringLiteral("40"),
+                                QStringLiteral("45"), QStringLiteral("48"), QStringLiteral("60")};
 
 QString Wine()
 {
@@ -134,6 +137,9 @@ QVariantMap GameSettings::load(const QString& app_id) const
   // The game's own overlay level, or "" for the one in Settings (user.env).
   const QString overlay = env.value(QStringLiteral("UTDECK_OVERLAY"));
   s[QStringLiteral("overlay")] = kOverlayLevels.contains(overlay) ? overlay : QString();
+  // The game's own frame rate limit, or "" for the one in Settings (user.env).
+  const QString limit = env.value(QStringLiteral("UTDECK_FPS_LIMIT"));
+  s[QStringLiteral("fpsLimit")] = kFpsLimits.contains(limit) ? limit : QString();
   // The other NAME=value lines, as the advanced text.
   QStringList advanced;
   QFile file(path);
@@ -175,6 +181,8 @@ bool GameSettings::save(const QString& app_id, const QVariantMap& s)
   unless_default(QStringLiteral("UTDECK_FILL"), s.value(QStringLiteral("fill")).toBool() ? QStringLiteral("1") : QStringLiteral("0"), QStringLiteral("0"));
   const QString overlay = s.value(QStringLiteral("overlay")).toString();
   want[QStringLiteral("UTDECK_OVERLAY")] = kOverlayLevels.contains(overlay) ? overlay : QString();
+  const QString limit = s.value(QStringLiteral("fpsLimit")).toString();
+  want[QStringLiteral("UTDECK_FPS_LIMIT")] = kFpsLimits.contains(limit) ? limit : QString();
 
   // The old file: comments and blank lines stay; a setting's line is replaced where it was.
   QStringList out;
@@ -242,9 +250,11 @@ QVariantMap GameSettings::loadGlobal() const
   const QHash<QString, QString> user = ReadEnv(Wine() + QStringLiteral("/user.env"));
   const QString overlay = user.value(QStringLiteral("UTDECK_OVERLAY"));
   const QString position = user.value(QStringLiteral("UTDECK_OVERLAY_POSITION"));
+  const QString limit = user.value(QStringLiteral("UTDECK_FPS_LIMIT"));
   QVariantMap g;
   g[QStringLiteral("overlay")] = kOverlayLevels.contains(overlay) ? overlay : QStringLiteral("off");
   g[QStringLiteral("overlayPosition")] = kOverlayPositions.contains(position) ? position : QStringLiteral("top-left");
+  g[QStringLiteral("fpsLimit")] = kFpsLimits.contains(limit) ? limit : QStringLiteral("off");
   return g;
 }
 
@@ -252,6 +262,7 @@ bool GameSettings::saveGlobal(const QVariantMap& settings)
 {
   const QString overlay = settings.value(QStringLiteral("overlay")).toString();
   const QString position = settings.value(QStringLiteral("overlayPosition")).toString();
+  const QString limit = settings.value(QStringLiteral("fpsLimit")).toString();
   QStringList out;
   out << QStringLiteral("# UTDeck: the user's settings for all games (the app's Settings page); a game's own")
       << QStringLiteral("# settings (its utdeck-env) win over these, and these over defaults.env.");
@@ -259,6 +270,8 @@ bool GameSettings::saveGlobal(const QVariantMap& settings)
     out << QStringLiteral("UTDECK_OVERLAY=") + overlay;
   if (kOverlayPositions.contains(position) && position != QLatin1String("top-left"))
     out << QStringLiteral("UTDECK_OVERLAY_POSITION=") + position;
+  if (kFpsLimits.contains(limit) && limit != QLatin1String("off"))
+    out << QStringLiteral("UTDECK_FPS_LIMIT=") + limit;
   const QString path = Wine() + QStringLiteral("/user.env");
   QFile file(path + QStringLiteral(".new"));
   if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text))

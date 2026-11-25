@@ -33,6 +33,11 @@ Page {
     readonly property var overlayLevels: ["", "off", "fps", "frametime", "full"]
     readonly property var overlayNames: ({off: i18n.tr("Off"), fps: i18n.tr("Frame rate"),
                                           frametime: i18n.tr("Frame rate and frame time"), full: i18n.tr("Full")})
+    // The frame rate limit (stage 5.2): "" is the limit set for all games in Settings.
+    readonly property var fpsLimits: ["", "off", "28", "30", "40", "45", "48", "60"]
+    function fpsLimitName(limit) {
+        return limit === "off" ? i18n.tr("Off") : i18n.tr("%1 fps").arg(limit)
+    }
     readonly property var switchRows: [
         {id: "boost", title: i18n.tr("CPU boost"), subtitle: i18n.tr("Higher CPU clocks for the game: a few frames per second more, a little warmer.")},
         {id: "pause", title: i18n.tr("Pause when not in front"), subtitle: i18n.tr("Freezes the game while the phone is locked or another app is in front.")},
@@ -48,6 +53,7 @@ Page {
             resolution: page.resolutions[resolutionSelector.selectedIndex],
             translator: translatorSelector.selectedIndex === 1 ? "fex" : "box64",
             overlay: page.overlayLevels[overlaySelector.selectedIndex],
+            fpsLimit: page.fpsLimits[fpsLimitSelector.selectedIndex],
             boost: switches.boost,
             pause: switches.pause,
             awake: switches.awake,
@@ -65,6 +71,7 @@ Page {
         resolutionSelector.selectedIndex = Math.max(0, page.resolutions.indexOf(settings.resolution))
         translatorSelector.selectedIndex = settings.translator === "fex" ? 1 : 0
         overlaySelector.selectedIndex = Math.max(0, page.overlayLevels.indexOf(settings.overlay || ""))
+        fpsLimitSelector.selectedIndex = Math.max(0, page.fpsLimits.indexOf(settings.fpsLimit || ""))
         switches.boost = !!settings.boost
         switches.pause = !!settings.pause
         switches.awake = !!settings.awake
@@ -213,6 +220,22 @@ Page {
                 wrapMode: Text.Wrap
                 color: theme.palette.normal.backgroundSecondaryText
                 text: i18n.tr("Numbers over the game's picture: its frame rate, and in Full also the CPU and GPU load, clocks and temperatures, memory and the battery. Showing them costs a little speed (about 0.5 ms for each picture at Frame rate); Off costs nothing.")
+            }
+
+            // --- The frame rate limit (stage 5.2) ---
+            OptionSelector {
+                id: fpsLimitSelector
+
+                text: i18n.tr("Frame rate limit")
+                model: [i18n.tr("As in Settings (%1)").arg(page.fpsLimitName(gameSettings.loadGlobal().fpsLimit))]
+                       .concat(page.fpsLimits.slice(1).map(page.fpsLimitName))
+            }
+
+            Label {
+                width: parent.width
+                wrapMode: Text.Wrap
+                color: theme.palette.normal.backgroundSecondaryText
+                text: i18n.tr("The game draws no more pictures a second than this: steadier frame times, a cooler phone, a longer battery. 30 and 60 match the screen's 60 Hz exactly.")
             }
 
             // --- Switches ---

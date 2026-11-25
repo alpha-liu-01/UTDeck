@@ -1620,3 +1620,25 @@ Problems met while building UTDeck on the Redmi Note 12 5G (stone). Details in `
   every corner (on the right: the screen's width minus the panel's width plus the offset), so the
   right side needs a negative one. Lesson: read how a program uses a setting in each case (here each
   corner) before choosing one value for all of them; and check each case on the screen.
+- **A game installed from Steam Mobile got its Linux build (stage 5.1, 2026-11-24, left as it is).** Stardew
+  Valley, bought that day, was installed through the Steam Mobile app's "install on this device":
+  the phone's hidden Steam downloaded it directly, without UTDeck's install step (`steam-game.sh`),
+  which maps a game that also has a Linux build to UTDeck's compatibility tool first. Steam then took
+  the Linux build (depot 413153: `libcoreclr.so`, `libSDL2-2.0.so.0`), an x86-64 Linux program UTDeck
+  cannot run. Fixed for this game by running UTDeck's install step afterwards (the mapping, Steam
+  restarted, the install asked again): Steam fetched the Windows build (depot 413151, 287 chunks,
+  the shared content reused); a few Linux files stay behind, unused. Not fixed (the maintainer,
+  2026-11-24): support for Linux games is to be built before UTDeck ships as a product, and with it a
+  game's Linux build becomes usable (Stardew's Linux build, for one, can draw on Wayland through
+  SDL2), so the check that would force the Windows build is not added. Lesson: a game can arrive on the phone by more ways than UTDeck's own
+  buttons (Steam Mobile, the store website); what UTDeck needs of an installed game is checked where
+  the games are listed, not only where UTDeck installs them.
+- **The Nothing Phone (1) dropping off USB during tests (stage 5, 2026-11-24, open).** Four times in
+  one evening `adb devices` listed nothing while a game ran (Stray, wiliwili, Stardew Valley), each
+  time cured by replugging the cable; the phone and the game kept running. The same tests showed the
+  phone drawing more than the PC's USB port gives (the battery falling while plugged in, its charging
+  also limited by heat). Not known whether the port's power is the cause. Worked around: test scripts
+  run on the phone detached from `adb` (`setsid nohup`), and the PC's watchers retry, so a drop no
+  longer cuts a measurement short. To try if it goes on: a powered USB hub, or `adb` over Wi-Fi with
+  the phone on a charger. Lesson: a long measurement should not depend on the cable staying up; run
+  it on the phone and only collect its results over `adb`.
