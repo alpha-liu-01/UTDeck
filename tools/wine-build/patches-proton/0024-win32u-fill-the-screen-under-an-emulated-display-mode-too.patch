@@ -1,0 +1,104 @@
+From: UTDeck
+Subject: [PATCH] win32u: fill the screen under an emulated display mode too
+
+Under an emulated display mode (a game in fullscreen at 1920x1080 on the 2400x1080 panel), Valve's
+fullscreen hack fits the mode into the panel keeping its shape and scales the game's picture into a
+host image of that area only (1920x1080). Lomiri, without wp_viewporter, shows the window's picture
+at its own size from the screen's left edge: the game on the left, the wallpaper on the right
+(Need for Speed Most Wanted at any mode not of the panel's 20:9 shape, stage 4.10), and UTDECK_SCALE
+had no effect there.
+
+Patch 0022's fill now covers such a window too, fullscreen or smaller: a host swapchain of the whole
+panel (get_monitor_physical_rect, as in our base's patch 0006: under an emulated mode
+map_rect_virt_to_raw maps the monitor onto the fitted area, not onto the panel), the picture in the
+rect UTDECK_SCALE chooses, black around it, and the Wayland driver's fill (black background, picture
+at the origin, input mapped back through the rect).
+---
+diff --git a/dlls/win32u/sysparams.c b/dlls/win32u/sysparams.c
+--- a/dlls/win32u/sysparams.c
++++ b/dlls/win32u/sysparams.c
+@@ -3255,6 +3255,22 @@ RECT map_rect_raw_to_virt( RECT rect, UINT dpi_to )
+     return rect;
+ }
+ 
++/* UTDeck: the physical (raw) rect of the monitor containing a rect given in MDT_DEFAULT
++ * coordinates; under an emulated display mode this is the whole panel, while map_rect_virt_to_raw
++ * maps the monitor onto the area the emulated mode is fitted into (as in our base's patch 0006). */
++RECT get_monitor_physical_rect( RECT rect, UINT dpi_from )
++{
++    RECT pos = {rect.left, rect.top, rect.left, rect.top};
++    struct monitor *monitor;
++
++    if (!lock_display_devices( FALSE )) return rect;
++    if ((monitor = get_monitor_from_rect( pos, MONITOR_DEFAULTTONEAREST, dpi_from, MDT_DEFAULT )))
++        rect = monitor_get_rect( monitor, 0, MDT_RAW_DPI );
++    unlock_display_devices();
++
++    return rect;
++}
++
+ /* map a monitor rect from MDT_DEFAULT to MDT_RAW_DPI coordinates */
+ RECT map_rect_virt_to_raw( RECT rect, UINT dpi_from )
+ {
+diff --git a/dlls/win32u/vulkan.c b/dlls/win32u/vulkan.c
+--- a/dlls/win32u/vulkan.c
++++ b/dlls/win32u/vulkan.c
+@@ -2649,9 +2649,10 @@ static BOOL fill_target_size( HWND hwnd, UINT *width, UINT *height )
+     return *width && *height;
+ }
+ 
+-/* A top-level window, neither minimized nor maximized, smaller than its monitor: the monitor's
+- * size in real pixels. */
+-static BOOL window_fills_monitor( HWND hwnd, VkExtent2D *size )
++/* A top-level window, neither minimized nor maximized, smaller than its monitor (or, under an
++ * emulated display mode, also one covering it): the monitor's size in real pixels, the whole
++ * panel under an emulated mode. */
++static BOOL window_fills_monitor( HWND hwnd, BOOL emulated, VkExtent2D *size )
+ {
+     MONITORINFO info;
+     RECT window, raw;
+@@ -2663,12 +2664,12 @@ static BOOL window_fills_monitor( HWND hwnd, VkExtent2D *size )
+     ctx = set_thread_dpi_awareness_context( NTUSER_DPI_PER_MONITOR_AWARE );
+     dpi = get_thread_dpi();
+     info = monitor_info_from_window( hwnd, MONITOR_DEFAULTTONEAREST );
+-    ret = get_window_rect( hwnd, &window, dpi ) && !EqualRect( &window, &info.rcMonitor ) &&
++    ret = get_window_rect( hwnd, &window, dpi ) && (emulated || !EqualRect( &window, &info.rcMonitor )) &&
+           window.right - window.left <= info.rcMonitor.right - info.rcMonitor.left &&
+           window.bottom - window.top <= info.rcMonitor.bottom - info.rcMonitor.top;
+     if (ret)
+     {
+-        raw = map_rect_virt_to_raw( info.rcMonitor, dpi );
++        raw = get_monitor_physical_rect( info.rcMonitor, dpi );
+         size->width = raw.right - raw.left;
+         size->height = raw.bottom - raw.top;
+         ret = size->width && size->height;
+@@ -2755,10 +2756,14 @@ static VkResult win32u_vkCreateSwapchainKHR( VkDevice client_device, const VkSwa
+     if (!(swapchain = calloc( 1, sizeof(*swapchain) ))) return VK_ERROR_OUT_OF_HOST_MEMORY;
+ 
+     swapchain->fshack_dpi = surface_get_fshack_dpi( surface );
+-    /* UTDeck fill: a window smaller than its monitor, outside an emulated mode, through the same
+-     * blit, into a host swapchain of the screen's size (the size the compositor shows the window
+-     * at, once the Wayland driver knows it) */
+-    if (!swapchain->fshack_dpi && window_fills_monitor( surface->hwnd, &fill_size ))
++    /* UTDeck fill: a window smaller than its monitor through the same blit, into a host swapchain
++     * of the screen's size (the size the compositor shows the window at, once the Wayland driver
++     * knows it). Under an emulated display mode (fshack_dpi), Valve's hack alone fits the mode
++     * into a host image of that area, keeping its shape (1920x1080 on 2400x1080: 1920x1080), and
++     * Lomiri, without wp_viewporter, shows it at that size at the screen's left, the wallpaper
++     * beside it; so a game under an emulated mode, fullscreen or not, is filled as well: the whole
++     * panel, UTDECK_SCALE's rect, black around it. */
++    if (window_fills_monitor( surface->hwnd, !!swapchain->fshack_dpi, &fill_size ))
+     {
+         UINT width, height;
+         if (fill_target_size( surface->hwnd, &width, &height ))
+diff --git a/dlls/win32u/win32u_private.h b/dlls/win32u/win32u_private.h
+--- a/dlls/win32u/win32u_private.h
++++ b/dlls/win32u/win32u_private.h
+@@ -185,6 +185,7 @@ extern HRGN map_dpi_region( HRGN region, UINT dpi_from, UINT dpi_to );
+ extern struct window_rects map_dpi_window_rects( struct window_rects rects, UINT dpi_from, UINT dpi_to );
+ extern RECT map_rect_raw_to_virt( RECT rect, UINT dpi_to );
+ extern RECT map_rect_virt_to_raw( RECT rect, UINT dpi_from );
++extern RECT get_monitor_physical_rect( RECT rect, UINT dpi_from ); /* UTDeck, sysparams.c */
+ extern struct window_rects map_window_rects_virt_to_raw( struct window_rects rects, UINT dpi_from );
+ extern POINT point_phys_to_win_dpi( HWND hwnd, POINT pt );
+ extern POINT point_thread_to_win_dpi( HWND hwnd, POINT pt );

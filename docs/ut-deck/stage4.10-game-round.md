@@ -136,6 +136,68 @@ pixel in the middle. Afterwards the game's page back on "As in Settings" (its `u
 `UTDECK_SCALE`) and Settings on Fit (`user.env` without the line). A game's own settings are not
 written into its run log (only `user.env`'s are, "user settings:"); the choice is seen on the screen.
 
+## (B) Fill on Proton's base (2026-11-25)
+
+Proton's base had neither fill (our 0010) nor opaque pictures (0011): a game in a window smaller than
+the screen showed as that window, in a corner (Need for Speed, Ys IX). 0010 could not be carried over
+as it is: on our base it extends our own scaler (0006), and Proton's base scales with Valve's
+fullscreen hack instead (Valve's way of showing a game's smaller display mode over the whole screen:
+the game draws into images of its own size, Wine scales each frame into the real window). Brought
+over by hand, on top of Proton's patches 0001-0020:
+
+- **`patches-proton/0022`** (fill): a top-level window smaller than its monitor, outside an emulated
+  display mode, goes through Valve's scaling pass with a host swapchain of the screen's size (the
+  real picture buffers the compositor shows); the picture is drawn into the rect `UTDECK_SCALE`
+  chooses (fit, stretch, center), black around it. The Wayland half is 0010's: the window made
+  fullscreen over a black buffer, the picture at the screen's origin (Wine 11.0's driver places it
+  itself, 11.16 asks win32u), pointer and touch mapped back through the picture's rect, the window
+  never resized by the compositor. Games that set a display mode keep Valve's own path.
+- **`patches-proton/0023`** (opaque): the picture and the fill background marked opaque; the bars
+  are opaque black already (Valve's pass samples outside the picture as opaque black).
+- Numbered after 0020, the last patch they are written on (first saved as 0010/0011, which the build
+  applied before 0012-0020 and failed: [lessons-learned.md](../lessons-learned.md)).
+
+Built (`PARTS=wine WINE_FLAVOR=proton`, no compiler warnings in the changed files) and tested with
+only `win32u.so` and `winewayland.so` swapped into the phone's `runtime-proton11.0-20261124` (the old
+ones kept as `*.before-0022`; the maintainer's OK). **Need for Speed** (1280x720, Fit, 12:59): fills
+the screen with black bars left and right, the picture shows from the start (the maintainer); no new
+errors in Wine's log.
+
+Then (the maintainer): **touch did nothing in the game** (likely the game: its PC menus are made for
+a keyboard and a gamepad; the mapping is to be checked with a game played by mouse), and **at any
+resolution not of the panel's 20:9 shape the picture sat on the left, the wallpaper on its right,
+and Stretch did nothing**. Those modes are emulated: the game sets a display mode in fullscreen,
+Proton only pretends to change it, and Valve's hack, not 0022, scales the picture, keeping the mode's
+shape, into a host image of the fitted area only (1920x1080 on 2400x1080); Lomiri, unable to scale
+a buffer, shows it at that size from the left edge, and `UTDECK_SCALE` is not asked. Our own 20:9
+modes (0008) match the panel exactly, which is why it had never shown (Ys IX at 1600x720 in 3.3).
+Not a corner case: most games offer only 16:9 and 4:3 modes.
+
+- **`patches-proton/0024`** (`win32u: fill the screen under an emulated display mode too`): 0022's
+  fill also takes a window under an emulated mode, fullscreen or smaller: a host swapchain of the
+  whole panel (the real panel's rect, `get_monitor_physical_rect` as in our base's 0006; Proton's
+  own mapping gives the fitted area), the picture in `UTDECK_SCALE`'s rect, black around it, the
+  Wayland driver's fill as before.
+
+Only `win32u.so` changed (swapped in, the maintainer's OK). **Need for Speed at 1280x720** in
+fullscreen: black bars at the sides, no wallpaper; **Stretch** covers the whole screen (the
+maintainer, 13:15). **Centered (1:1)**: the picture pixel for pixel in the middle (the maintainer).
+Pointer and touch through the fill's rect: **moved to stage 5** (the maintainer: multitouch and
+swipes are not responsive in games yet; a test program is needed first), as substage 5.5 in
+[stage5-roadmap.md](stage5-roadmap.md). **(B) done** otherwise: patches 0022-0024, to be released with
+the next runtime (with 0021, as agreed).
+
+## (C) The black picture at 2400x1080 on Proton's base (2026-11-25)
+
+**Not seen again** (the maintainer, after 0022-0024): Need for Speed at 2400x1080 on Proton's base
+shows its picture from the start. The cause is not known: at 2400x1080 the window covers the whole
+screen, which none of 0022-0024 change (fill takes only a smaller window, or an emulated mode; the
+panel's own mode is not emulated), and 0023's opaque marks are ignored by Lomiri. What did change
+between the runs: the game's settings (the maintainer had moved it to 1280x720 and back), and
+Lomiri's state (the first run was right after the EA app's sign-in). Left open, to be watched: if a
+game's picture stays black until a trip to the app switcher again, its log and the window's state are
+taken right then.
+
 ## Then
 
 - Each new game with the overlay (Full) for its numbers, a keyboard and a mouse tried in each.
@@ -149,3 +211,6 @@ written into its run log (only `user.env`'s are, "user settings:"); the choice i
   0.3.56); Need for Speed runs on Proton's base at 14-18 fps, CPU-bound; (A) the scaling choice in
   the app (0.3.57), checked with Celeste. Next: (B) and (C), fill and the black picture on Proton's
   base; then (E).
+- 2026-11-25: (B) fill on Proton's base (patches-proton 0022-0024: smaller windows and emulated
+  display modes, Fit/Stretch/Centered), checked with Need for Speed; touch through it moved to stage
+  5.5. (C) not seen again. Next: (E), the EA app on our base.

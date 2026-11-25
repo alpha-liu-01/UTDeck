@@ -1,0 +1,65 @@
+From: UTDeck
+Subject: [PATCH] winewayland: show games' pictures opaque
+
+Hangover's base's patch 0011, brought over to Proton's (stage 4.10, item B). A Vulkan or OpenGL
+picture is opaque on Windows, whatever its alpha channel holds; Unreal Engine games leave anything
+there. Mark the client surface (the game's picture) and the fill-mode background (patch 0022 here) as
+opaque (wl_surface opaque region). The bars around a filled picture are already opaque black here:
+Valve's blit samples outside the picture as VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK, so 0011's change to
+our own scaler's clear colour has no counterpart.
+
+Note (stage 3.2b): Lomiri ignores the opaque region; the see-through pictures were fixed in Mesa
+(tools/mesa-build/patches/0005). Kept for other compositors, as on Hangover's base.
+---
+diff --git a/dlls/winewayland.drv/wayland_surface.c b/dlls/winewayland.drv/wayland_surface.c
+--- a/dlls/winewayland.drv/wayland_surface.c
++++ b/dlls/winewayland.drv/wayland_surface.c
+@@ -443,6 +443,17 @@ void wayland_surface_set_fill(struct wayland_surface *surface, BOOL on, int widt
+     surface->content_width = surface->content_height = 0;
+ }
+ 
++/* UTDeck: the whole surface is opaque (an opaque region larger than any surface). */
++void wayland_surface_set_opaque(struct wl_surface *wl_surface)
++{
++    struct wl_region *region = wl_compositor_create_region(process_wayland.wl_compositor);
++
++    if (!region) return;
++    wl_region_add(region, 0, 0, INT32_MAX, INT32_MAX);
++    wl_surface_set_opaque_region(wl_surface, region);
++    wl_region_destroy(region);
++}
++
+ /* UTDeck fill: the window's own drawing is replaced by one black buffer of the screen's size (the
+  * picture is the client surface above it); it never changes, so it is attached again as it is. */
+ static void wayland_surface_attach_fill(struct wayland_surface *surface)
+@@ -464,6 +475,7 @@ static void wayland_surface_attach_fill(struct wayland_surface *surface)
+         }
+         memset(surface->fill_buffer->map_data, 0, (size_t)width * height * WINEWAYLAND_BYTES_PER_PIXEL);
+     }
++    wayland_surface_set_opaque(surface->wl_surface);  /* black, not see-through */
+     wl_surface_attach(surface->wl_surface, surface->fill_buffer->wl_buffer, 0, 0);
+     wl_surface_damage_buffer(surface->wl_surface, 0, 0, width, height);
+     surface->content_width = width;
+@@ -1238,6 +1250,11 @@ struct wayland_client_surface *wayland_client_surface_create(HWND hwnd)
+     wl_surface_set_input_region(client->wl_surface, empty_region);
+     wl_region_destroy(empty_region);
+ 
++    /* UTDeck: a Vulkan or OpenGL picture is opaque on Windows, whatever its alpha channel holds
++     * (Unreal Engine games leave anything there). Say so, so that the compositor does not blend it
++     * with what is below; Lomiri does even with an XRGB buffer. */
++    wayland_surface_set_opaque(client->wl_surface);
++
+     if (process_wayland.wp_viewporter)
+     {
+         client->wp_viewport =
+diff --git a/dlls/winewayland.drv/waylanddrv.h b/dlls/winewayland.drv/waylanddrv.h
+--- a/dlls/winewayland.drv/waylanddrv.h
++++ b/dlls/winewayland.drv/waylanddrv.h
+@@ -421,6 +421,7 @@ void wayland_touch_init(struct wl_touch *wl_touch);
+ void wayland_surface_check_fullscreen_size(struct wayland_surface *surface);
+ void wayland_win_data_update_fill(struct wayland_win_data *data);
+ void wayland_surface_set_fill(struct wayland_surface *surface, BOOL on, int width, int height);
++void wayland_surface_set_opaque(struct wl_surface *wl_surface);
+ void wayland_touch_deinit(void);
+ void wayland_pointer_clear_constraint(void);
+ 

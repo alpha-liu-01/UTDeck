@@ -1657,3 +1657,20 @@ Problems met while building UTDeck on the Redmi Note 12 5G (stone). Details in `
   default for 32-bit code on ARM64; ours is Box64) it plays. Lesson: when a game works on one base
   and not the other, list every default that differs (here two: the address space and the 32-bit
   translator), and test them one at a time; fixing the first one uncovered the second.
+- **A patch numbered by its counterpart, not by what it is written on (stage 4.10, 2026-11-25).**
+  Fill (Hangover's base's 0010) was brought over to Proton's base by hand, on a source tree that
+  already carried Proton's patches 0001-0020, and first saved as `patches-proton/0010`. The build
+  applies the patches in name order, so it came before 0012-0020, whose changes its context lines
+  include, and `git apply` failed ("patch does not apply" in `wayland_surface.c`). Renamed 0022 (and
+  0011's port 0023). On the way, `pkill -f build-runtime.sh` ended its own shell again (its command
+  line holds the pattern; the bracket trick, `[b]uild-runtime.sh`, avoids it). Lesson: a patch's
+  number says where it is applied; a port gets the number after the last patch it was written on,
+  and its header says which patch it mirrors.
+- **Tested only with modes of the panel's own shape (stage 4.10, 2026-11-25).** Proton's base showed
+  a game's fullscreen picture correctly since stage 3.3, checked with Ys IX at 1600x720: a 20:9 mode,
+  one of those patch 0008 adds to match the panel. At a 16:9 or 4:3 mode (Need for Speed at 1280x720)
+  the picture sat on the left with the wallpaper beside it, and Picture scaling did nothing: Valve's
+  hack scales an emulated mode only into the area it fits, keeping its shape, and Lomiri cannot scale
+  what is left. Fixed with Proton patch 0024 (fill takes emulated modes as well). Lesson: a picture
+  path is tested with a size of another shape than the screen's too; the screen's own shape hides
+  every scaling mistake.

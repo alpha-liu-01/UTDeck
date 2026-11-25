@@ -1,0 +1,601 @@
+From: UTDeck
+Subject: [PATCH] win32u, winewayland: fill the screen with a smaller game window (UTDECK_FILL)
+
+Hangover's base's patch 0010, brought over to Proton's (stage 4.10, item B; numbered after the
+patches it is written on). Games without a render-scale option are played in a window smaller than
+the panel (borderless or windowed 1280x720 on 2400x1080), as the phone's GPU cannot draw the full
+resolution; Lomiri shows such a window as it is, in a corner, with its top panel (Need for Speed
+Most Wanted, Ys IX on this base). With UTDECK_FILL=1 the window is shown over the whole screen, as
+gamescope does on the Steam Deck, while the game keeps seeing its own window size:
+
+- win32u (vulkan.c): a top-level window smaller than its monitor (not minimized or maximized),
+  outside an emulated display mode, that creates a swapchain goes through Valve's fullscreen-hack
+  blit with a host swapchain of the screen's size; the picture is drawn into a rect of it chosen by
+  UTDECK_SCALE (fit by default, stretch, center 1:1; "off" turns fill off, as on our base), black
+  around it (the blit sampler's border). The window is marked with two properties: the picture's
+  rect and the screen's size. On Hangover's base this extends our own scaler (0006), which Proton's
+  base does not have.
+- winewayland: when a marked window presents, it is made fullscreen, its own drawing is replaced by
+  one black screen-sized buffer (so that input anywhere on the panel reaches it; there is no
+  wp_viewporter on Lomiri to scale a buffer), its picture (the client surface) is placed at the
+  screen's origin (Wine 11.0's driver places it itself; 11.16 asks win32u), and pointer and touch
+  positions are mapped from the picture's rect back to its client area.
+- The window is never resized by the compositor's configure. Instead the driver records the
+  configured fullscreen size (the screen in its current orientation) in a third property; win32u
+  then returns VK_SUBOPTIMAL_KHR once, the application recreates its swapchain, and the picture is
+  fitted into that size.
+
+Launchers and dialogs create no swapchain and are not affected. Exclusive fullscreen games are not
+either (they cover the monitor already, or go through Valve's hack under an emulated mode).
+---
+diff --git a/dlls/win32u/vulkan.c b/dlls/win32u/vulkan.c
+--- a/dlls/win32u/vulkan.c
++++ b/dlls/win32u/vulkan.c
+@@ -195,6 +195,8 @@ struct swapchain
+     UINT fshack_dpi;
+     VkExtent2D host_extents;
+     VkFormat host_format; /* UTDeck: the host images' format, see fs_hack_host_format() */
++    BOOL fill;            /* UTDeck fill: a smaller window shown over the whole screen, see fill_get_mode() */
++    RECT fill_dst;        /* UTDeck fill: the picture's rect in the host image */
+     VkCommandPool *cmd_pools; /* VkCommandPool[device->queue_count] */
+     VkDeviceMemory user_image_memory;
+     uint32_t n_images;
+@@ -2603,6 +2605,104 @@ static BOOL surface_get_fshack_dpi( struct surface *surface )
+     return fshack_enabled && dpi != raw ? raw : 0;
+ }
+ 
++/* UTDeck fill (UTDECK_FILL=1): games without a render-scale option are often played in a window
++ * smaller than the panel (borderless or windowed 1280x720 on 2400x1080), as the GPU cannot draw the
++ * full resolution. Such a window is shown over the whole screen, as gamescope does: a top-level
++ * window smaller than its monitor, outside an emulated display mode, gets the fullscreen hack's
++ * blit with a host swapchain of the screen's size, its picture drawn into a rect of it chosen by
++ * UTDECK_SCALE (fit, the default; stretch; center, 1:1), black around it. The window is marked
++ * with two properties for the Wayland driver, which makes it fullscreen, places the picture at
++ * the screen's origin and maps input back through the same rect: "__wine_utdeck_fill" (the
++ * picture's rect, 16 bits each for x, y, width, height) and "__wine_utdeck_fill_size" (the
++ * screen's size). The game itself sees its window unchanged. Launchers and dialogs have no
++ * swapchain and stay as they are. The same as patch 0010 on Hangover's Wine, where it extends our
++ * own scaler (0006) instead of Valve's. */
++/* the property names, spelled out: Unix code has no 16-bit L"" literals */
++static const WCHAR fill_prop[] = {'_','_','w','i','n','e','_','u','t','d','e','c','k','_','f','i','l','l',0};
++static const WCHAR fill_size_prop[] = {'_','_','w','i','n','e','_','u','t','d','e','c','k','_','f','i','l','l','_','s','i','z','e',0};
++static const WCHAR fill_target_prop[] = {'_','_','w','i','n','e','_','u','t','d','e','c','k','_','f','i','l','l','_','t','a','r','g','e','t',0};
++
++enum fill_mode { FILL_OFF, FILL_FIT, FILL_STRETCH, FILL_CENTER };
++
++static enum fill_mode fill_get_mode(void)
++{
++    static int mode = -1;
++    if (mode < 0)
++    {
++        const char *fill = getenv( "UTDECK_FILL" ), *scale = getenv( "UTDECK_SCALE" );
++        if (!fill || !*fill || !strcmp( fill, "0" )) mode = FILL_OFF;
++        else if (!scale || !*scale || !strcmp( scale, "fit" )) mode = FILL_FIT;
++        else if (!strcmp( scale, "stretch" )) mode = FILL_STRETCH;
++        else if (!strcmp( scale, "center" )) mode = FILL_CENTER;
++        else mode = FILL_OFF;  /* UTDECK_SCALE=off: no scaling, so no fill either, as on our base */
++    }
++    return mode;
++}
++
++/* The size the window is shown at, set by the Wayland driver from the compositor's fullscreen
++ * configure: the screen in its current orientation. Until then, the monitor's size. */
++static BOOL fill_target_size( HWND hwnd, UINT *width, UINT *height )
++{
++    ULONG_PTR size = (ULONG_PTR)NtUserGetProp( hwnd, fill_target_prop );
++    *width = size & 0xffff;
++    *height = (size >> 16) & 0xffff;
++    return *width && *height;
++}
++
++/* A top-level window, neither minimized nor maximized, smaller than its monitor: the monitor's
++ * size in real pixels. */
++static BOOL window_fills_monitor( HWND hwnd, VkExtent2D *size )
++{
++    MONITORINFO info;
++    RECT window, raw;
++    UINT ctx, dpi;
++    BOOL ret;
++
++    if (fill_get_mode() == FILL_OFF || NtUserGetAncestor( hwnd, GA_ROOT ) != hwnd) return FALSE;
++    if (get_window_long( hwnd, GWL_STYLE ) & (WS_MINIMIZE | WS_MAXIMIZE)) return FALSE;
++    ctx = set_thread_dpi_awareness_context( NTUSER_DPI_PER_MONITOR_AWARE );
++    dpi = get_thread_dpi();
++    info = monitor_info_from_window( hwnd, MONITOR_DEFAULTTONEAREST );
++    ret = get_window_rect( hwnd, &window, dpi ) && !EqualRect( &window, &info.rcMonitor ) &&
++          window.right - window.left <= info.rcMonitor.right - info.rcMonitor.left &&
++          window.bottom - window.top <= info.rcMonitor.bottom - info.rcMonitor.top;
++    if (ret)
++    {
++        raw = map_rect_virt_to_raw( info.rcMonitor, dpi );
++        size->width = raw.right - raw.left;
++        size->height = raw.bottom - raw.top;
++        ret = size->width && size->height;
++    }
++    set_thread_dpi_awareness_context( ctx );
++    return ret;
++}
++
++/* Where the game's picture (src) goes in the host image (dst), by UTDECK_SCALE. */
++static RECT fill_place( VkExtent2D src, VkExtent2D dst )
++{
++    UINT sw = max( src.width, 1 ), sh = max( src.height, 1 ), dw = dst.width, dh = dst.height, w, h;
++    RECT rect;
++
++    if (fill_get_mode() == FILL_STRETCH) { w = dw; h = dh; }
++    else if (fill_get_mode() == FILL_CENTER && sw <= dw && sh <= dh) { w = sw; h = sh; }
++    else if ((UINT64)sw * dh > (UINT64)sh * dw) { w = dw; h = max( 1, (UINT)((UINT64)sh * dw / sw) ); }
++    else { h = dh; w = max( 1, (UINT)((UINT64)sw * dh / sh) ); }
++    SetRect( &rect, (dw - w) / 2, (dh - h) / 2, (dw - w) / 2 + w, (dh - h) / 2 + h );
++    return rect;
++}
++
++static void fill_set_props( HWND hwnd, const RECT *dst, VkExtent2D size )
++{
++    ULONG_PTR rect = (ULONG_PTR)(dst->left & 0xffff) | ((ULONG_PTR)(dst->top & 0xffff) << 16) |
++                     ((ULONG_PTR)((dst->right - dst->left) & 0xffff) << 32) |
++                     ((ULONG_PTR)((dst->bottom - dst->top) & 0xffff) << 48);
++    ULONG_PTR extent = (size.width & 0xffff) | ((ULONG_PTR)(size.height & 0xffff) << 16);
++
++    TRACE( "hwnd %p: fill, picture %s in %ux%u\n", hwnd, wine_dbgstr_rect( dst ), size.width, size.height );
++    NtUserSetProp( hwnd, fill_size_prop, (HANDLE)extent );
++    NtUserSetProp( hwnd, fill_prop, (HANDLE)rect );
++}
++
+ static VkResult win32u_vkCreateSwapchainKHR( VkDevice client_device, const VkSwapchainCreateInfoKHR *create_info,
+                                              const VkAllocationCallbacks *allocator, VkSwapchainKHR *ret )
+ {
+@@ -2615,6 +2715,7 @@ static VkResult win32u_vkCreateSwapchainKHR( VkDevice client_device, const VkSwa
+     VkSwapchainCreateInfoKHR create_info_host = *create_info;
+     VkSurfaceCapabilitiesKHR capabilities;
+     VkSwapchainKHR host_swapchain;
++    VkExtent2D fill_size = {0};
+     RECT client_rect;
+     VkResult res;
+ 
+@@ -2653,7 +2754,23 @@ static VkResult win32u_vkCreateSwapchainKHR( VkDevice client_device, const VkSwa
+ 
+     if (!(swapchain = calloc( 1, sizeof(*swapchain) ))) return VK_ERROR_OUT_OF_HOST_MEMORY;
+ 
+-    if ((swapchain->fshack_dpi = surface_get_fshack_dpi( surface )))
++    swapchain->fshack_dpi = surface_get_fshack_dpi( surface );
++    /* UTDeck fill: a window smaller than its monitor, outside an emulated mode, through the same
++     * blit, into a host swapchain of the screen's size (the size the compositor shows the window
++     * at, once the Wayland driver knows it) */
++    if (!swapchain->fshack_dpi && window_fills_monitor( surface->hwnd, &fill_size ))
++    {
++        UINT width, height;
++        if (fill_target_size( surface->hwnd, &width, &height ))
++        {
++            fill_size.width = width;
++            fill_size.height = height;
++        }
++        swapchain->fill = TRUE;
++        swapchain->fill_dst = fill_place( create_info->imageExtent, fill_size );
++    }
++
++    if (swapchain->fshack_dpi || swapchain->fill)
+     {
+         VkSurfaceCapabilitiesKHR caps = {0};
+ 
+@@ -2673,7 +2790,8 @@ static VkResult win32u_vkCreateSwapchainKHR( VkDevice client_device, const VkSwa
+          * real pixels. On X11 the surface's minimum size is the window's; a Wayland surface has no
+          * size of its own (currentExtent 0xFFFFFFFF, minImageExtent 1x1), so the picture was
+          * scaled to 1x1 and nothing showed (Lomiri). Use the client area at the raw DPI instead. */
+-        if (capabilities.currentExtent.width == 0xFFFFFFFF &&
++        if (swapchain->fill) swapchain->host_extents = fill_size;
++        else if (capabilities.currentExtent.width == 0xFFFFFFFF &&
+             get_surface_rect( surface->hwnd, &client_rect, swapchain->fshack_dpi ) &&
+             client_rect.right > 0 && client_rect.bottom > 0)
+         {
+@@ -2702,7 +2820,7 @@ static VkResult win32u_vkCreateSwapchainKHR( VkDevice client_device, const VkSwa
+     swapchain->extents = create_info->imageExtent;
+     instance->p_insert_object( instance, &swapchain->obj.obj );
+ 
+-    if (swapchain->fshack_dpi)
++    if (swapchain->fshack_dpi || swapchain->fill)
+     {
+         if ((res = init_fs_hack_images( device, swapchain, create_info )))
+         {
+@@ -2724,6 +2842,10 @@ static VkResult win32u_vkCreateSwapchainKHR( VkDevice client_device, const VkSwa
+               debugstr_vkextent2d(&swapchain->extents), debugstr_vkextent2d(&swapchain->host_extents) );
+     }
+ 
++    /* UTDeck fill: tell the Wayland driver, or that it is over */
++    if (swapchain->fill) fill_set_props( surface->hwnd, &swapchain->fill_dst, swapchain->host_extents );
++    else if (NtUserGetProp( surface->hwnd, fill_prop )) NtUserRemoveProp( surface->hwnd, fill_prop );
++
+     *ret = swapchain->obj.client.swapchain;
+     return VK_SUCCESS;
+ }
+@@ -2738,7 +2860,7 @@ void win32u_vkDestroySwapchainKHR( VkDevice client_device, VkSwapchainKHR client
+     if (allocator) FIXME( "Support for allocation callbacks not implemented yet\n" );
+     if (!swapchain) return;
+ 
+-    if (swapchain->fshack_dpi)
++    if (swapchain->fshack_dpi || swapchain->fill)
+     {
+         for (uint32_t i = 0; i < swapchain->n_images; ++i)
+         {
+@@ -2839,7 +2961,7 @@ static VkResult win32u_vkGetSwapchainImagesKHR( VkDevice client_device, VkSwapch
+     struct swapchain *swapchain = swapchain_from_handle( client_swapchain );
+     uint32_t i;
+ 
+-    if (images && swapchain->fshack_dpi)
++    if (images && (swapchain->fshack_dpi || swapchain->fill))
+     {
+         if (*count > swapchain->n_images) *count = swapchain->n_images;
+         for (i = 0; i < *count; ++i) images[i] = swapchain->fs_hack_images[i].user_image;
+@@ -2890,6 +3012,7 @@ static VkResult record_compute_cmd( struct vulkan_device *device, struct swapcha
+     VkImageMemoryBarrier barriers[3] = {{0}};
+     VkCommandBufferBeginInfo beginInfo = {0};
+     float constants[4];
++    RECT dst;
+ 
+     TRACE( "recording compute command\n" );
+ 
+@@ -2939,17 +3062,22 @@ static VkResult record_compute_cmd( struct vulkan_device *device, struct swapcha
+     device->p_vkCmdBindDescriptorSets( hack->cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                        swapchain->pipeline_layout, 0, 1, &hack->descriptor_set, 0, NULL );
+ 
++    /* UTDeck fill: the picture goes into its rect of the host image, black around it (the
++     * sampler's border); otherwise over the whole host image, as before */
++    if (swapchain->fill) dst = swapchain->fill_dst;
++    else SetRect( &dst, 0, 0, swapchain->host_extents.width, swapchain->host_extents.height );
++
+     /* vec2: blit dst offset in real coords */
+-    constants[0] = 0;
+-    constants[1] = 0;
++    constants[0] = dst.left;
++    constants[1] = dst.top;
+ 
+     /* offset by 0.5f because sampling is relative to pixel center */
+-    constants[0] -= 0.5f * swapchain->host_extents.width / swapchain->extents.width;
+-    constants[1] -= 0.5f * swapchain->host_extents.height / swapchain->extents.height;
++    constants[0] -= 0.5f * (dst.right - dst.left) / swapchain->extents.width;
++    constants[1] -= 0.5f * (dst.bottom - dst.top) / swapchain->extents.height;
+ 
+     /* vec2: blit dst extents in real coords */
+-    constants[2] = swapchain->host_extents.width;
+-    constants[3] = swapchain->host_extents.height;
++    constants[2] = dst.right - dst.left;
++    constants[3] = dst.bottom - dst.top;
+     device->p_vkCmdPushConstants( hack->cmd, swapchain->pipeline_layout,
+                                   VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(constants), constants );
+ 
+@@ -3024,7 +3152,7 @@ static VkResult win32u_vkQueuePresentKHR( VkQueue client_queue, const VkPresentI
+         struct swapchain *swapchain = swapchain_from_handle( present_info->pSwapchains[i] );
+         struct fs_hack_image *hack = &swapchain->fs_hack_images[present_info->pImageIndices[i]];
+ 
+-        if (!swapchain->fshack_dpi) continue;
++        if (!swapchain->fshack_dpi && !swapchain->fill) continue;
+         blit_sema = hack->blit_finished;
+ 
+         if (!hack->cmd || hack->cmd_queue_idx != queue->info.queueFamilyIndex)
+@@ -3120,6 +3248,20 @@ static VkResult win32u_vkQueuePresentKHR( VkQueue client_queue, const VkPresentI
+             if (present_info->pResults) present_info->pResults[i] = VK_SUBOPTIMAL_KHR;
+             if (!res) res = VK_SUBOPTIMAL_KHR;
+         }
++        else if (swapchain->fill)
++        {
++            /* UTDeck fill: the compositor shows the window at another size (fullscreen was
++             * granted, or the screen turned): have the application recreate its swapchain, which
++             * then gets a host swapchain of that size. */
++            UINT width, height;
++            if (fill_target_size( surface->hwnd, &width, &height ) &&
++                (width != swapchain->host_extents.width || height != swapchain->host_extents.height))
++            {
++                TRACE( "hwnd %p: fill target now %ux%u, returning VK_SUBOPTIMAL_KHR\n", surface->hwnd, width, height );
++                if (present_info->pResults) present_info->pResults[i] = VK_SUBOPTIMAL_KHR;
++                if (!res) res = VK_SUBOPTIMAL_KHR;
++            }
++        }
+     }
+ 
+     if (TRACE_ON( fps ))
+diff --git a/dlls/winewayland.drv/wayland_pointer.c b/dlls/winewayland.drv/wayland_pointer.c
+--- a/dlls/winewayland.drv/wayland_pointer.c
++++ b/dlls/winewayland.drv/wayland_pointer.c
+@@ -140,12 +140,28 @@ static void pointer_handle_motion_internal(wl_fixed_t sx, wl_fixed_t sy)
+ 
+     window_rect = &surface->window.rect;
+ 
+-    wayland_surface_coords_to_window(surface,
+-                                     wl_fixed_to_double(sx),
+-                                     wl_fixed_to_double(sy),
+-                                     (int *)&screen.x, (int *)&screen.y);
+-    screen.x += window_rect->left;
+-    screen.y += window_rect->top;
++    if (data->fill_on && data->fill_dst.right > data->fill_dst.left &&
++        data->fill_dst.bottom > data->fill_dst.top)
++    {
++        /* UTDeck fill: the surface is the screen, the window's client area is drawn into
++         * fill_dst (fit, stretch or center, as win32u chose): map back through it. */
++        const RECT *client = &data->rects.client, *dst = &data->fill_dst;
++        double fx = wl_fixed_to_double(sx), fy = wl_fixed_to_double(sy);
++
++        screen.x = client->left + floor((fx - dst->left) * (client->right - client->left) /
++                                        (dst->right - dst->left));
++        screen.y = client->top + floor((fy - dst->top) * (client->bottom - client->top) /
++                                       (dst->bottom - dst->top));
++    }
++    else
++    {
++        wayland_surface_coords_to_window(surface,
++                                         wl_fixed_to_double(sx),
++                                         wl_fixed_to_double(sy),
++                                         (int *)&screen.x, (int *)&screen.y);
++        screen.x += window_rect->left;
++        screen.y += window_rect->top;
++    }
+     /* Sometimes, due to rounding, we may end up with pointer coordinates
+      * slightly outside the target window, so bring them within bounds. */
+     if (screen.x >= window_rect->right) screen.x = window_rect->right - 1;
+diff --git a/dlls/winewayland.drv/wayland_surface.c b/dlls/winewayland.drv/wayland_surface.c
+--- a/dlls/winewayland.drv/wayland_surface.c
++++ b/dlls/winewayland.drv/wayland_surface.c
+@@ -258,6 +258,12 @@ void wayland_surface_destroy(struct wayland_surface *surface)
+         surface->small_icon_buffer = NULL;
+     }
+ 
++    if (surface->fill_buffer)
++    {
++        wayland_shm_buffer_unref(surface->fill_buffer);
++        surface->fill_buffer = NULL;
++    }
++
+     wl_display_flush(process_wayland.wl_display);
+ 
+     free(surface);
+@@ -425,6 +431,45 @@ static const struct wl_buffer_listener cropped_buffer_listener =
+     cropped_buffer_release
+ };
+ 
++/* UTDeck fill: set or clear; new contents are attached at the next flush or present */
++void wayland_surface_set_fill(struct wayland_surface *surface, BOOL on, int width, int height)
++{
++    on = on && width > 0 && height > 0;
++    if (on == surface->fill_on && (!on || (width == surface->fill_width && height == surface->fill_height)))
++        return;
++    surface->fill_on = on;
++    surface->fill_width = on ? width : 0;
++    surface->fill_height = on ? height : 0;
++    surface->content_width = surface->content_height = 0;
++}
++
++/* UTDeck fill: the window's own drawing is replaced by one black buffer of the screen's size (the
++ * picture is the client surface above it); it never changes, so it is attached again as it is. */
++static void wayland_surface_attach_fill(struct wayland_surface *surface)
++{
++    int width = surface->fill_width, height = surface->fill_height;
++
++    if (surface->fill_buffer &&
++        (surface->fill_buffer->width != width || surface->fill_buffer->height != height))
++    {
++        wayland_shm_buffer_unref(surface->fill_buffer);
++        surface->fill_buffer = NULL;
++    }
++    if (!surface->fill_buffer)
++    {
++        if (!(surface->fill_buffer = wayland_shm_buffer_create(width, height, WL_SHM_FORMAT_XRGB8888)))
++        {
++            ERR("Failed to create the %dx%d fill buffer\n", width, height);
++            return;
++        }
++        memset(surface->fill_buffer->map_data, 0, (size_t)width * height * WINEWAYLAND_BYTES_PER_PIXEL);
++    }
++    wl_surface_attach(surface->wl_surface, surface->fill_buffer->wl_buffer, 0, 0);
++    wl_surface_damage_buffer(surface->wl_surface, 0, 0, width, height);
++    surface->content_width = width;
++    surface->content_height = height;
++}
++
+ /**********************************************************************
+  *          wayland_surface_attach_shm
+  *
+@@ -443,6 +488,12 @@ void wayland_surface_attach_shm(struct wayland_surface *surface,
+     TRACE("surface=%p shm_buffer=%p (%dx%d)\n",
+           surface, shm_buffer, shm_buffer->width, shm_buffer->height);
+ 
++    if (surface->fill_on)
++    {
++        wayland_surface_attach_fill(surface);
++        return;
++    }
++
+     if (!surface->wp_viewport)
+     {
+         struct wayland_shm_buffer *cropped;
+@@ -681,6 +732,14 @@ static BOOL wayland_surface_reconfigure_client(struct wayland_surface *surface,
+     wayland_surface_coords_from_window(surface, client_width, client_height,
+                                        &width, &height);
+ 
++    /* UTDeck fill: the picture (win32u's host swapchain) covers the screen from its origin */
++    if (surface->fill_on)
++    {
++        x = y = 0;
++        width = surface->fill_width;
++        height = surface->fill_height;
++    }
++
+     /* win32u updates the client surface before and after every present. Sending the same
+      * position, stacking and size again and committing the parent each time adds two commits per
+      * frame and fills Lomiri's log (it does not implement place_above), so only a change is
+@@ -805,6 +864,13 @@ BOOL wayland_surface_reconfigure(struct wayland_surface *surface)
+     wayland_surface_coords_from_window(surface, win_width, win_height,
+                                        &width, &height);
+ 
++    /* UTDeck fill: the surface is the screen's size */
++    if (surface->fill_on)
++    {
++        width = surface->fill_width;
++        height = surface->fill_height;
++    }
++
+     TRACE("hwnd=%p window=%dx%d,%#x processing=%dx%d,%#x current=%dx%d,%#x\n",
+           surface->hwnd, win_width, win_height, window->state,
+           surface->processing.width, surface->processing.height,
+@@ -1269,6 +1335,21 @@ void wayland_surface_ensure_contents(struct wayland_surface *surface)
+     int width, height;
+     BOOL needs_contents;
+ 
++    /* UTDeck fill: the black screen-sized buffer instead of a dummy one */
++    if (surface->fill_on)
++    {
++        if (surface->content_width != surface->fill_width ||
++            surface->content_height != surface->fill_height)
++        {
++            if (wayland_surface_reconfigure(surface))
++            {
++                wayland_surface_attach_fill(surface);
++                wl_surface_commit(surface->wl_surface);
++            }
++        }
++        return;
++    }
++
+     width = surface->window.rect.right - surface->window.rect.left;
+     height = surface->window.rect.bottom - surface->window.rect.top;
+     needs_contents = surface->window.visible &&
+diff --git a/dlls/winewayland.drv/waylanddrv.h b/dlls/winewayland.drv/waylanddrv.h
+--- a/dlls/winewayland.drv/waylanddrv.h
++++ b/dlls/winewayland.drv/waylanddrv.h
+@@ -298,6 +298,11 @@ struct wayland_surface
+     struct wayland_window_config window;
+     int content_width, content_height;
+     HCURSOR hcursor;
++    /* UTDeck fill (win32u, UTDECK_FILL): the window is shown fullscreen over a black buffer of the
++     * screen's size, its picture being a client surface at the screen's origin */
++    BOOL fill_on;
++    int fill_width, fill_height;
++    struct wayland_shm_buffer *fill_buffer;
+ };
+ 
+ /**********************************************************************
+@@ -381,6 +386,10 @@ struct wayland_win_data
+     BOOL is_fullscreen;
+     BOOL managed;
+     BOOL layered_attribs_set;
++    /* UTDeck fill: set by win32u's window properties; the picture's rect in the screen */
++    BOOL fill_on;
++    RECT fill_dst;
++    int fill_width, fill_height;
+ };
+ 
+ struct wayland_win_data *wayland_win_data_get(HWND hwnd);
+@@ -410,6 +419,8 @@ void wayland_pointer_init(struct wl_pointer *wl_pointer);
+ void wayland_pointer_deinit(void);
+ void wayland_touch_init(struct wl_touch *wl_touch);
+ void wayland_surface_check_fullscreen_size(struct wayland_surface *surface);
++void wayland_win_data_update_fill(struct wayland_win_data *data);
++void wayland_surface_set_fill(struct wayland_surface *surface, BOOL on, int width, int height);
+ void wayland_touch_deinit(void);
+ void wayland_pointer_clear_constraint(void);
+ 
+diff --git a/dlls/winewayland.drv/window.c b/dlls/winewayland.drv/window.c
+--- a/dlls/winewayland.drv/window.c
++++ b/dlls/winewayland.drv/window.c
+@@ -172,6 +172,9 @@ static void wayland_win_data_get_config(struct wayland_win_data *data,
+     {
+         window_state |= WAYLAND_SURFACE_CONFIG_STATE_MAXIMIZED;
+     }
++    /* UTDeck fill: shown fullscreen, whatever its size */
++    if (data->fill_on && !(style & WS_MINIMIZE))
++        window_state = WAYLAND_SURFACE_CONFIG_STATE_FULLSCREEN;
+ 
+     conf->state = window_state;
+     conf->scale = NtUserGetSystemDpiForProcess(0) / 96.0;
+@@ -241,6 +244,8 @@ static BOOL wayland_win_data_create_wayland_surface(struct wayland_win_data *dat
+ 
+     if (visible && client) wayland_client_surface_attach(client, data->hwnd);
+     wayland_win_data_get_config(data, &surface->window);
++    if (role == WAYLAND_SURFACE_ROLE_TOPLEVEL)
++        wayland_surface_set_fill(surface, data->fill_on, data->fill_width, data->fill_height);
+ 
+     /* Size/position changes affect the effective pointer constraint, so update
+      * it as needed. */
+@@ -558,6 +563,46 @@ void wayland_surface_check_fullscreen_size(struct wayland_surface *surface)
+     wl_display_flush(process_wayland.wl_display);
+ }
+ 
++/* UTDeck fill: win32u marks a window smaller than its monitor, whose swapchain it scales over the
++ * whole screen, with two properties (see vulkan.c): the picture's rect in the screen and the
++ * screen's size. Read when the window presents a frame (with the window data locked); when they
++ * change, the window becomes (or stops being) fullscreen, with a black screen-sized buffer under
++ * its picture so that input anywhere on the panel reaches it (wayland_pointer.c maps it back). */
++void wayland_win_data_update_fill(struct wayland_win_data *data)
++{
++    static const WCHAR fill_prop[] = {'_','_','w','i','n','e','_','u','t','d','e','c','k','_','f','i','l','l',0};
++    static const WCHAR fill_size_prop[] = {'_','_','w','i','n','e','_','u','t','d','e','c','k','_','f','i','l','l','_','s','i','z','e',0};
++    ULONG_PTR rect = (ULONG_PTR)NtUserGetProp(data->hwnd, fill_prop);
++    ULONG_PTR size = rect ? (ULONG_PTR)NtUserGetProp(data->hwnd, fill_size_prop) : 0;
++    struct wayland_surface *surface = data->wayland_surface;
++    int width = size & 0xffff, height = (size >> 16) & 0xffff;
++    BOOL on = rect && width && height;
++    RECT dst = {0};
++
++    if (on)
++    {
++        dst.left = rect & 0xffff;
++        dst.top = (rect >> 16) & 0xffff;
++        dst.right = dst.left + ((rect >> 32) & 0xffff);
++        dst.bottom = dst.top + ((rect >> 48) & 0xffff);
++    }
++    else width = height = 0;
++    if (on == data->fill_on && EqualRect(&dst, &data->fill_dst) &&
++        width == data->fill_width && height == data->fill_height)
++        return;
++
++    TRACE("hwnd=%p fill %d, picture %s in %dx%d\n", data->hwnd, on, wine_dbgstr_rect(&dst), width, height);
++    data->fill_on = on;
++    data->fill_dst = dst;
++    data->fill_width = width;
++    data->fill_height = height;
++
++    if (!surface || surface->role != WAYLAND_SURFACE_ROLE_TOPLEVEL || !surface->xdg_toplevel) return;
++    wayland_win_data_get_config(data, &surface->window);
++    wayland_surface_set_fill(surface, on, width, height);
++    wayland_win_data_update_wayland_state(data);
++}
++
+ static void wayland_configure_window(HWND hwnd)
+ {
+     struct wayland_surface *surface;
+@@ -611,6 +656,19 @@ static void wayland_configure_window(HWND hwnd)
+     /* Sizes settle in steps: check the fullscreen size once they have been quiet for 0.5 s. */
+     surface->fullscreen_check_time = NtGetTickCount() + 500;
+ 
++    /* UTDeck fill: the window keeps its own size; win32u is told the size the compositor shows it
++     * at (the screen, in its current orientation), and scales the picture into that. */
++    if (data->fill_on && (state & WAYLAND_SURFACE_CONFIG_STATE_FULLSCREEN) && width > 0 && height > 0)
++    {
++        static const WCHAR fill_target_prop[] = {'_','_','w','i','n','e','_','u','t','d','e','c','k','_','f','i','l','l','_','t','a','r','g','e','t',0};
++        ULONG_PTR target = (width & 0xffff) | ((ULONG_PTR)(height & 0xffff) << 16);
++        if ((ULONG_PTR)NtUserGetProp(hwnd, fill_target_prop) != target)
++        {
++            TRACE("hwnd=%p fill target %dx%d\n", hwnd, width, height);
++            NtUserSetProp(hwnd, fill_target_prop, (HANDLE)target);
++        }
++    }
++
+     if ((state & WAYLAND_SURFACE_CONFIG_STATE_RESIZING) && !surface->resizing)
+     {
+         surface->resizing = TRUE;
+@@ -671,6 +729,9 @@ static void wayland_configure_window(HWND hwnd)
+         if (!rotated) flags |= SWP_NOSIZE;
+         else TRACE("hwnd=%p fullscreen window follows the rotation to %dx%d\n", hwnd, width, height);
+     }
++    /* UTDeck fill: never resized by the compositor (the game keeps the size it chose; the picture
++     * is scaled into the screen instead) */
++    if (data->fill_on) flags |= SWP_NOSIZE;
+ 
+     wayland_surface_coords_to_window(surface, width, height,
+                                      &window_width, &window_height);
+@@ -957,6 +1018,7 @@ void ensure_window_surface_contents(HWND hwnd)
+ 
+     if (!(data = wayland_win_data_get(hwnd))) return;
+ 
++    wayland_win_data_update_fill(data);
+     if ((wayland_surface = data->wayland_surface))
+     {
+         wayland_surface_ensure_contents(wayland_surface);
