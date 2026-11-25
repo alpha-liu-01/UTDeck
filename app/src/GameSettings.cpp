@@ -20,7 +20,8 @@ const QStringList kKnown = {QStringLiteral("UTDECK_RUNTIME"), QStringLiteral("GA
                             QStringLiteral("UTDECK_RESOLUTION"), QStringLiteral("HODLL"),
                             QStringLiteral("UTDECK_BOOST"), QStringLiteral("UTDECK_PAUSE"), QStringLiteral("UTDECK_KEEP_AWAKE"),
                             QStringLiteral("FEX_X87REDUCEDPRECISION"), QStringLiteral("UTDECK_FILL"),
-                            QStringLiteral("UTDECK_OVERLAY"), QStringLiteral("UTDECK_FPS_LIMIT")};
+                            QStringLiteral("UTDECK_OVERLAY"), QStringLiteral("UTDECK_FPS_LIMIT"),
+                            QStringLiteral("UTDECK_SCALE")};
 
 // The performance overlay's levels (stage 5.1; game-run.sh turns them into MangoHud's settings) and
 // its places on the screen.
@@ -28,6 +29,9 @@ const QStringList kOverlayLevels = {QStringLiteral("off"), QStringLiteral("fps")
                                     QStringLiteral("full")};
 const QStringList kOverlayPositions = {QStringLiteral("top-left"), QStringLiteral("top-center"),
                                        QStringLiteral("top-right")};
+// How a game's picture smaller than the screen is scaled (stage 4.10; Wine patch 0006, our Wine base):
+// fit (the default: as large as possible, its shape kept), stretch, center (1:1).
+const QStringList kScales = {QStringLiteral("fit"), QStringLiteral("stretch"), QStringLiteral("center")};
 // The frame rate limits (stage 5.2): each divides a refresh rate phones' panels offer.
 const QStringList kFpsLimits = {QStringLiteral("off"), QStringLiteral("28"), QStringLiteral("30"), QStringLiteral("40"),
                                 QStringLiteral("45"), QStringLiteral("48"), QStringLiteral("60")};
@@ -143,6 +147,9 @@ QVariantMap GameSettings::load(const QString& app_id) const
   // The game's own frame rate limit, or "" for the one in Settings (user.env).
   const QString limit = env.value(QStringLiteral("UTDECK_FPS_LIMIT"));
   s[QStringLiteral("fpsLimit")] = kFpsLimits.contains(limit) ? limit : QString();
+  // The game's own scaling, or "" for the one in Settings (user.env).
+  const QString scale = env.value(QStringLiteral("UTDECK_SCALE"));
+  s[QStringLiteral("scale")] = kScales.contains(scale) ? scale : QString();
   // The other NAME=value lines, as the advanced text.
   QStringList advanced;
   QFile file(path);
@@ -188,6 +195,8 @@ bool GameSettings::save(const QString& app_id, const QVariantMap& s)
   want[QStringLiteral("UTDECK_OVERLAY")] = kOverlayLevels.contains(overlay) ? overlay : QString();
   const QString limit = s.value(QStringLiteral("fpsLimit")).toString();
   want[QStringLiteral("UTDECK_FPS_LIMIT")] = kFpsLimits.contains(limit) ? limit : QString();
+  const QString scale = s.value(QStringLiteral("scale")).toString();
+  want[QStringLiteral("UTDECK_SCALE")] = kScales.contains(scale) ? scale : QString();
 
   // The old file: comments and blank lines stay; a setting's line is replaced where it was.
   QStringList out;
@@ -256,11 +265,13 @@ QVariantMap GameSettings::loadGlobal() const
   const QString overlay = user.value(QStringLiteral("UTDECK_OVERLAY"));
   const QString position = user.value(QStringLiteral("UTDECK_OVERLAY_POSITION"));
   const QString limit = user.value(QStringLiteral("UTDECK_FPS_LIMIT"));
+  const QString scale = user.value(QStringLiteral("UTDECK_SCALE"));
   const QHash<QString, QString> defaults = ReadEnv(Wine() + QStringLiteral("/defaults.env"));
   QVariantMap g;
   g[QStringLiteral("overlay")] = kOverlayLevels.contains(overlay) ? overlay : QStringLiteral("off");
   g[QStringLiteral("overlayPosition")] = kOverlayPositions.contains(position) ? position : QStringLiteral("top-left");
   g[QStringLiteral("fpsLimit")] = kFpsLimits.contains(limit) ? limit : QStringLiteral("off");
+  g[QStringLiteral("scale")] = kScales.contains(scale) ? scale : QStringLiteral("fit");
   // Steam's memory pushed out during a game (stage 5.3): on unless user.env or defaults.env says 0.
   g[QStringLiteral("steamReclaim")] =
       user.value(QStringLiteral("UTDECK_STEAM_RECLAIM"), defaults.value(QStringLiteral("UTDECK_STEAM_RECLAIM"), QStringLiteral("1")))
@@ -273,6 +284,7 @@ bool GameSettings::saveGlobal(const QVariantMap& settings)
   const QString overlay = settings.value(QStringLiteral("overlay")).toString();
   const QString position = settings.value(QStringLiteral("overlayPosition")).toString();
   const QString limit = settings.value(QStringLiteral("fpsLimit")).toString();
+  const QString scale = settings.value(QStringLiteral("scale")).toString();
   QStringList out;
   out << QStringLiteral("# UTDeck: the user's settings for all games (the app's Settings page); a game's own")
       << QStringLiteral("# settings (its utdeck-env) win over these, and these over defaults.env.");
@@ -282,6 +294,8 @@ bool GameSettings::saveGlobal(const QVariantMap& settings)
     out << QStringLiteral("UTDECK_OVERLAY_POSITION=") + position;
   if (kFpsLimits.contains(limit) && limit != QLatin1String("off"))
     out << QStringLiteral("UTDECK_FPS_LIMIT=") + limit;
+  if (kScales.contains(scale) && scale != QLatin1String("fit"))
+    out << QStringLiteral("UTDECK_SCALE=") + scale;
   // Written only when it differs from defaults.env's.
   const QHash<QString, QString> defaults = ReadEnv(Wine() + QStringLiteral("/defaults.env"));
   const bool reclaim_default = defaults.value(QStringLiteral("UTDECK_STEAM_RECLAIM"), QStringLiteral("1")) != QLatin1String("0");

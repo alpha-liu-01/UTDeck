@@ -33,6 +33,9 @@ Page {
     readonly property var overlayLevels: ["", "off", "fps", "frametime", "full"]
     readonly property var overlayNames: ({off: i18n.tr("Off"), fps: i18n.tr("Frame rate"),
                                           frametime: i18n.tr("Frame rate and frame time"), full: i18n.tr("Full")})
+    // How a smaller picture is scaled (stage 4.10): "" is the choice set for all games in Settings.
+    readonly property var scales: ["", "fit", "stretch", "center"]
+    readonly property var scaleNames: ({fit: i18n.tr("Fit"), stretch: i18n.tr("Stretch"), center: i18n.tr("Centered (1:1)")})
     // The frame rate limit (stage 5.2): "" is the limit set for all games in Settings.
     readonly property var fpsLimits: ["", "off", "28", "30", "40", "45", "48", "60"]
     function fpsLimitName(limit) {
@@ -54,6 +57,7 @@ Page {
             translator: ["auto", "box64", "fex"][translatorSelector.selectedIndex],
             overlay: page.overlayLevels[overlaySelector.selectedIndex],
             fpsLimit: page.fpsLimits[fpsLimitSelector.selectedIndex],
+            scale: page.scales[scaleSelector.selectedIndex],
             boost: switches.boost,
             pause: switches.pause,
             awake: switches.awake,
@@ -72,6 +76,7 @@ Page {
         translatorSelector.selectedIndex = Math.max(0, ["auto", "box64", "fex"].indexOf(settings.translator))
         overlaySelector.selectedIndex = Math.max(0, page.overlayLevels.indexOf(settings.overlay || ""))
         fpsLimitSelector.selectedIndex = Math.max(0, page.fpsLimits.indexOf(settings.fpsLimit || ""))
+        scaleSelector.selectedIndex = Math.max(0, page.scales.indexOf(settings.scale || ""))
         switches.boost = !!settings.boost
         switches.pause = !!settings.pause
         switches.awake = !!settings.awake
@@ -189,6 +194,22 @@ Page {
                 wrapMode: Text.Wrap
                 color: theme.palette.normal.backgroundSecondaryText
                 text: i18n.tr("Most games set their own resolution, in their options or their launcher, and this changes nothing for them. It is for a game that only takes the desktop's size: Wine then scales the smaller picture to the screen.")
+            }
+
+            // --- Picture scaling (stage 4.10; Wine patch 0006) ---
+            OptionSelector {
+                id: scaleSelector
+
+                text: i18n.tr("Picture scaling")
+                model: [i18n.tr("As in Settings (%1)").arg(page.scaleNames[gameSettings.loadGlobal().scale]),
+                        page.scaleNames.fit, page.scaleNames.stretch, page.scaleNames.center]
+            }
+
+            Label {
+                width: parent.width
+                wrapMode: Text.Wrap
+                color: theme.palette.normal.backgroundSecondaryText
+                text: i18n.tr("For a game whose picture is smaller than the screen (a lower resolution): Fit makes it as large as possible and keeps its shape, Stretch fills the whole screen, Centered shows it pixel for pixel. Only on the default Wine base.")
             }
 
             // --- 32-bit code ---

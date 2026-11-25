@@ -13,7 +13,8 @@
 // or WxH), translator ("auto", "box64" or "fex", for 32-bit code), overlay (the performance overlay's level,
 // stage 5.1: "off", "fps", "frametime", "full", or "" for the one in Settings), fpsLimit (the frame
 // rate limit, stage 5.2: "off", "28", "30", "40", "45", "48", "60", or "" for the one in Settings),
-// and the switches
+// scale (a picture smaller than the screen, stage 4.10: "fit", "stretch", "center", or "" for the one
+// in Settings), and the switches
 // boost, pause, x87, fill (true = on; the default comes from defaults.env, so a switch at its default
 // writes no line), plus
 // advanced: the file's other NAME=value lines as text. save() writes them back: comments and blank lines
@@ -43,8 +44,9 @@ public:
   // game's own settings and defaults.env (defaults.env is replaced with each app update, user.env
   // stays): overlay ("off", "fps", "frametime" or "full"), overlayPosition ("top-left",
   // "top-center" or "top-right"), fpsLimit ("off", "28", "30", "40", "45", "48" or "60") and
-  // steamReclaim (stage 5.3: hidden Steam pushed out of RAM during a game; true unless turned off). A
-  // value at its default (off, top-left, defaults.env's) writes no line.
+  // steamReclaim (stage 5.3: hidden Steam pushed out of RAM during a game; true unless turned off) and
+  // scale ("fit", "stretch" or "center", stage 4.10). A value at its default (off, top-left, fit,
+  // defaults.env's) writes no line.
   Q_INVOKABLE QVariantMap loadGlobal() const;
   Q_INVOKABLE bool saveGlobal(const QVariantMap& settings);
   Q_INVOKABLE bool protonInstalled() const;

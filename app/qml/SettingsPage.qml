@@ -13,6 +13,7 @@ Page {
     readonly property var overlayLevels: ["off", "fps", "frametime", "full"]
     readonly property var overlayPositions: ["top-left", "top-center", "top-right"]
     readonly property var fpsLimits: ["off", "28", "30", "40", "45", "48", "60"]
+    readonly property var scales: ["fit", "stretch", "center"]
     // Set once the selectors show the saved values: a change before that is the page filling them in.
     property bool overlayReady: false
 
@@ -23,6 +24,7 @@ Page {
             overlay: page.overlayLevels[overlaySelector.selectedIndex],
             overlayPosition: page.overlayPositions[positionSelector.selectedIndex],
             fpsLimit: page.fpsLimits[fpsLimitSelector.selectedIndex],
+            scale: page.scales[scaleSelector.selectedIndex],
             steamReclaim: steamReclaimSwitch.checked
         })
     }
@@ -41,6 +43,7 @@ Page {
         positionSelector.selectedIndex = Math.max(0, page.overlayPositions.indexOf(g.overlayPosition))
         fpsLimitSelector.selectedIndex = Math.max(0, page.fpsLimits.indexOf(g.fpsLimit))
         steamReclaimSwitch.checked = g.steamReclaim
+        scaleSelector.selectedIndex = Math.max(0, page.scales.indexOf(g.scale))
         page.overlayReady = true
     }
 
@@ -125,6 +128,26 @@ Page {
                 wrapMode: Text.Wrap
                 color: theme.palette.normal.backgroundSecondaryText
                 text: i18n.tr("Games draw no more pictures a second than this, from their next start: steadier frame times, a cooler phone, a longer battery. 30 and 60 match the screen's 60 Hz exactly. A game's own settings page can choose another limit.")
+            }
+
+            Label {
+                text: i18n.tr("Picture scaling")
+                textSize: Label.Large
+            }
+
+            OptionSelector {
+                id: scaleSelector
+
+                text: i18n.tr("For all games")
+                model: [i18n.tr("Fit"), i18n.tr("Stretch"), i18n.tr("Centered (1:1)")]
+                onSelectedIndexChanged: page.saveOverlay()
+            }
+
+            Label {
+                width: parent.width
+                wrapMode: Text.Wrap
+                color: theme.palette.normal.backgroundSecondaryText
+                text: i18n.tr("For a game whose picture is smaller than the screen: Fit makes it as large as possible and keeps its shape, Stretch fills the whole screen, Centered shows it pixel for pixel. From the game's next start, on the default Wine base. A game's own settings page can choose another.")
             }
 
             Label {

@@ -86,6 +86,56 @@ Checked with 0.3.56 (the maintainer's OK) on the Nothing Phone (1), 0021's `ntdl
 by hand: Celeste's "32-bit code" back to Automatic (its settings name no translator); the log "32-bit
 .NET program (Celeste.exe): FEX for its 32-bit code"; it played (50 s, 56.9 fps on average, `exit 0`).
 
+## Need for Speed Most Wanted (2026-11-25)
+
+**On our base** (00:40): Steam starts the game through `steam2ea://launchgame/1262560`, which hands it
+to the EA app (installed by Steam's install script in `C:\Program Files\Electronic Arts\EA Desktop`).
+Its window stayed blank; Wine logged `D3D11: Failed to write shared resource info for a texture` and
+`err:vulkan:vkGetSwapchainImagesKHR Exception 0xc0000005 in Unix call`: a crash inside Wine's Vulkan
+path while the EA app's Chromium draws through Direct3D 11 (DXVK). Not looked into yet; our Wine
+patches 0005 and 0006 touch that path. (Wine's own logs only; the EA app's files are not read.)
+
+**On Proton's base** (the maintainer, 01:37): the EA app and its sign-in worked, the game started:
+- At 2400x1080 the window was black with the game's sound playing; the picture only changed after a
+  trip to Lomiri's app switcher. At 1280x720 it showed normally, without graphical errors.
+- Windowed: Proton's patch set has no 0010/0011 (fill), as Ys IX on Proton's base.
+- About 18 fps at 1280x720 and its lowest settings, held by one CPU thread: the fastest core (`c7`)
+  96-98 % at its 2515 MHz, the GPU about 60 % at 450 MHz. `NFS13.exe` is 32-bit, and Proton's Wine
+  runs 32-bit code with FEX by default.
+
+**(D) Box64 against FEX** (the maintainer, 01:52, Proton's base, "32-bit code" Box64, the same spot):
+14-18 fps with the overlay on, against about 18 on FEX; the fastest core again 96-97 % at 2515 MHz, the
+GPU 66-74 %. And the same frame rate at 800x600, 1280x720 and 2000x900: the game is held entirely by one
+CPU thread, its x86 code translated; the GPU does not count. Neither translator helps as it is.
+FEX without its x86 memory-order emulation (`FEX_TSOENABLED=0`, stage 3.4's leftover 11; it can break a
+game whose threads rely on that order): 14-18 fps again. The cost is not TSO; the game's 32-bit code is
+more than one of this phone's cores can run translated at 30 fps. **For the table: runs on Proton's
+base, 14-18 fps, CPU-bound (one thread)**; the TSO line taken out again (no gain, and a risk).
+
+**What it needs, one at a time**: (D) Box64 against FEX for its 32-bit code (stage 3.4 chose Box64 for
+speed); (C) the black picture at 2400x1080 on Proton's base; (B) fill on Proton's base (0010 and 0011
+brought over); (E) the EA app on our base; and for every game (A) the scaling choice in the app: patch
+0006 already has `UTDECK_SCALE` = `fit` (the default), `stretch`, `center` (1:1) and `off`, but only a
+test script ever set it (the maintainer's question, 2026-11-25).
+
+## (A) The scaling choice in the app (2026-11-25)
+
+Wine patch 0006 (our base) scales a game's picture that is smaller than the screen, by `UTDECK_SCALE`:
+`fit` (also when unset: as large as possible, the shape kept), `stretch`, `center` (1:1); anything
+else turns the scaler off. Proton's base has its own patch 0006 (Valve's fullscreen hack made to work on
+Wayland) and no `UTDECK_SCALE`. Only a test script had ever set it. Now: "Picture scaling" on a game's
+page (As in Settings, Fit, Stretch, Centered (1:1)) and in Settings for all games (`user.env`, written
+only when not Fit); `game-run.sh` needs no change, as every `UTDECK_*` setting reaches Wine from a
+game's settings or `user.env`. App 0.3.57.
+
+Checked with 0.3.57 (the maintainer's OK) on the Nothing Phone (1), Celeste windowed at 1280x720 in its
+own video options, its page's "Picture scaling" set to each choice in turn with a restart between
+(12:31-12:37): **Fit, Stretch and Centered (1:1) each showed as described** (the maintainer): Fit as
+large as the screen allows with bars left and right, Stretch over the whole screen, Centered pixel for
+pixel in the middle. Afterwards the game's page back on "As in Settings" (its `utdeck-env` without
+`UTDECK_SCALE`) and Settings on Fit (`user.env` without the line). A game's own settings are not
+written into its run log (only `user.env`'s are, "user settings:"); the choice is seen on the screen.
+
 ## Then
 
 - Each new game with the overlay (Full) for its numbers, a keyboard and a mouse tried in each.
@@ -95,3 +145,7 @@ by hand: Celeste's "32-bit code" back to Automatic (its settings name no transla
 ## Status
 
 - 2026-11-25: planned (this file); the two new games' folders checked (no DRM bypasses).
+- 2026-11-25: Celeste plays (patch 0021 by hand, FEX automatically for 32-bit .NET games, app
+  0.3.56); Need for Speed runs on Proton's base at 14-18 fps, CPU-bound; (A) the scaling choice in
+  the app (0.3.57), checked with Celeste. Next: (B) and (C), fill and the black picture on Proton's
+  base; then (E).
