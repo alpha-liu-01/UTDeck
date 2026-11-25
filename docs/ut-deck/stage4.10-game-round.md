@@ -331,7 +331,38 @@ which only pointer locking, also missing in Lomiri, would avoid). Runtime 11.16-
 one kept as `winewayland.so.before-0025`): a finger's drag draws curves (swipes logged with their
 whole path, e.g. 1487 px right in 3.8 s); raw input counts the mouse's moves (200-700 a second) and
 its total follows them; mouse-look works (the cursor held at the middle, 1200, 540, while the raw
-total moves); right and middle buttons work. Not seen in any run yet: a wheel event, X1/X2.
+total moves); right and middle buttons work.
+
+**The wheel and the side buttons** (the maintainer: neither works). `WAYLAND_DEBUG=client` during the
+keyboard and mouse test (18:00): the wheel's notches came only as `wl_pointer.axis`, -10 per notch
+down and +10 up, never `axis_discrete` or `axis_value120` (Wine binds `wl_seat` version 6), and the
+driver turned only those two into wheel input. Fixed with patch 0027 (a frame's axis values become
+wheel input at 12 per unit when the frame has no discrete event), runtime 11.16-20261125.6
+(0001-0027). The side buttons: Lomiri sent nothing for them, neither a button nor a key; whether the
+kernel sees them is checked next (the mouse's own input device, `evtest.py`).
+
+**Wheel checked** (the maintainer, 18:08, `winewayland.so` with 0025-0027): each notch arrives as one
+wheel message, -120 down and +120 up, as on Windows. The first reader for the side buttons, started
+from adb with `setsid nohup`, was ended with adb's session when USB was unplugged for the mouse (the
+phone has one USB port): a reader that must outlive adb runs as a user service (`systemd-run --user`).
+
+**The side buttons** (18:11, a reader started as a user service, the mouse in the phone's only USB
+port): the kernel sees them. The mouse (`Compx VXE Mouse 1K Dongle`) reports `BTN_LEFT`-`BTN_EXTRA`
+(0x110-0x114), and each press came as `0x113` (side) and `0x114` (extra), down and up. Lomiri sent
+Wine nothing for them (no `wl_pointer.button` in the protocol logs), so they are lost inside Lomiri,
+between the kernel and Wayland clients, and no Wine patch can bring them back: left open, for
+UBports (Lomiri, qtmir, Mir).
+
+**Item 2 done** (keyboard, mouse and touch through test programs; the maintainer, 2026-11-25):
+- keyboard: everything, raw keys too;
+- mouse: cursor, left, right and middle, double clicks, raw motion (0026), mouse-look, the wheel
+  (0027); side buttons lost in Lomiri (above); raw motion stops at the screen's edge (no pointer
+  locking in Lomiri);
+- touch: the first finger as the mouse, drags with their whole path (0025); more fingers, pointer and
+  `WM_TOUCH` messages, gestures: stage 5.5, with the touch test as its baseline (no pointer or
+  `WM_TOUCH` message, no touch screen reported to programs);
+- patches 0025-0027 (`winewayland.so`) swapped into the phone's runtime by hand, the original kept as
+  `winewayland.so.before-0025`, until the next runtime release.
 
 ## Then
 
@@ -354,3 +385,6 @@ total moves); right and middle buttons work. Not seen in any run yet: a wheel ev
   lost the game's x86 translator: the EA app's installers spun under Box64) and 0024 (a window with a
   title bar the size of the screen taken for fullscreen); 0022 and 0023 checked, 0024's own case
   watched. (E) closed. Next: the rest of the round (below, "Then").
+- 2026-11-25: item 2, input, with two test programs of our own (keyboard and mouse, touch) instead of
+  game by game: patches 0025 (a finger's motion), 0026 (raw mouse motion without the relative
+  pointer protocol) and 0027 (the wheel from axis values); side buttons lost in Lomiri. Item 2 done.

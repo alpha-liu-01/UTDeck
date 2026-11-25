@@ -1,0 +1,89 @@
+From: UTDeck
+Subject: [PATCH] winewayland: scroll from axis values when the compositor sends no steps
+
+The Wayland driver turned only wl_pointer.axis_discrete and axis_value120 into wheel input and
+ignored wl_pointer.axis. Lomiri (Mir) sends a mouse wheel's notches only as axis values, 10 per notch
+(-10 down, +10 up), on wl_seat version 6, never a discrete or value120 event: the wheel did nothing in
+any Windows program (WAYLAND_DEBUG=client during UTDeck's keyboard and mouse test: twelve
+wl_pointer.axis events, no wheel message; the Nothing Phone (1), stage 4.10).
+
+A frame's axis values are now sent as wheel input at 12 per unit (120, WHEEL_DELTA, a notch) when the
+frame had no discrete or value120 event (compositors that send those are handled as before); the
+rest of a unit carries over to the next frame, so a touchpad's small steps add up, and axis_stop
+clears it.
+---
+diff --git a/dlls/winewayland.drv/wayland_pointer.c b/dlls/winewayland.drv/wayland_pointer.c
+--- a/dlls/winewayland.drv/wayland_pointer.c
++++ b/dlls/winewayland.drv/wayland_pointer.c
+@@ -320,14 +320,55 @@
+     NtUserSendHardwareInput(hwnd, SEND_HWMSG_RAWINPUT, &input, 0);
+ }
+ 
++/* UTDeck: scrolling from wl_pointer.axis alone. Some compositors (Lomiri's Mir) send a wheel's
++ * notches only as axis values (10 per notch, positive down or right), never axis_discrete or
++ * axis_value120, which were the only scroll events handled: the wheel did nothing. A frame's axis
++ * values are now turned into wheel input at 12 per unit (120 a notch) when that frame had no
++ * discrete or value120 event; the rest of a unit is kept for the next frame (touchpads). All
++ * pointer events come on the driver's event thread. */
++static BOOL axis_counted;          /* this frame had axis_discrete or axis_value120 */
++static double axis_pending[2], axis_rest[2];
++
+ static void pointer_handle_axis(void *data, struct wl_pointer *wl_pointer,
+                                 uint32_t time, uint32_t axis, wl_fixed_t value)
+ {
++    if (axis <= WL_POINTER_AXIS_HORIZONTAL_SCROLL) axis_pending[axis] += wl_fixed_to_double(value);
++}
++
++static void send_axis_values(void)
++{
++    INPUT input = { .type = INPUT_MOUSE };
++    HWND hwnd = wayland_pointer_get_focused_hwnd();
++    int i, amount;
++
++    for (i = 0; i < 2; i++)
++    {
++        if (axis_counted || !axis_pending[i] || !hwnd) continue;
++        axis_rest[i] += axis_pending[i] * (WHEEL_DELTA / 10.0);
++        amount = (int)axis_rest[i];
++        axis_rest[i] -= amount;
++        if (!amount) continue;
++        if (i == WL_POINTER_AXIS_VERTICAL_SCROLL)
++        {
++            input.mi.dwFlags = MOUSEEVENTF_WHEEL;
++            input.mi.mouseData = -amount;
++        }
++        else
++        {
++            input.mi.dwFlags = MOUSEEVENTF_HWHEEL;
++            input.mi.mouseData = amount;
++        }
++        TRACE("hwnd=%p axis=%d value=%.2f wheel=%d\n", hwnd, i, axis_pending[i], (int)input.mi.mouseData);
++        NtUserSendHardwareInput(hwnd, SEND_HWMSG_RAWINPUT, &input, 0);
++    }
++    axis_pending[0] = axis_pending[1] = 0;
++    axis_counted = FALSE;
+ }
+ 
+ static void pointer_handle_frame(void *data, struct wl_pointer *wl_pointer)
+ {
+     static const INPUT input = { .type = INPUT_MOUSE, .mi.dwFlags = MOUSEEVENTF_MOVE_NOCOALESCE };
++    send_axis_values();
+     NtUserSendHardwareInput(NULL, SEND_HWMSG_RAWINPUT, &input, 0); /* flush win32u accumulated motion */
+ }
+ 
+@@ -339,6 +380,7 @@
+ static void pointer_handle_axis_stop(void *data, struct wl_pointer *wl_pointer,
+                                      uint32_t time, uint32_t axis)
+ {
++    if (axis <= WL_POINTER_AXIS_HORIZONTAL_SCROLL) axis_rest[axis] = 0;
+ }
+ 
+ static void pointer_handle_axis_value120(void *data, struct wl_pointer *wl_pointer,
+@@ -347,6 +389,7 @@
+     INPUT input = {0};
+     HWND hwnd;
+ 
++    axis_counted = TRUE;   /* UTDeck: this frame's axis values are the same scroll */
+     if (!(hwnd = wayland_pointer_get_focused_hwnd())) return;
+ 
+     input.type = INPUT_MOUSE;

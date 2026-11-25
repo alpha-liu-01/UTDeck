@@ -1714,3 +1714,16 @@ Problems met while building UTDeck on the Redmi Note 12 5G (stone). Details in `
   (`waylanddrv`; the pointer code logs to `cursor`) and cost the maintainer a run. Lessons: before a
   traced run, read the file's `WINE_DEFAULT_DEBUG_CHANNEL`; and when an upstream path is copied for a
   new input (touch from the mouse), copy its closing step (the frame) too.
+- **A reader that died with adb (stage 4.10, 2026-11-25).** The phone has one USB port, so the
+  mouse could only be tested with adb unplugged. A reader started from adb with `setsid nohup` was
+  ended when the cable came out (the adb session's processes are ended with it), and the maintainer's
+  presses were lost. Started as a user service (`systemd-run --user`) it ran on. Lesson: a measurement
+  that must run while adb is unplugged is started outside adb's session, and checked to be still
+  running before the cable comes out.
+- **Follow an input down to the kernel before blaming Wine (stage 4.10, 2026-11-25).** The mouse's
+  side buttons did nothing in Windows programs. `WAYLAND_DEBUG=client` showed Lomiri sending no event
+  for them; the kernel's own events showed every press (`BTN_SIDE`, `BTN_EXTRA`). The same log showed
+  why the wheel failed: Lomiri sends only `wl_pointer.axis` values, never the discrete steps Wine read
+  (fixed with patch 0027). Lesson: for an input that does not arrive, read three layers (the kernel's
+  evdev events, the compositor's Wayland events, the program's messages); the first layer where it is
+  missing is where the fix goes.
