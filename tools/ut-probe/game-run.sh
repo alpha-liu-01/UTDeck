@@ -301,6 +301,48 @@ esac
 # with a controller, nobody touches the screen, and its timeout turned it off mid-game); not for an
 # install script. Released when the game ends, or as soon as this helper ends for any reason.
 [ "${UTDECK_KEEP_AWAKE:-0}" = 1 ] && [ "${UTDECK_SETUP_RUN:-0}" != 1 ] && { python3 -I "$W/utdeck-awake.py" game $$ "$B.log" & AP=$!; }
+# Steam's memory during a game (stage 5.3): UTDECK_STEAM_RECLAIM=1 (defaults.env; Settings turns it
+# off) pushes hidden Steam's own processes, its client and its web helper (the Chromium behind its
+# interface, which nobody sees here), out of RAM once the game is up: through /proc/<pid>/reclaim (a
+# Qualcomm/Android kernel's per-process reclaim), their pages go to zram (compressed swap in RAM) and
+# their file pages are dropped. Measured in Ys IX's town on the Nothing Phone (1): about 360 MB more for
+# the game, Steam took back only about 50 MB in 3 minutes on its own, and the game's cloud save at its
+# end still uploaded. Not the game, not Wine: they share Steam's cgroup (Steam starts its games), which
+# is why the group's own memory limit is not used. It waits until the game's window is in front, and
+# 20 s more, so Steam's work at a game's start (its launch, the cloud download) is over; a game that
+# ends first ends it. Also for the user's own games while Steam runs in the background.
+if [ "${UTDECK_STEAM_RECLAIM:-0}" = 1 ] && [ "${UTDECK_SETUP_RUN:-0}" != 1 ]; then
+    (
+        steam_pids() { pgrep -u "$(id -u)" -f "^$HOME/.local/share/Steam/steamrtarm64/steamwebhelper"; pgrep -u "$(id -u)" -x steam; }
+        steam_mb() {   # Steam's processes' share of RAM (PSS), in MB
+            t=0
+            for p in $(steam_pids); do
+                v=$(awk '/^Pss:/{print $2}' /proc/$p/smaps_rollup 2>/dev/null)
+                t=$((t + ${v:-0}))
+            done
+            echo $((t / 1024))
+        }
+        i=0
+        while [ "$(cat "$UTDECK_FOCUS_FILE" 2>/dev/null)" != 1 ]; do
+            kill -0 $G 2>/dev/null || exit 0
+            i=$((i + 1)); [ $i -ge 600 ] && exit 0   # never in front within 10 minutes: left as it is
+            sleep 1
+        done
+        sleep 20
+        kill -0 $G 2>/dev/null || exit 0
+        [ -n "$(steam_pids)" ] || exit 0   # Steam not running (an own game, Steam off)
+        before=$(steam_mb) n=0
+        for p in $(steam_pids); do
+            echo all > /proc/$p/reclaim 2>/dev/null && n=$((n + 1))
+        done
+        if [ $n -gt 0 ]; then
+            echo "steam memory: $n of Steam's processes pushed out of RAM, $before MB -> $(steam_mb) MB" >> $B.log
+        else
+            echo "steam memory: this kernel has no /proc/<pid>/reclaim, Steam left as it is" >> $B.log
+        fi
+    ) &
+    RP=$!
+fi
 # Install scripts (stage 4.3): a Visual C++ installer that logged its exit but never ends is ended
 # (utdeck-setupwatch.py), so the install script and the game's first launch go on.
 [ "${UTDECK_SETUP_RUN:-0}" = 1 ] && python3 "$W/utdeck-setupwatch.py" "$G" "$B.log" &
@@ -355,6 +397,7 @@ done
 # The game's process has ended: the app's library comes back (only if the file is still this run's).
 read -r _ pid _ < "$STATE/game" 2>/dev/null && [ "$pid" = $$ ] && rm -f "$STATE/game"
 [ -n "${AP:-}" ] && kill $AP 2>/dev/null   # the screen's own timeout applies again
+[ -n "${RP:-}" ] && kill $RP 2>/dev/null   # Steam's memory helper, if it still waits
 [ -n "${BP:-}" ] && wait $BP   # its summary line, within 2 s of the game's end
 [ -n "${PP:-}" ] && wait $PP
 echo "exit $rc" >> $B.log

@@ -251,10 +251,15 @@ QVariantMap GameSettings::loadGlobal() const
   const QString overlay = user.value(QStringLiteral("UTDECK_OVERLAY"));
   const QString position = user.value(QStringLiteral("UTDECK_OVERLAY_POSITION"));
   const QString limit = user.value(QStringLiteral("UTDECK_FPS_LIMIT"));
+  const QHash<QString, QString> defaults = ReadEnv(Wine() + QStringLiteral("/defaults.env"));
   QVariantMap g;
   g[QStringLiteral("overlay")] = kOverlayLevels.contains(overlay) ? overlay : QStringLiteral("off");
   g[QStringLiteral("overlayPosition")] = kOverlayPositions.contains(position) ? position : QStringLiteral("top-left");
   g[QStringLiteral("fpsLimit")] = kFpsLimits.contains(limit) ? limit : QStringLiteral("off");
+  // Steam's memory pushed out during a game (stage 5.3): on unless user.env or defaults.env says 0.
+  g[QStringLiteral("steamReclaim")] =
+      user.value(QStringLiteral("UTDECK_STEAM_RECLAIM"), defaults.value(QStringLiteral("UTDECK_STEAM_RECLAIM"), QStringLiteral("1")))
+      != QLatin1String("0");
   return g;
 }
 
@@ -272,6 +277,11 @@ bool GameSettings::saveGlobal(const QVariantMap& settings)
     out << QStringLiteral("UTDECK_OVERLAY_POSITION=") + position;
   if (kFpsLimits.contains(limit) && limit != QLatin1String("off"))
     out << QStringLiteral("UTDECK_FPS_LIMIT=") + limit;
+  // Written only when it differs from defaults.env's.
+  const QHash<QString, QString> defaults = ReadEnv(Wine() + QStringLiteral("/defaults.env"));
+  const bool reclaim_default = defaults.value(QStringLiteral("UTDECK_STEAM_RECLAIM"), QStringLiteral("1")) != QLatin1String("0");
+  if (settings.contains(QStringLiteral("steamReclaim")) && settings.value(QStringLiteral("steamReclaim")).toBool() != reclaim_default)
+    out << QStringLiteral("UTDECK_STEAM_RECLAIM=") + (settings.value(QStringLiteral("steamReclaim")).toBool() ? QStringLiteral("1") : QStringLiteral("0"));
   const QString path = Wine() + QStringLiteral("/user.env");
   QFile file(path + QStringLiteral(".new"));
   if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text))

@@ -5,7 +5,8 @@ import Lomiri.Components
 // its switch (on, hidden Steam runs while the app does; off, only while a Steam game runs, saving
 // about 1.3 GB of memory) and its state. Stage 4.4: the Controllers page. Stage 5.1: the performance
 // overlay for all games (each game's settings page can choose its own) and where it sits, saved to
-// wine/user.env at once. Stage 5.2: the frame rate limit for all games, saved the same way.
+// wine/user.env at once. Stage 5.2: the frame rate limit for all games, saved the same way. Stage 5.3:
+// the switch for Steam's memory during games, saved the same way.
 Page {
     id: page
 
@@ -21,7 +22,8 @@ Page {
         gameSettings.saveGlobal({
             overlay: page.overlayLevels[overlaySelector.selectedIndex],
             overlayPosition: page.overlayPositions[positionSelector.selectedIndex],
-            fpsLimit: page.fpsLimits[fpsLimitSelector.selectedIndex]
+            fpsLimit: page.fpsLimits[fpsLimitSelector.selectedIndex],
+            steamReclaim: steamReclaimSwitch.checked
         })
     }
 
@@ -38,6 +40,7 @@ Page {
         overlaySelector.selectedIndex = Math.max(0, page.overlayLevels.indexOf(g.overlay))
         positionSelector.selectedIndex = Math.max(0, page.overlayPositions.indexOf(g.overlayPosition))
         fpsLimitSelector.selectedIndex = Math.max(0, page.fpsLimits.indexOf(g.fpsLimit))
+        steamReclaimSwitch.checked = g.steamReclaim
         page.overlayReady = true
     }
 
@@ -147,6 +150,30 @@ Page {
                     onClicked: {
                         if (setup.start(true))
                             page.pageStack.push(Qt.resolvedUrl("SetupPage.qml"))
+                    }
+                }
+            }
+
+            // Set up: Steam's memory during a game (stage 5.3).
+            ListItem {
+                width: parent.width
+                height: reclaimLayout.height
+                visible: setup.steamInstalled
+                divider.visible: false
+
+                ListItemLayout {
+                    id: reclaimLayout
+
+                    title.text: i18n.tr("Free Steam's memory during games")
+                    subtitle.text: i18n.tr("Once a game is up, Steam's own memory is moved out of the way: about 350 MB more for the game. Steam takes back what it needs by itself (cloud saves still work).")
+                    subtitle.maximumLineCount: 4
+                    subtitle.wrapMode: Text.Wrap
+
+                    Switch {
+                        id: steamReclaimSwitch
+
+                        SlotsLayout.position: SlotsLayout.Trailing
+                        onCheckedChanged: page.saveOverlay()
                     }
                 }
             }

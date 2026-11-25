@@ -42,8 +42,9 @@ public:
   // The settings for all games (stage 5.1), in wine/user.env, which game-run.sh reads between a
   // game's own settings and defaults.env (defaults.env is replaced with each app update, user.env
   // stays): overlay ("off", "fps", "frametime" or "full"), overlayPosition ("top-left",
-  // "top-center" or "top-right") and fpsLimit ("off", "28", "30", "40", "45", "48" or "60"). A value
-  // at its default (off, top-left) writes no line.
+  // "top-center" or "top-right"), fpsLimit ("off", "28", "30", "40", "45", "48" or "60") and
+  // steamReclaim (stage 5.3: hidden Steam pushed out of RAM during a game; true unless turned off). A
+  // value at its default (off, top-left, defaults.env's) writes no line.
   Q_INVOKABLE QVariantMap loadGlobal() const;
   Q_INVOKABLE bool saveGlobal(const QVariantMap& settings);
   Q_INVOKABLE bool protonInstalled() const;
