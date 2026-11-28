@@ -219,6 +219,41 @@ for every picture a game hands over (5.1), so its journal over 10 seconds counts
 | Stardew's own limit 30, its overlay Off | no overlay; MangoHud loaded, hidden (`no_display=1`, `fps_limit=30`); Lomiri: 300 pictures in 10 s, 30 fps |
 | Stardew "As in Settings", Settings 45 for all games | `user.env` `UTDECK_FPS_LIMIT=45`; the log "user settings: ... UTDECK_FPS_LIMIT=45", "frame rate limit: 45"; Lomiri: 450 pictures in 10 s, 45 fps |
 
+## The panel follows the limit (2026-11-27, with giuliac-ut's stage 3 item 17)
+
+The Steam Deck's way from the answers above, built on the OnePlus Ace 5 (giuliac-ut, the maintainer's
+port: 60, 90 and 120 Hz modes, switched live by its display service). The details and every
+measurement are in giuliac-ut's `docs/stage3-display-performance.md`, item 17; in short:
+
+- **The interface**: `io.github.alphaliu01.utdeck.DisplayTiming1` on the system bus, in UTDeck's
+  namespace (the maintainer's choice), so any port can offer it and UTDeck never names a phone. A
+  phone's display service answers `RequestCap(fps, pid)` by setting the panel to its lowest mode that
+  is a whole multiple of the limit, for as long as process pid lives, and gives the exact limit for
+  that mode and a timing file (`/run/utdeck/display-timing`: the panel's period, a recent vsync, the
+  hand-over offset). giuliac-ut's service is the reference implementation.
+- **A panel's real rates are not round**: the Ace 5's run 0.15 % fast (90.131 Hz), so a limit of
+  45.000 drifts across the refreshes (one frame in nine shown a refresh off, in bursts every 8 s). The
+  service measures the rates; 45 becomes 45.0658 there. MangoHud's `fps_limit` in its settings file is
+  a float, so the exact value can be given.
+- **MangoHud's limiter random-walks**: it sleeps relative to its last sleep, so even at the exact limit
+  its phase wanders (vkcube on Turnip at 45.0665: 34 % of frames off). Patch 0004
+  (`tools/mangohud-build/patches/0004-fps-limit-on-the-display-s-refresh-grid.patch`) puts each
+  deadline on the panel's grid from the timing file (`UTDECK_DISPLAY_TIMING`), re-read every 250 ms;
+  without the file nothing changes.
+- **The phase per game**: Lomiri commits a frame about 19.5 ms after it is handed over, so the hand-over's
+  phase decides which refresh shows it, and the right phase depends on the game's own present path
+  (5.5 ms apart between two test clients). The service finds it from the frames retired to the panel
+  (a search of about 14 s at the game's start).
+- **`game-run.sh`**: with a limit and the service present, calls `RequestCap` with its own process (it
+  waits for the game), writes the exact limit as `fps_limit`, exports `UTDECK_DISPLAY_TIMING`, and logs
+  "display: limit 45 as 45.0609 fps at 90.1217 Hz ...". No service (the Nothing Phone (1), stone): as before.
+
+Measured on the Ace 5 after the search (vkcube on Turnip, MangoHud hidden with patch 0004): 30 and 60
+fps on 60 Hz, 40 on 120 Hz and 45 on 90 Hz with 0 to 2 % of frames a refresh off. 28 and 48 fit no mode
+there (nothing changes, no file). Not yet run: a real game through the app, which needs UTDeck on the
+Ace 5 (giuliac-ut's item 13) and a runtime release with MangoHud built with patch 0004; Steam's launch
+(`userspace/steam/steam-in-container.sh`) does not ask for the panel yet.
+
 ## Status
 
 - 2026-11-24: planned; the maintainer's answers (the caps, Off by default, the Steam Deck's way noted
@@ -226,3 +261,6 @@ for every picture a game hands over (5.1), so its journal over 10 seconds counts
   Step 2: by eye, the frame rate itself shows, 40/45/48 show no judder that stands out at 60 Hz. Step
   4: in the app (0.3.54), checked on the Nothing Phone (1). Left: step 3, the exit run, when the
   maintainer has found a game that runs above 60 fps without trouble; stone.
+- 2026-11-27: the panel follows the limit where the phone offers `io.github.alphaliu01.utdeck.DisplayTiming1`
+  (giuliac-ut, the OnePlus Ace 5): MangoHud patch 0004 and `game-run.sh`; 0 to 2 % of frames off at 30, 40,
+  45 and 60 fps with a test client. Left: a game through the app there, and a runtime release with the patch.

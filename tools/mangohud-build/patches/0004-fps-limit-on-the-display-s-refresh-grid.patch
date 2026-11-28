@@ -1,0 +1,107 @@
+UTDeck (stage 5.2, with giuliac-ut's stage 3 item 17): the frame rate limit on the display's refresh grid.
+
+MangoHud's limiter sleeps relative to the end of its last sleep, so its phase against the panel
+random-walks: even at a cap that is exactly the panel's rate divided by a whole number, frames drift
+across the refresh edges and are shown a refresh early or late (vkcube on Turnip at 45.0665 fps on a
+90.131 Hz panel, the OnePlus Ace 5: 34 % of frames). With UTDECK_DISPLAY_TIMING naming the display
+timing file (written by a phone's display service while it holds the panel in a mode for the cap:
+period_ns, a recent vsync_ns, and offset_ns, the hand-over phase the service finds for the game from
+the frames retired to the panel), each deadline is the last one plus the target, snapped to the
+nearest vsync_ns + offset_ns + k * period_ns, the file re-read every 250 ms. The same vkcube after the
+service's phase search: 30 and 60 fps on 60 Hz, 40 on 120 Hz and 45 on 90 Hz with 0 to 2 % of frames
+off. Without the file the limiter is unchanged.
+
+diff --git a/src/fps_limiter.h b/src/fps_limiter.h
+--- a/src/fps_limiter.h
++++ b/src/fps_limiter.h
+@@ -1,6 +1,8 @@
+ #pragma once
+ #include "overlay_params.h"
+ #include <mesa/util/os_time.h>
++#include <cstdio>
++#include <cstdlib>
+ 
+ class fpsLimiter {
+     private:
+@@ -10,6 +12,52 @@
+         int64_t frame_start = 0;
+         int64_t frame_end = 0;
+ 
++        /* UTDeck: deadlines on the display's refresh grid. UTDECK_DISPLAY_TIMING names the display
++         * timing file (io.github.alphaliu01.utdeck.DisplayTiming1), present while the phone's display
++         * service holds the panel in a mode that the cap divides: period_ns, a recent vsync_ns
++         * (CLOCK_MONOTONIC, as os_time_get_nano) and offset_ns, the phase after a vsync at which a frame
++         * should be handed over. Each deadline is then the last one plus the target, snapped to the
++         * nearest vsync_ns + offset_ns + k * period_ns: absolute deadlines, so the phase cannot drift
++         * against the panel (the relative sleep below random-walks), and at the phase where the
++         * compositor's commit lands well before the panel's next refresh (the display service tunes it
++         * to the game). Re-read four times a second; no
++         * file: the limiter as before. */
++        const char *timing_path = nullptr;
++        int64_t grid_period = 0, grid_base = 0, grid_read_at = 0, deadline = 0;
++
++        void read_timing(int64_t now) {
++            if (!timing_path || (grid_read_at && now - grid_read_at < 250'000'000))
++                return;
++            grid_read_at = now;
++            long long p = 0, v = 0, o = 0, x;
++            if (FILE *f = fopen(timing_path, "re")) {
++                char line[128];
++                while (fgets(line, sizeof line, f)) {
++                    if (sscanf(line, "period_ns=%lld", &x) == 1) p = x;
++                    else if (sscanf(line, "vsync_ns=%lld", &x) == 1) v = x;
++                    else if (sscanf(line, "offset_ns=%lld", &x) == 1) o = x;
++                }
++                fclose(f);
++            }
++            if (p > 0 && v > 0 && o >= 0 && o < p) {
++                if (!grid_period)
++                    SPDLOG_INFO("fps limit on the display's grid: period {} ns, offset {} ns", p, o);
++                grid_period = p;
++                grid_base = v + o;
++            } else {
++                grid_period = 0;
++                deadline = 0;
++            }
++        }
++
++        int64_t snap(int64_t t) const {
++            int64_t k = (t - grid_base) / grid_period;
++            int64_t r = (t - grid_base) - k * grid_period;
++            if (r < 0) { r += grid_period; k--; }
++            if (r >= grid_period / 2) k++;
++            return grid_base + k * grid_period;
++        }
++
+         int64_t calc_sleep(int64_t start, int64_t end) {
+             if (target <= 0 || start <= 0)
+                 return 0;
+@@ -48,6 +96,10 @@
+ 
+             active = true;
+ 
++            const char *tp = getenv("UTDECK_DISPLAY_TIMING");
++            if (tp && *tp)
++                timing_path = tp;
++
+             float tar = fps_limit[fps_limits_idx];
+             target = tar <= 0.0f ? 0 : int64_t(1'000'000'000.0f / tar);
+         }
+@@ -60,6 +112,17 @@
+ 
+             if (is_early != use_early) return;
+ 
++            read_timing(frame_start);
++            if (grid_period > 0) {
++                int64_t d = snap((deadline > 0 ? deadline : frame_start) + target);
++                if (d > frame_start)
++                    do_sleep(d - frame_start - overhead);
++                /* More than half a refresh late (a slow frame, a pause): start again from now */
++                deadline = d < frame_start - grid_period / 2 ? snap(frame_start) : d;
++                frame_end = os_time_get_nano();
++                return;
++            }
++
+             int64_t sleep_time = calc_sleep(frame_start, frame_end);
+             if (sleep_time > 0)
+                 do_sleep(sleep_time);

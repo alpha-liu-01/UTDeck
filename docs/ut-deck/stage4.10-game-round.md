@@ -388,3 +388,6 @@ UBports (Lomiri, qtmir, Mir).
 - 2026-11-25: item 2, input, with two test programs of our own (keyboard and mouse, touch) instead of
   game by game: patches 0025 (a finger's motion), 0026 (raw mouse motion without the relative
   pointer protocol) and 0027 (the wheel from axis values); side buttons lost in Lomiri. Item 2 done.
+- 2026-11-25 (the maintainer): **4.10 stopped here**: the Nothing Phone (1) is too limited for the
+  rest of the round (item 1, each game's numbers; stage 3's leftovers; stage 4's exit run). They come
+  back on stage 6's phone ([stage6-new-phone.md](stage6-new-phone.md)).

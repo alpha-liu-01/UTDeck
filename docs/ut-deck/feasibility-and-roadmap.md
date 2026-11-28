@@ -352,6 +352,16 @@ get their own documents in this folder. Development device: stone (Redmi Note 12
 kernel can be rebuilt. Second device: the Nothing Phone (1) (Adreno 642L, 24.04-1.x), see
 "Decisions".
 
+**Renumbered again 2026-11-25 (the maintainer):** a new **stage 6, a stronger phone**, comes before
+the touch controls and the in-game menu (now stage 7): the Nothing Phone (1) is too slow for the games
+that matter, so 4.10 stopped there. Stage 6 is the OnePlus Ace 5 (Snapdragon 8 Gen 3, Adreno 750),
+ported in its own repository as stone was; this repository keeps what UTDeck needs from that port and
+the answers to the maintainer's three questions (a hybrid GPU stack, a FreeSync-like display, the
+Halium version): [stage6-new-phone.md](stage6-new-phone.md). Packaging, stores and more devices move
+up one again (8, 9, 10). Stage 5's open items (5.4, the rest of 5.5, its exit run with stone) and
+4.10 are parked until stage 6 ends, and measured again on the new phone. Notes written before this
+date use the older numbers.
+
 ### Stage 0. Probe and baseline (no code)
 
 Goal: know the ground before building anything.
@@ -567,7 +577,17 @@ Planned 2026-11-24 ([stage5-roadmap.md](stage5-roadmap.md)): the overlay comes f
 games are tested again only with it, so 4.10 waits for it), as 5.1; then the frame limiter (5.2),
 Steam's memory (5.3) and the other losses (5.4). Tested on the Nothing Phone (1) and stone.
 
-### Stage 6. Touch controls and the in-game menu
+### Stage 6. A stronger phone
+
+Goal: UTDeck on a phone fast enough for the GPU-bound games (Ys IX, Stray), built with UTDeck's needs
+in mind from the first boot. The OnePlus Ace 5 first (the Adreno 750 works with Turnip today); the
+Nothing Phone (3) when upstream Turnip knows the Adreno 825. The port is its own repository; UTDeck's
+side: [stage6-new-phone.md](stage6-new-phone.md).
+
+Exit: on the new phone, UTDeck's runtime and app installed as on the others, and a Direct3D 11 game
+measured with the overlay; the display's refresh rate switched with the frame cap.
+
+### Stage 7. Touch controls and the in-game menu
 
 Goal: games are playable with touch only, and the menu works during a game.
 
@@ -608,7 +628,7 @@ Steam's hidden display, marked with the running game's app ID and made the activ
 is in front, so that Steam activates the game's layout. Worth it if Steam accepts it: the community
 layouts, gyro as a mouse, and possibly a base for item 1's virtual controller on phones with `uinput`.
 
-### Stage 7. Packaging and release
+### Stage 8. Packaging and release
 
 1. Click, unconfined, with the justification for the OpenStore review (gamepads, Wine's process
    model).
@@ -626,7 +646,7 @@ Wine base (`get-runtime.sh`: GitHub releases, SHA-256 checked, `runtimes.list`);
 carry the default runtime and Mesa. Hidden Steam, its Xvfb and the per-game helpers run as systemd
 user services today: how they fit a click is part of this stage.
 
-### Stage 8. Stores and Steam
+### Stage 9. Stores and Steam
 
 1. DRM-free first: GOG (offline installers, then a GOG login through an existing open client such
    as gogdl), itch.io.
@@ -648,7 +668,7 @@ moves into stage 3 (stage 3.S), so the compatibility table can use the maintaine
 Status after stage 3 (2026-11-21): step 3 is done the first way (Valve's ARM64 client, hidden). Left
 here: GOG, itch.io and Epic; Steam's overlay (K8) and pipeline cache.
 
-### Stage 9. More devices
+### Stage 10. More devices
 
 1. A device profile file: GPU family, Turnip support, the DXVK pin, known quirks, thermal notes.
 2. The Halium porting guide from stone-ut, linked as "how to bring your phone".

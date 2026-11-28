@@ -170,3 +170,9 @@ sampler's).
 - 2026-11-25 (the maintainer): **5.5 added**, touch in games (from 4.10's item B: fill's input mapping
   could not be tested by touch, and multitouch and swipes are not responsive in games yet); it needs a
   test program first.
+- 2026-11-25: 5.5's test programs written (stage 4.10, item 2: `kbmtest`, `touchtest`); a finger's
+  drag fixed (patch 0025), raw mouse motion (0026) and the wheel (0027) too. Left in 5.5: more than
+  one finger, pointer and `WM_TOUCH` messages, gestures, fill's mapping by touch.
+- 2026-11-25 (the maintainer): **stage 5 parked** with 5.4, the rest of 5.5 and the exit run (stone),
+  until stage 6 (a stronger phone, [stage6-new-phone.md](stage6-new-phone.md)) ends; measured again
+  on the new phone.

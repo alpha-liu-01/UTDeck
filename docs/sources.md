@@ -97,6 +97,16 @@ Added 2026-11-17 for UTDeck (`docs/ut-deck/feasibility-and-roadmap.md`).
 | [UBports: Mir 2 Android platform](https://gitlab.com/ubports/development/core/hybris-support/mir2-android-platform) | `commits` | The Halium (HWC2) platform for Mir 2 (merge request !1 open on 2026-11-17). Lomiri on Mir 2 brings `wp_viewporter` and makes our Wine patch unnecessary. |
 | [UBports: Mir 2 packaging](https://gitlab.com/ubports/development/core/packaging/mir2) | `heads` | UBports' Mir 2 builds and patches (2.28 for 26.04), including subsurface fixes that matter for Wine's game window. |
 
+
+## Stage 6: the new phone (OnePlus Ace 5, later the Nothing Phone (3))
+
+| Source | Watch | Why we follow it |
+|---|---|---|
+| [Halium: Android manifests](https://github.com/Halium/android) | `heads: halium-1[4-9]` | The Halium versions a port can build on (`halium-16.0` since 2026-07-15; no 15). A new branch is a newer Android base. |
+| [UBports: generic GKI kernel](https://gitlab.com/ubports/porting/community-ports/android12/generic/kernel-android-common) | `heads: .*halium.*` | The kernel a GKI port builds from: `android14-6.1-halium` for the Ace 5, `android15-6.6-halium` for the Nothing Phone (3). |
+| [Pixel 6a Ubuntu Touch port (bluejay)](https://github.com/logicalangel/ubuntu-touch-bluejay) | `releases; commits` | The closest working example: Halium 16 on a stock Android 16 vendor with the generic `android14-6.1-halium` kernel. |
+| [Banners-Turnip](https://github.com/The412Banner/Banners-Turnip) | `releases` | Experimental Turnip builds for Adreno 8xx (the Nothing Phone (3)'s Adreno 825), until upstream Mesa supports it. |
+
 Not followed automatically: single articles, issue threads and mailing list patches (for example
 the upstream USB gadget fix, merged for Linux 7.0-rc4). They are listed where they are used, in
 the other documents.

@@ -131,6 +131,26 @@ overlay=${UTDECK_OVERLAY:-off} limit=${UTDECK_FPS_LIMIT:-off}
 [ "${UTDECK_SETUP_RUN:-0}" = 1 ] && overlay=off limit=off
 case "$overlay" in fps|frametime|full|off) ;; *) echo "overlay: unknown setting \"$overlay\", left off" >> $B.log; overlay=off ;; esac
 case "$limit" in 28|30|40|45|48|60|off) ;; *) echo "frame rate limit: unknown setting \"$limit\", left off" >> $B.log; limit=off ;; esac
+# The panel for the limit (stage 5.2, with giuliac-ut's stage 3 item 17): where the phone's display
+# service offers io.github.alphaliu01.utdeck.DisplayTiming1, the limit is asked for there. The
+# service sets the panel to its lowest mode that is a whole multiple of the limit, for as long as
+# this script runs (it waits for the game), and answers with the exact limit for that mode (a panel's
+# real rates are not round: 45 is 45.0658 on one that runs at 90.131 Hz) and its timing file, on which
+# MangoHud (patch 0004) places each frame at the phase the service finds for this game. Even frames
+# at the limit, as on the Steam Deck. No service, or no mode that fits (28, 48 on a 60/90/120 Hz
+# panel): the limit as set, and the file only if the service gives one.
+fps=$limit
+if [ "$limit" != off ] && command -v busctl > /dev/null; then
+    DT=io.github.alphaliu01.utdeck.DisplayTiming1
+    DTO=/io/github/alphaliu01/utdeck/DisplayTiming1
+    if r=$(busctl --system call $DT $DTO $DT RequestCap du "$limit" $$ 2> /dev/null); then
+        # "ddtu CAP RATE PERIOD ID" (cut, not set: the game's arguments stay in "$@")
+        fps=$(echo "$r" | cut -d' ' -f2)
+        timing=$(busctl --system get-property $DT $DTO $DT TimingFile 2> /dev/null | sed -n 's/^s "\(.*\)"$/\1/p')
+        [ -n "$timing" ] && export UTDECK_DISPLAY_TIMING=$timing
+        echo "display: limit $limit as $fps fps at $(echo "$r" | cut -d' ' -f3) Hz (request $(echo "$r" | cut -d' ' -f5)), timing ${timing:-none}" >> $B.log
+    fi
+fi
 if [ "$overlay" != off ] || [ "$limit" != off ]; then
     if [ -f $W/runtime/lib/gpu/layers/MangoHud.json ]; then
         pos=${UTDECK_OVERLAY_POSITION:-top-left}
@@ -152,7 +172,7 @@ if [ "$overlay" != off ] || [ "$limit" != off ]; then
                       gpu_core_clock ram battery battery_watt throttling_status ;;
             esac
             if [ "$limit" != off ]; then
-                echo "fps_limit=$limit"
+                echo "fps_limit=$fps"
                 echo "fps_limit_method=early"
             fi
         } > $B.overlay.conf
@@ -163,7 +183,7 @@ if [ "$overlay" != off ] || [ "$limit" != off ]; then
         done
         export MANGOHUD=1 MANGOHUD_CONFIGFILE=$B.overlay.conf VK_LOADER_LAYERS_ENABLE=$layers
         [ "$overlay" != off ] && echo "overlay: $overlay, $pos" >> $B.log
-        [ "$limit" != off ] && echo "frame rate limit: $limit" >> $B.log
+        [ "$limit" != off ] && echo "frame rate limit: $fps" >> $B.log
     else
         echo "overlay ($overlay) and frame rate limit ($limit) asked, but this runtime has no MangoHud (lib/gpu/layers)" >> $B.log
     fi
