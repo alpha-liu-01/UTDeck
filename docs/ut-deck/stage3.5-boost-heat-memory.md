@@ -208,6 +208,23 @@ it. Worth measuring again with the boost on: the table's games, and Goat Simulat
 (where it fails at its first level, a failure that looked like two threads racing).
 
 
+## 6. A kernel that refuses the boost (2026-11-28, the OnePlus Ace 5)
+
+On the OnePlus Ace 5 (giuliac-ut, Android 6.1 kernel) the boost did nothing: `sched_setattr` with the
+clamp flags gives EPERM on every thread ("boost: uclamp_min 1024 set on 0 threads ... failed: {'Operation
+not permitted': 6}"), because that kernel refuses clamp changes without `CAP_SYS_NICE`
+(`user_check_sched_setscheduler`: "Can't change util-clamps"); stone's and the Nothing Phone (1)'s
+kernels do not check this. Without it, Stray's render thread and DXVK's command thread ran on the
+Cortex-A520s and the GPU stayed at 310 to 422 MHz, as on stone without the boost (section 5: 371-382 MHz);
+the same boost set as root gave 25 to 30 % more frames (30.1 / 37.6, 30.8 / 40.4, 33.1 / 41.3 fps, off /
+on), the GPU up to 770 to 834 MHz.
+
+`utdeck-boost.py` now hands the threads refused with EPERM, once per pass, to the phone's
+`io.github.alphaliu01.utdeck.Boost1` service when it offers one (giuliac-ut's: a root service that sets
+`uclamp_min` on threads of the caller's own user, nothing else; started by D-Bus on demand); its log
+line then says "N of them through io.github.alphaliu01.utdeck.Boost1". Phones without the service: as
+before. Checked on the Ace 5 with a test process (6 of 6 threads set through the service). App 0.3.59.
+
 ## Events
 
 - 2026-11-20: 3.5 started; the phone's clocks, heat control and memory read; plan written.
@@ -221,3 +238,5 @@ it. Worth measuring again with the boost on: the table's games, and Goat Simulat
   down to 371-382 MHz.
 - 2026-11-20: Goat Simulator on our base with the boost: the same crash at the first level,
   sooner; it stays on Proton's base.
+- 2026-11-28: a kernel that refuses uclamp to normal users (the OnePlus Ace 5): the threads go to the
+  phone's Boost1 service when it has one (app 0.3.59).

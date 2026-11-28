@@ -264,3 +264,6 @@ Ace 5 (giuliac-ut's item 13) and a runtime release with MangoHud built with patc
 - 2026-11-27: the panel follows the limit where the phone offers `io.github.alphaliu01.utdeck.DisplayTiming1`
   (giuliac-ut, the OnePlus Ace 5): MangoHud patch 0004 and `game-run.sh`; 0 to 2 % of frames off at 30, 40,
   45 and 60 fps with a test client. Left: a game through the app there, and a runtime release with the patch.
+- 2026-11-28: runtime `11.16-20261128` published (pre-release at 14d0254: the 2026-11-25 build, its Wine tree
+  checked against every patch, with MangoHud rebuilt with patch 0004; SHA-256 `232582fa...`); `runtimes.list`
+  points at it; installed on the OnePlus Ace 5 with `get-runtime.sh default` (downloaded and checked).
